@@ -11,8 +11,15 @@
 \ Forth stack.
 4096 CONSTANT LS-MAX
 LS-MAX CELLS BUFFER: LS   VARIABLE LS#   VARIABLE FP
+VARIABLE LS-CAP  LS-MAX LS-CAP !   VARIABLE LS-HEAP   \ the cells LS holds; LS in the heap, not the arena (891)
+VARIABLE LS-BODY  ' LS >BODY START @ - LS-BODY !    \ LS's descriptor, as an offset: the image is saved and reloaded
+: LS-GROW ( need --- )   \ LS moved, twice as big or as needed, what it held copied: 4096 cells had been the most -
+  \ some 4,000 variables, or recursion a few thousand deep (891); now the return stack's guard is the limit
+  LS-CAP @ 2* MAX  DUP CELLS ALLOCATE IF S" cm: frames too deep - no memory" R-FAIL THEN   ( cap new )
+  LS OVER LS# @ CELLS MOVE  LS-HEAP @ IF LS FREE DROP THEN  -1 LS-HEAP !
+  LS-BODY @ START @ + !  LS-CAP ! ;
 : FRAME ( n --- )
-  LS# @ OVER + 1+ LS-MAX > IF S" cm: frames too deep" R-FAIL THEN
+  LS# @ OVER + 1+ LS-CAP @ > IF  LS# @ OVER + 1+ LS-GROW  THEN
   FP @ 2* 1+  LS LS# @ CELLS + !  1 LS# +!  LS# @ FP !
   LS LS# @ CELLS + OVER CELLS ERASE  LS# +! ;               \ the n slots cleared at once (867)
 : UNFRAME ( --- )   FP @ 1- DUP LS# !  CELLS LS + @ 2/ FP ! ;
@@ -36,10 +43,11 @@ VARIABLE MFP                                       \ the main frame's, a script'
   R> K-BLOCK R-BOX ;
 256 CONSTANT ENV-MAX
 ENV-MAX CELLS BUFFER: ENVS   VARIABLE ENV#
+VARIABLE ENV-CAP  ENV-MAX ENV-CAP !   ' ENVS >BODY START @ - CONSTANT ENVS'   \ grown when full (891)
 : E@ ( i --- item )   ENVS ENV# @ 1- CELLS + @  2 CELLS +  SWAP CELLS + @ ;
 : BLK-CALL ( i*x block --- j*x )   \ rule 11's block: run it
   DUP D-KIND K-BLOCK <> IF S" cm: not a block" R-FAIL THEN
-  CELL+ @  ENV# @ ENV-MAX < 0= IF S" cm: blocks too deep" R-FAIL THEN
+  CELL+ @  R-DEEP?  ENV# @ ENV-CAP @ < 0= IF  ENVS' BODY-OF BUF-GROW  ENV-CAP @ 2* ENV-CAP !  THEN
   DUP ENVS ENV# @ CELLS + !  1 ENV# +!
   LS# @ >R  FP @ >R  @ CATCH  R> R> ROT                    \ a block with a frame of its own (858):
   ?DUP IF  >R  LS# !  FP !  -1 ENV# +!  R> THROW  THEN      \ a throw through it puts the frames back

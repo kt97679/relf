@@ -2,8 +2,15 @@
 \ Loaded after cm/rt-cm.4, out.4 and ctl.4.
 
 : TXT ( c-addr u --- item )   R-TEXT K-TEXT R-BOX ;
-: CHARS>TXT ( c1 .. ck k --- item )   \ a text with characters S" cannot hold
-  DUP CELL+ R-ALLOT >R  DUP R@ !  BEGIN DUP WHILE 1- TUCK R@ CELL+ + C! REPEAT DROP  R> K-TEXT R-BOX ;
+\ A text S" cannot hold - past 200 characters, or with a " or a control character - is made in pieces in a
+\ buffer of its own, grown as needed, and made a text at the end (891; CHARS>TXT had put each character on
+\ the data stack)
+VARIABLE TB  VARIABLE TB#  VARIABLE TB-CAP
+: TXT( ( --- )   0 TB# ! ;
+: TB-ROOM ( u --- )   TB# @ +  DUP TB-CAP @ > IF  2* DUP TB-CAP !  TB @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW TB !  ELSE DROP THEN ;
+: TXT+ ( c-addr u --- )   DUP TB-ROOM  TB @ TB# @ + SWAP DUP TB# +! MOVE ;
+: TXT-C ( c --- )   1 TB-ROOM  TB @ TB# @ + C!  1 TB# +! ;
+: )TXT ( --- item )   TB @ TB# @ TXT ;
 : JOIN ( item item --- text )   D-TEXT SWAP D-TEXT SWAP 2 R-CONCAT K-TEXT R-BOX ;   \ side by side - + is arithmetic only (870)
 
 \ ---- a command's arguments: a list, @ spreading a list into it ----
@@ -69,7 +76,8 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
 \ one put aside first (a copy at 10 and up), put back after, the last first; a file not opened is said,
 \ status 1, and the command not run, as sh does. Nested ones stack.
 32 CONSTANT RDK-MAX   RDK-MAX 2* CELLS BUFFER: RDK   VARIABLE RDK#
-: RDK-PUSH ( fd saved --- )   RDK# @ RDK-MAX = IF S" cm: redirections nested too deep" R-FAIL THEN  RDK RDK# @ 2* CELLS + TUCK CELL+ ! !  1 RDK# +! ;
+VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ grown when full (891)
+: RDK-PUSH ( fd saved --- )   RDK# @ RDK-CAP @ = IF  RDK' BODY-OF BUF-GROW  RDK-CAP @ 2* RDK-CAP !  THEN  RDK RDK# @ 2* CELLS + TUCK CELL+ ! !  1 RDK# +! ;
 : RDK-BACK ( n --- )   PAD 0 1 WRITE DROP  0 ?DO  -1 RDK# +!  RDK RDK# @ 2* CELLS + DUP CELL+ @ SWAP @  OVER SWAP DUP2 DROP CLOSE-FILE DROP  LOOP ;
 : RD-RUN ( xt --- )   \ the command, R-RD-FILE's and R-RD-DUP's redirections round it
   PAD 0 1 WRITE DROP  RR-N @ 0 ?DO

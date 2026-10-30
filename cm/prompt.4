@@ -24,7 +24,11 @@
   CL# @ 0= CMD-START? !  0 TERM-RAW DROP  ED-LINE  0 TERM-RESTORE DROP
   0= IF 2DROP 0 EXIT THEN  ED-DONE @ 2 = IF 2DROP 0 CL# ! -1 EXIT THEN  CL-ADD -1 ;
 VARIABLE CL-FP  VARIABLE CL-LS#  VARIABLE CL-CTL#           \ the session's frame and activations, as it began
-: CL-RUN ( --- )   CL-BUF @ CL# @ CM-COMPILE R-BLANKS EVALUATE ;
+VARIABLE CL-HAVE                                   \ the session frame's slots: made longer as variables come (891)
+: CL-GROW ( need --- )   \ between lines the session's frame is LS's top: more slots at its end, cleared
+  CL-HAVE @ - DUP 0> 0= IF DROP EXIT THEN  LS# @ OVER + 1+ LS-CAP @ > IF LS# @ OVER + 1+ LS-GROW THEN
+  LS LS# @ CELLS + OVER CELLS ERASE  DUP LS# +!  CL-HAVE +!  LS# @ CL-LS# ! ;
+: CL-RUN ( --- )   CL-BUF @ CL# @ CM-COMPILE  MAIN-FR @ CELL+ @ CL-GROW  R-BLANKS EVALUATE ;
 VARIABLE CL-RUN-XT   ' CL-RUN CL-RUN-XT !XT
 : CL-BACK ( --- )   \ after an error: the session's frame and nothing deeper, nothing captured, nothing compiling
   CL-FP @ FP !  CL-LS# @ LS# !  CL-CTL# @ CTL# !  0 SINK# !  0 IN# !  0 ENV# !  0 STATE !  R-OUT-BACK ;
@@ -33,7 +37,7 @@ VARIABLE CL-RUN-XT   ' CL-RUN CL-RUN-XT !XT
   DUP -4000 = R-EXITED @ AND IF CL-BACK THROW THEN  DROP  0 R-SIGGED !  CL-BACK ;
 : CM-REPL ( --- )
   -1 SESSION !  0 ISATTY CL-TTY !  CL-MAX ALLOCATE THROW CL-BUF !  R-SIG-CATCH
-  SESSION-SLOTS 1+ FRAME  FP @ MFP !  ACT-PUSH D-NUM 0 LS!  FP @ CL-FP !  LS# @ CL-LS# !  CTL# @ CL-CTL# !
+  SESSION-SLOTS 1+ DUP CL-HAVE ! FRAME  FP @ MFP !  ACT-PUSH D-NUM 0 LS!  FP @ CL-FP !  LS# @ CL-LS# !  CTL# @ CL-CTL# !
   BEGIN 0 CL# !
     BEGIN CL-TTY @ IF CL-EDIT ELSE CL-READ THEN
       0= IF CL# @ 0= IF CM-END EXIT THEN -1 ELSE CL-OPEN? 0= THEN

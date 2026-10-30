@@ -82,6 +82,19 @@ DEFER R-LINE. ( n --- )   \ "line n" - the command model's says the file, for a 
   R0 @ RP@ ?DO  I @ MK-LINE ?DUP IF ."  (" R-LINE. ." )" UNLOOP EXIT THEN  1 CELLS +LOOP ;
 : R-ERR-NL ( --- )   R-WHERE R-NL ;
 : R-FAIL ( c-addr u --- )   R-ERR> TYPE R-ERR-NL -4004 THROW ;   \ a Rill error: its message, its line, status 2 - not ABORT", which
+\ A stack in a BUFFER: grows when full (891): its space moved to the heap, twice as big, what it held
+\ copied, and the BUFFER:'s descriptor pointed at it, so every use of its name finds the new space. Each had
+\ a most - captures 64 deep (recursion through $( ) stopped there), blocks and activations 256, jobs 16.
+\ A body is kept as an offset from START: the image is saved and reloaded.
+: BODY-OF ( offset --- body )   START @ + ;
+\ Recursion's depth: the return stack holds 64 KB (RSTACK_BYTES in engine/cv8.c). Its guard page stops a
+\ plain call that runs past it, but one inside a CATCH - a def with return, a capture, a block - came back to
+\ frames in the runaway region and crashed (891, once the 256 activations and 64 captures that had stopped it
+\ sooner were gone). So each of those says it while there is room to unwind.
+: R-DEEP? ( --- )   R0 @ RP@ - 60000 > IF S" cm: recursion too deep for the stacks" R-FAIL THEN ;
+: BUF-GROW ( body --- )
+  >R  R@ CELL+ @ 2*  DUP ALLOCATE IF S" cm: out of memory" R-FAIL THEN      ( size' new )
+  R@ @ OVER R@ CELL+ @ MOVE  R@ @ IN-ARENA? 0= IF R@ @ FREE DROP THEN  R@ !  R> CELL+ ! ;
                                                             \ added the word it was in, then `cm: error -2`, no line (818)
 : R-.N ( n --- )   DUP ABS 0 <# #S ROT SIGN #> TYPE ;   \ a number, no blank after: before " (line n)" (799)
 \ ---- Checked arithmetic (Iteration 794): past 64 bits - a decimal past 9223372036854.775807 - or a division by zero
@@ -257,11 +270,12 @@ VARIABLE SIG-SEEN   VARIABLE SIG-CNT   \ a signal taken while waiting; safe poin
 \ Redirections of the stage about to start: a file onto a descriptor
 \ (text, mode, fd), or one descriptor onto another (-1, from, fd); the
 \ child applies them in the order they were written.
-8 CONSTANT RR-MAX
+32 CONSTANT RR-MAX
 RR-MAX CELLS BUFFER: RR-T   RR-MAX CELLS BUFFER: RR-M   RR-MAX CELLS BUFFER: RR-F
 VARIABLE RR-N
 : R-RD-RESET ( --- )   0 RR-N ! ;
-: R-RD-FILE ( t mode fd --- )
+: R-RD-FILE ( t mode fd --- )   \ RR-MAX at most: past it had written over the next buffers (891)
+  RR-N @ RR-MAX = IF R-ERR> ." cm: more than 32 redirections on one command" R-ERR-NL -4004 THROW THEN
   RR-F RR-N @ CELLS + !  RR-M RR-N @ CELLS + !  RR-T RR-N @ CELLS + !  1 RR-N +! ;
 : R-RD-DUP ( from fd --- )   >R -1 SWAP R> R-RD-FILE ;
 : R-RD-APPLY ( --- )
@@ -278,7 +292,7 @@ VARIABLE RR-N
 \ A pipeline: PL-BEGIN, a PL-STAGE a command (the last with a true
 \ flag), PL-END. Every pipe end is listed, and each child closes them
 \ all once its own are on 0 and 1 - or a reader would never see the end.
-16 CONSTANT PL-MAX
+64 CONSTANT PL-MAX                                 \ a pipeline's programs: 16 until 891
 PL-MAX CELLS BUFFER: PL-PIDS   VARIABLE PL-NP
 PL-MAX 2* 2 + CELLS BUFFER: PL-FDS   VARIABLE PL-NF
 VARIABLE PL-PREV  VARIABLE PL-CAPW  VARIABLE PL-CAPR
@@ -315,7 +329,8 @@ VARIABLE PL-DEPTH   VARIABLE PL-SAVED
   RV-N @ 0 ?DO  DUP I R-AT R-ANY>TEXT R-CSTR  RV-V @ I SE-N @ + 1+ CELLS + !  LOOP DROP
   SE-N @ 0 ?DO  I CELLS SE-A + @  RV-V @ I 1+ CELLS + !  LOOP
   S" env" R-TEXT R-CSTR RV-V @ !  RV-V @ ;
-: PL-STAGE-V ( argv last? --- )
+: PL-STAGE-V ( argv last? --- )   \ PL-MAX stages at most: past it had written over the next buffers (891)
+  PL-NP @ PL-MAX = IF R-ERR> ." cm: a pipeline of more than 64 programs" R-ERR-NL -4004 THROW THEN
   >R  PL-PREV @ PL-IN !  -1 PL-NEXT !  0 PL-OWN !
   R> IF  PL-CAPW @ PL-OUT !
   ELSE  PIPE THROW  DUP PL-FD+ PL-OUT !  DUP PL-FD+ PL-NEXT !  -1 PL-OWN !  THEN
@@ -369,6 +384,9 @@ VARIABLE R-ON-EXIT-XT
 \ is compact - JB-N entries, the last moved into a freed one - so a BUFFER:'s first bytes never count.
 16 CONSTANT JB-MAX
 JB-MAX CELLS BUFFER: JB-KEY   JB-MAX CELLS BUFFER: JB-NP   JB-MAX PL-MAX * CELLS BUFFER: JB-PIDS   VARIABLE JB-N
+VARIABLE JB-CAP  JB-MAX JB-CAP !                   \ grown when full (891): the three tables together, rows kept
+' JB-KEY >BODY START @ - CONSTANT JB-KEY'   ' JB-NP >BODY START @ - CONSTANT JB-NP'   ' JB-PIDS >BODY START @ - CONSTANT JB-PIDS'
+: JB-MORE ( --- )   JB-KEY' BODY-OF BUF-GROW  JB-NP' BODY-OF BUF-GROW  JB-PIDS' BODY-OF BUF-GROW  JB-CAP @ 2* JB-CAP ! ;
 : JB-PID ( slot i --- addr )   SWAP PL-MAX * + CELLS JB-PIDS + ;
 
 
@@ -377,7 +395,7 @@ JB-MAX CELLS BUFFER: JB-KEY   JB-MAX CELLS BUFFER: JB-NP   JB-MAX PL-MAX * CELLS
 
 
 : PL-NULL-IN ( --- )   \ & 's begin (874, Rill's spawn, 813): a slot free, and /dev/null the first stage's stdin
-  JB-N @ JB-MAX < 0= IF R-ERR> ." cm: &: 16 jobs not waited for already" R-ERR-NL -4004 THROW THEN
+  JB-N @ JB-CAP @ < 0= IF JB-MORE THEN
   S" /dev/null" R/O OPEN-FILE THROW  DUP PL-PREV ! PL-FD+ ;
 : PL-SPAWN ( --- job )   \ the pipeline started, not waited for: its pids kept, its last returned
   PL-NP @ 0 ?DO  PL-PIDS I CELLS + @  JB-N @ I JB-PID !  LOOP

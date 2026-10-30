@@ -7,9 +7,10 @@
 
 64 CONSTANT IN-MAX
 IN-MAX CELLS BUFFER: INS   VARIABLE IN#
+VARIABLE IN-CAP  IN-MAX IN-CAP !   ' INS >BODY START @ - CONSTANT INS'   \ grown when full (891)
 : INPUT ( --- list )   IN# @ IF INS IN# @ 1- CELLS + @ ELSE ARGL THEN ;
 : IN-PUSH ( list --- )
-  IN# @ IN-MAX < 0= IF S" cm: pipelines too deep" R-FAIL THEN  INS IN# @ CELLS + !  1 IN# +! ;
+  IN# @ IN-CAP @ < 0= IF  INS' BODY-OF BUF-GROW  IN-CAP @ 2* IN-CAP !  THEN  INS IN# @ CELLS + !  1 IN# +! ;
 : EACH-OF ( args --- )   \ each {|x| ... }: the block, run with each value of the function's input
   DUP #ARGS 1 <> IF S" cm: each takes one block" R-FAIL THEN  0 ARGN  INPUT
   DUP #ARGS 0 ?DO  ARGL OVER I ARGN ARG  2 PICK BLK-CALL  LOOP 2DROP ;

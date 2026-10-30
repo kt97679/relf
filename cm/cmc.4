@@ -24,8 +24,8 @@ VARIABLE OU0  VARIABLE OUP  VARIABLE OUE           \ the output
 VARIABLE IN-LINE  VARIABLE LN                      \ the line read; the line of the command being made
 \ ---- the files read (890): the script, and each one sourced - its lines a range of their own, the
 \ script's 1 to its last, each sourced file's after; a line said as "line 3", or "lib.cm line 3"
-32 CONSTANT SF-MAX
-VARIABLE SF-T     \ in the heap, made at the first script - not in the image: each [base][lines][name][length][text][the line sourcing it]
+VARIABLE SF-T  VARIABLE SF-S  VARIABLE SF-CAP   \ in the heap, grown as files come (891; 31 at most before): the files, each
+                   \ [base][lines][name][length][text][the line sourcing it]; the readers below, each [text][length][position][line][file]
 VARIABLE SF-N  VARIABLE SF-NEXT                    \ how many; the next line free
 : SF ( i --- addr )   6 * CELLS SF-T @ + ;
 : SF$ ( i --- c-addr u )   SF 2 CELLS + DUP @ SWAP CELL+ @ ;
@@ -48,6 +48,14 @@ VARIABLE SF-N  VARIABLE SF-NEXT                    \ how many; the next line fre
   DUP 0= IF 2DROP EXIT THEN  2SWAP DUP 0= IF 2DROP EXIT THEN  S"  " CAT 2SWAP CAT ;
 : #$ ( n --- c-addr u )   S>D TUCK DABS <# #S ROT SIGN #> S| ;
 : #++ ( c-addr u n --- c-addr2 u2 )   #$ ++ ;
+: TOP$ ( c-addr u --- c-addr2 u )   2DUP + CHP @ <> IF S| THEN ;   \ at the strings' top: SEQ+'s first acc
+: SEQ+ ( acc u r u2 --- acc u' )   \ r after acc, a blank between - acc kept at the strings' top, and
+  \ what was made since it ended let go: with ++ each command copied all before it, and a script of
+  \ 70 variables was "too big" (891); r moved down over what is let go
+  DUP 0= IF 2DROP 2DUP + CHP ! EXIT THEN
+  2SWAP DUP IF 2DUP + 1+ ELSE OVER THEN  3 PICK OVER + CHE @ > IF TOO-BIG THEN   ( r u2 acc u dest )
+  >R 2SWAP TUCK R@ SWAP MOVE  OVER IF BL R@ 1- C! THEN       \ moved first: r may start where the blank goes
+  DUP R> + CHP !  SWAP DUP IF 1+ THEN + ;
 
 \ ---- the tree
 0 CONSTANT N-END   1 CONSTANT N-CMD  2 CONSTANT N-WRD  3 CONSTANT N-QU  4 CONSTANT N-VR  5 CONSTANT N-CP
@@ -188,7 +196,9 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
   CUR NAME0? 0= IF WORD-P EXIT THEN  >R 0 0 N-WRD N, VAR-P N)
   CUR R> WORD-END? 0= IF S" a name, or name[key], to set" P-ERR THEN ;
 \ ---- source file (890): read in place of its line, when the script is read - a top-level command
-: SF-STACK ( --- addr )   SF-MAX SF ;              \ after the files: the readers below, each [text][length][position][line][file]
+: SF-STACK ( --- addr )   SF-S @ ;
+: SF-ROOM ( --- )   SF-N @ SF-CAP @ < IF EXIT THEN  SF-CAP @ 2* 8 MAX DUP SF-CAP !
+  DUP 6 * CELLS SF-T @ SWAP RESIZE THROW SF-T !  5 * CELLS SF-S @ SWAP RESIZE THROW SF-S ! ;
 VARIABLE SF-SP  VARIABLE SF-CUR                    \ how many below; the file being read
 VARIABLE SF-SEEN  VARIABLE SF-MORE  VARIABLE TOP-CMD   \ sourced text so far, sized for; the top-level command
 : LINES# ( c-addr u --- n )   1 ROT ROT  0 ?DO  DUP I + C@ 10 = IF SWAP 1+ SWAP THEN  LOOP DROP ;
@@ -203,7 +213,7 @@ VARIABLE SF-SEEN  VARIABLE SF-MORE  VARIABLE TOP-CMD   \ sourced text so far, si
   R@ IF ."  is sourced already, at " R> SF 5 CELLS + @ SF-LINE. ELSE R> DROP ."  is the script itself" THEN R-NL -4100 THROW ;
 : SF-PUSH ( c-addr u --- )   \ the reader below kept; the file read from its start, its lines the next free
   SF-N @ 0 ?DO  2DUP I SF$ COMPARE 0= IF I SF-AGAIN THEN  LOOP
-  SF-N @ SF-MAX = IF S" source: 31 files at most" G-ERR THEN
+  SF-ROOM
   2DUP SF-READ 0= IF S" source cannot open" 2SWAP ++ G-ERR THEN      ( name len text tlen )
   DUP SF-SEEN +!  SF-SEEN @ SF-MORE @ > IF  SF-SEEN @ SF-MORE !  DROP FREE DROP 2DROP -4106 THROW  THEN
   SF-SP @ 5 * CELLS SF-STACK +  IN-TEXT @ OVER !  IN-LEN @ OVER CELL+ !  IN-POS @ OVER 2 CELLS + !
@@ -233,9 +243,11 @@ VARIABLE SF-SEEN  VARIABLE SF-MORE  VARIABLE TOP-CMD   \ sourced text so far, si
 \ ---- making Forth: the second pass, as cmc.py's Gen - frames, scopes and variables as records, cleared
 : RC ( n --- addr )   CELLS RHP @ OVER + RHE @ > IF TOO-BIG THEN  RHP @ SWAP 2DUP ERASE RHP +! ;
 : RH$ ( c-addr u --- c-addr2 u )   DUP 1 CELLS / 1+ RC  DUP >R SWAP DUP >R MOVE  R> R> SWAP ;   \ a name kept with the records (869)
-32 CONSTANT CAP-MAX
 VARIABLE FR  VARIABLE SC                           \ the frame and the scope being made
-: NEW-FRAME ( kind --- f )   CAP-MAX 3 + RC  TUCK !  1 OVER CELL+ ! ;   \ [kind: 0 main, 1 def, 2 block][slots][captures][them]
+: NEW-FRAME ( kind --- f )   5 RC  TUCK !  1 OVER CELL+ ! ;   \ [kind: 0 main, 1 def, 2 block][slots][captures][them][room]
+: CAP@ ( f i --- v )   CELLS SWAP 3 CELLS + @ + @ ;   \ a block's captures: an array grown as they come (891; 32 at most before)
+: CAPS-GROW ( --- )   FR @ 4 CELLS + @ 2* 8 MAX  DUP RC  FR @ 3 CELLS + @ OVER FR @ 2 CELLS + @ CELLS MOVE
+  FR @ 3 CELLS + !  FR @ 4 CELLS + ! ;
 : F-SLOT ( f --- n )   CELL+ DUP @  1 ROT +! ;
 : SCOPE( ( --- )   2 RC  SC @ OVER !  SC ! ;      \ [parent][variables]
 : )SCOPE ( --- )   SC @ @ SC ! ;
@@ -251,9 +263,9 @@ VARIABLE FR  VARIABLE SC                           \ the frame and the scope bei
 : CAP-INDEX ( v --- i )   \ v's place in this block's captures - added if new
   FR @ @ 2 <> IF  S" $" S| ROT DUP CELL+ @ SWAP 2 CELLS + @ CAT
     S" : a def sees only its parameters and its own variables (v0)" CAT G-ERR THEN
-  FR @ 2 CELLS + @ 0 ?DO  FR @ 3 I + CELLS + @ OVER = IF DROP I UNLOOP EXIT THEN  LOOP
-  FR @ 2 CELLS + @ CAP-MAX = IF S" a block captures too many variables" G-ERR THEN
-  FR @ 2 CELLS + @ TUCK 3 + CELLS FR @ + !  1 FR @ 2 CELLS + +! ;
+  FR @ 2 CELLS + @ 0 ?DO  FR @ I CAP@ OVER = IF DROP I UNLOOP EXIT THEN  LOOP
+  FR @ 2 CELLS + @ FR @ 4 CELLS + @ = IF CAPS-GROW THEN
+  FR @ 2 CELLS + @ TUCK CELLS FR @ 3 CELLS + @ + !  1 FR @ 2 CELLS + +! ;
 VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ the prompt's session (869)
 : MAIN-V? ( v --- f )   3 CELLS + @ MAIN-FR @ =  FR @ @ 1 = AND ;   \ the script's variable, seen from a def (884)
 : REF ( v --- c-addr u )   \ v's cell - its value, unboxed: in this frame's slots, the main frame's, or this block's captures
@@ -265,26 +277,43 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
   2DUP S" env" COMPARE 0= IF 2DROP S" ENV-BOX" EXIT THEN          \ $env[NAME] (870)
   2DUP S" args" COMPARE 0= IF 2DROP S" SCRIPT-ARGS" EXIT THEN     \ the script's arguments, a list (870)
   S" no variable $" S| 2SWAP CAT S" - var makes one" ++ G-ERR ;
-64 CONSTANT DEF-MAX
-VARIABLE DEFS  VARIABLE DEFS#                       \ the script's defs: [name][length][parameters] each
+VARIABLE DEFS  VARIABLE DEFS#  VARIABLE DEFS-CAP   \ the script's defs, in the heap, grown as they come (891; 64 at most
+                                                   \ before): [name][length][parameters][plain] each
 : DEF-FIND ( c-addr u --- entry | 0 )
   DEFS# @ 0 ?DO  2DUP DEFS @ I 4 * CELLS + DUP @ SWAP CELL+ @ COMPARE 0= IF 2DROP DEFS @ I 4 * CELLS + UNLOOP EXIT THEN  LOOP
   2DROP 0 ;
 : DEF-ADD ( c-addr u n plain --- )   \ [name][length][parameters][no return in it: called plain (878)]
   >R >R 2DUP DEF-FIND ?DUP IF NIP NIP R> OVER 2 CELLS + !  R> SWAP 3 CELLS + ! EXIT THEN
-  DEFS# @ DEF-MAX = IF S" too many defs" G-ERR THEN
+  DEFS# @ DEFS-CAP @ = IF  DEFS-CAP @ 2* 16 MAX DUP DEFS-CAP !  4 * CELLS  DEFS @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW DEFS !  THEN
   RH$ DEFS @ DEFS# @ 4 * CELLS +  TUCK CELL+ !  TUCK !  R> OVER 2 CELLS + !  R> SWAP 3 CELLS + !  1 DEFS# +! ;
 : OUT+ ( c-addr u --- )   \ to the output, a blank after it
   DUP OUP @ + 1+ OUE @ > IF TOO-BIG THEN  OUP @ SWAP DUP >R MOVE  R> OUP +!  BL OUP @ C!  1 OUP +! ;
 : DEF-WORD ( c-addr u c-addr2 u2 --- )   2SWAP S" :" 2SWAP ++ 2SWAP ++ S" ;" ++ OUT+ ;   \ : name body ;
 VARIABLE CC-N
-: FRESH ( c-addr u --- c-addr2 u2 )   1 CC-N +!  S" CM." S| 2SWAP CAT CC-N @ #$ CAT ;   \ CM.B1, CM.C2 ...
 : C+ ( c-addr u c --- c-addr u+1 )   >R 2DUP + CHP @ <> IF S| THEN  1 ROOM  R> CHP @ C!  1 CHP +!  1+ ;
-: PLAIN? ( c-addr u --- f )   \ no " and nothing past printable ASCII: S" holds it
-  -1 ROT ROT 0 ?DO  DUP I + C@  DUP 32 127 WITHIN SWAP [CHAR] " <> AND  ROT AND SWAP  LOOP DROP ;
-: TEXT-CODE ( c-addr u --- c-addr2 u2 )   \ S" text" TXT - or its bytes and CHARS>TXT
-  2DUP PLAIN? IF  S" S" S| 34 C+ BL C+ 2SWAP CAT 34 C+ S" TXT" ++ EXIT THEN
-  TUCK 0 0 2SWAP OVER + SWAP ?DO  I C@ #++  LOOP  ROT #++ S" CHARS>TXT" ++ ;
+\ The names made, each a Forth word: the kernel files a word by its length and first two characters
+\ (HASH), so CM.B1, CM.B2 ... and CM.D.f1, CM.D.f2 ... went down one thread each, and every lookup
+\ walked all the others - 4,000 defs took 12 s to load (891). The second character varies now.
+: FRESH ( c-addr u --- c-addr2 u2 )   1 CC-N +!  S| CC-N @ 7 AND [CHAR] 0 + C+  S" ." CAT  CC-N @ #$ CAT ;   \ B1.1, C2.2 ... B0.8
+: DNAME ( c-addr u --- c-addr2 u2 )   \ a def's word: `bfib for fib - its last character second; a name too long
+  \ for a Forth word (31 characters, with # or % after) its first 16, a ", and its place among the defs -
+  \ error -2 before (891); " is in no bare word, so the two kinds never meet
+  DUP 27 < IF  S" `" S| 2OVER + 1- 1 CAT 2SWAP CAT EXIT THEN
+  2DUP DEF-FIND DEFS @ - 4 CELLS / >R  S" `" S| 2OVER + 1- 1 CAT 2SWAP DROP 16 CAT 34 C+ R> #$ CAT ;
+: PLAIN-C? ( c --- f )   DUP 32 127 WITHIN SWAP [CHAR] " <> AND ;   \ no " and nothing past printable ASCII: S" holds it
+: PLAIN? ( c-addr u --- f )   -1 ROT ROT 0 ?DO  DUP I + C@ PLAIN-C?  ROT AND SWAP  LOOP DROP ;
+: PLAIN# ( c-addr u --- n )   200 MIN DUP 0 ?DO  OVER I + C@ PLAIN-C? 0= IF DROP I LEAVE THEN  LOOP NIP ;   \ S" can hold so many
+: SQ$ ( c-addr u --- c-addr2 u2 )   S" S" S| 34 C+ BL C+ 2SWAP CAT 34 C+ ;   \ S" text"
+: TEXT-CODE ( c-addr u --- c-addr2 u2 )   \ S" text" TXT - or, past 200 characters or with a " or a control
+  \ character, in pieces: TXT( runs - TXT+ - and characters - TXT-C - )TXT. S" holds 255 at most: a longer
+  \ text had been cm: error -256, or at the prompt a wrong text; and every character of one with a " in it
+  \ had gone on the data stack (891)
+  2DUP PLAIN? OVER 201 < AND IF  SQ$ S" TXT" ++ EXIT THEN
+  S" TXT(" TOP$ 2SWAP
+  BEGIN DUP WHILE
+    2DUP PLAIN# ?DUP IF  >R OVER R@ SQ$ S" TXT+" ++  ELSE  OVER C@ #$ S" TXT-C" ++  1 >R  THEN   ( acc u t tu p pu )
+    2SWAP R> /STRING SWAP >R >R  SEQ+  R> R> SWAP
+  REPEAT 2DROP  S" )TXT" SEQ+ ;
 : UPPER ( c-addr u --- c-addr2 u )   S| 2DUP OVER + SWAP ?DO I C@ [CHAR] a [CHAR] z 1+ WITHIN IF I C@ 32 - I C! THEN LOOP ;
 
 \ ---- words and their kinds
@@ -311,11 +340,11 @@ VARIABLE CC-N
 DEFER PIECE ( p --- c-addr u )   DEFER BODY-CODE ( cmd --- c-addr u )   DEFER CMD-RANGE ( from to --- c-addr u )
 DEFER PIPELINE ( from to c-addr u --- c-addr2 u2 )
 : PIECES ( p --- c-addr u )   \ pieces to their END: the first's value and D-STR, each next's and JOIN
-  DUP PIECE S" D-STR" ++ ROT NSKIP BEGIN DUP @ WHILE DUP >R PIECE ++ S" JOIN" ++ R> NSKIP REPEAT DROP ;
+  DUP PIECE S" D-STR" ++ TOP$ ROT NSKIP BEGIN DUP @ WHILE DUP >R PIECE S" JOIN" ++ SEQ+ R> NSKIP REPEAT DROP ;
 : WORD-CODE ( w --- c-addr u )   N+ DUP NSKIP @ IF PIECES ELSE PIECE THEN ;
 : GPIECE ( p --- c-addr u )   DUP @ N-TX = IF PIECE ELSE PIECE S" GLOB-ESC" ++ THEN ;   \ a $'s, a quote's: no wildcards
 : GLOB-CODE ( w --- c-addr u )   \ a glob's pattern: its unquoted texts as they are, the rest escaped (881)
-  N+ DUP GPIECE S" D-STR" ++ ROT NSKIP BEGIN DUP @ WHILE DUP >R GPIECE ++ S" JOIN" ++ R> NSKIP REPEAT DROP ;
+  N+ DUP GPIECE S" D-STR" ++ TOP$ ROT NSKIP BEGIN DUP @ WHILE DUP >R GPIECE S" JOIN" ++ SEQ+ R> NSKIP REPEAT DROP ;
 : PROG-CAP? ( cp --- f )   \ $( ) of one command, a pipeline ending in a program
   N+ DUP @ N-CMD <> IF DROP 0 EXIT THEN  DUP NSKIP @ IF DROP 0 EXIT THEN
   N+ DUP WORDS-END  2DUP TO-ANDOR OVER <> IF 2DROP 0 EXIT THEN
@@ -330,7 +359,7 @@ DEFER PIPELINE ( from to c-addr u --- c-addr2 u2 )
 : ARG-CODE ( w --- c-addr u )   DUP N+ @ N-SP = IF N+ N+ SPREAD-CODE S" ARG@" ++ EXIT THEN
   DUP @A IF GLOB-CODE S" GLOB ARG@" ++ EXIT THEN  WORD-CODE S" ARG" ++ ;   \ a word with * or ?: its paths (872)
 : ARGS-CODE ( from to --- c-addr u )   \ ARGL, then each word's value ARG - a spread's list ARG@
-  >R >R S" ARGL"  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R ARG-CODE ++ REPEAT  R> R> 2DROP ;
+  >R >R S" ARGL" TOP$  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R ARG-CODE SEQ+ REPEAT  R> R> 2DROP ;
 VARIABLE AP                                        \ the next of (( ))'s nodes
 : AOP? ( c-addr u --- f )   AP @ @ N-OP = IF AP @ @A AP @ @B COMPARE 0= ELSE 2DROP 0 THEN ;
 : A-TAKE ( --- c-addr u )   S" D" S| AP @ @A AP @ @B CAT  AP @ N+ AP ! ;   \ the operator taken: D and it
@@ -354,10 +383,12 @@ DEFER A-OR ( --- c-addr u )
 ' A-OR' IS A-OR
 : ARITH ( ar --- c-addr u )   AP @ >R  N+ AP !  A-OR  AP @ @ IF S" in (( )): more than one expression" G-ERR THEN  R> AP ! ;
 : MAP-CODE ( mp --- c-addr u )
-  S" R-NEW-RECORD K-REC R-BOX" ROT N+
-  BEGIN DUP @ WHILE  >R S" DUP" ++ R@ BARE$ TEXT-CODE ++  R> NSKIP DUP >R WORD-CODE ++ S" D-SET" ++  R> NSKIP REPEAT DROP ;
-VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block refers to: those variables boxed (866)
-: CAPS+ ( c-addr u --- )   CAPS# @ CAPS-MAX = IF TOO-BIG THEN  CAPS @ CAPS# @ 2* CELLS + TUCK CELL+ ! !  1 CAPS# +! ;
+  S" R-NEW-RECORD K-REC R-BOX" TOP$ ROT N+
+  BEGIN DUP @ WHILE  >R S" DUP" R@ BARE$ TEXT-CODE ++  R> NSKIP DUP >R WORD-CODE ++ S" D-SET" ++ SEQ+  R> NSKIP REPEAT DROP ;
+VARIABLE CAPS  VARIABLE CAPS#  VARIABLE CAPS-CAP   \ the names some block refers to: those variables boxed (866) -
+: CAPS+ ( c-addr u --- )   \ grown as they come (891; 512 at most before)
+  CAPS# @ CAPS-CAP @ = IF  CAPS-CAP @ 2* 16 MAX DUP CAPS-CAP !  2* RC  CAPS @ OVER CAPS# @ 2* CELLS MOVE  CAPS !  THEN
+  CAPS @ CAPS# @ 2* CELLS + TUCK CELL+ ! !  1 CAPS# +! ;
 : CAPTURED? ( c-addr u --- f )   \ at the prompt every variable of the session's own is boxed: a later line may capture it
   SESSION @ FR @ MAIN-FR @ = AND IF 2DROP -1 EXIT THEN
   CAPS# @ 0 ?DO  2DUP CAPS @ I 2* CELLS + DUP @ SWAP CELL+ @ COMPARE 0= IF 2DROP -1 UNLOOP EXIT THEN  LOOP 2DROP 0 ;
@@ -372,7 +403,7 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   N+ DUP S" if" BARE= IF  BEGIN DUP @ WHILE DUP MARK NSKIP REPEAT DROP EXIT THEN
   DUP S" def" BARE= IF  NSKIP DUP @ IF NSKIP DUP @ IF MARK EXIT THEN THEN DROP EXIT THEN
   DUP S" while" BARE= OVER S" for" BARE= OR IF  DUP WORDS-END LAST-W MARK EXIT THEN  DROP ;
-: SCAN-CAPS ( --- )   0 CAPS# !  CAPS @ 0= IF CAPS-MAX 2* RC CAPS ! THEN
+: SCAN-CAPS ( --- )   0 CAPS# !
   ND0 @ BEGIN DUP NDP @ U< WHILE DUP @ N-CMD = IF DUP MARK-CMD THEN N+ REPEAT DROP
   ND0 @ BEGIN DUP NDP @ U< WHILE DUP @ N-BK = OVER @B 0= AND IF DUP SCAN-BLOCK THEN N+ REPEAT DROP ;
 : PARAMS ( node --- node' mask )   \ a block's or def's parameters declared, the bits of those a block captures
@@ -386,7 +417,7 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   ROT @A >R  2OVER S" :" 2SWAP ++  FR @ CELL+ @ #++ S" FRAME" ++
   R> ?DUP IF #$ R> #++ S" BIND-M" ++ ELSE R> DROP S" DROP" THEN ++  2SWAP ++ S" UNFRAME ;" ++ OUT+
   FR @ )SCOPE R> FR !
-  0 0 2 PICK 2 CELLS + @ 0 ?DO  2 PICK 3 I + CELLS + @ REF ++  LOOP
+  0 0 TOP$ 2 PICK 2 CELLS + @ 0 ?DO  2 PICK I CAP@ REF SEQ+  LOOP
   ROT 2 CELLS + @ #++ S" [']" ++ 2SWAP ++ S" BLK-NEW" ++ ;
 : NO-TRANSFER? ( node --- f )   \ no break, continue or return in it: a capture of it needs no CATCH (878)
   DUP S" break" BARE-IN? OVER S" continue" BARE-IN? OR SWAP S" return" BARE-IN? OR 0= ;
@@ -409,7 +440,7 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
 : CMD-CODE ( cmd --- c-addr u )   \ its code after [ line R-MARK ]: an error in it says its line (887)
   DUP @A LN !  S" [" LN @ #++ S" R-MARK ]" ++  ROT N+ DUP WORDS-END CMD-RANGE ++ ;
 : BODY-CODE' ( cmd --- c-addr u )   \ each command's Forth, to the END
-  LN @ >R  0 0 ROT BEGIN DUP @ WHILE DUP >R CMD-CODE ++ R> NSKIP REPEAT DROP  R> LN ! ;
+  LN @ >R  0 0 TOP$ ROT BEGIN DUP @ WHILE DUP >R CMD-CODE SEQ+ R> NSKIP REPEAT DROP  R> LN ! ;
 ' BODY-CODE' IS BODY-CODE
 
 \ ---- commands
@@ -463,8 +494,8 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   SWAP BARE$ ROT  FR @ >R SC @ >R  1 NEW-FRAME FR !  SCOPE(  S" %def" 0 0 VAR+ DROP   \ its scope's parent the script's (884)
   N+ PARAMS >R  BODY-CODE
   S" D" FRESH 2SWAP 2OVER S" :" 2SWAP ++ 2SWAP ++ S" ;" ++ S" '" ++ 2SWAP ++     \ its word a fresh name: made again at the prompt (869)
-  S" IS CM.D." ++ 2OVER CAT
-  FR @ CELL+ @ 1- #++ S" CM.D." ++ 2OVER CAT S" # !" CAT  R> #++ S" CM.D." ++ 2SWAP CAT S" % !" CAT OUT+
+  S" IS" ++ 2OVER DNAME ++
+  FR @ CELL+ @ 1- #++ 2OVER DNAME ++ S" # !" CAT  R> #++ 2SWAP DNAME ++ S" % !" CAT OUT+
   R> SC ! R> FR !  0 0 ;
 : NAME? ( c-addr u --- f )   DUP 0= IF 2DROP 0 EXIT THEN  OVER C@ NAME0? ROT ROT 0 ?DO DUP I + C@ NAMEC? ROT AND SWAP LOOP DROP ;
 : BIND ( from to --- name value )   \ var name value, set name value: their two words
@@ -501,7 +532,7 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
 : PLAIN-ARGS? ( from to k --- f )   \ k words, none an @ spread: a def's arguments go on the stack
   >R BEGIN 2DUP <> WHILE  OVER N+ @ N-SP = IF 2DROP R> DROP 0 EXIT THEN  R> 1- >R  SWAP NSKIP SWAP  REPEAT 2DROP R> 0= ;
 : STACK-CODE ( from to --- c-addr u )   \ each word's value, in order
-  >R >R 0 0  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R WORD-CODE ++ REPEAT  R> R> 2DROP ;
+  >R >R 0 0 TOP$  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R WORD-CODE SEQ+ REPEAT  R> R> 2DROP ;
 : APPEND-ERR ( --- )   S" append name values - name a list's variable, name[key] too" G-ERR ;
 : SINGLE ( from to --- c-addr u )   \ one command, not a program's
   OVER BARE? 0= IF  OVER NSKIP OVER ARGS-CODE  ROT DROP ROT WORD-CODE ++ S" CALL-VALUE" ++ EXIT THEN   \ rule 11
@@ -532,7 +563,7 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   2DUP DEF-FIND ?DUP IF >R 2SWAP                    \ a def: its arguments on the stack when they are its k words, no @ (868)
     2OVER 2OVER R@ 2 CELLS + @ ARITY-CHECK 2DROP
     2DUP R@ 2 CELLS + @ PLAIN-ARGS? DUP >R IF STACK-CODE ELSE ARGS-CODE THEN  R> R@ 2 CELLS + @ SWAP >R #++
-    S" CM.D." ++ 2OVER CAT S" # @ CM.D." CAT 2OVER CAT S" % @ ['] CM.D." CAT 2SWAP CAT
+    2OVER DNAME ++ S" # @" CAT 2OVER DNAME ++ S" % @ [']" CAT 2SWAP DNAME ++
     R> IF R@ 3 CELLS + @ IF S" DEF-CALL-P" ELSE S" DEF-CALL-S" THEN ELSE S" DEF-CALL-M" THEN ++ R> DROP EXIT THEN
   S" : no such command" CAT G-ERR ;
 
@@ -540,7 +571,8 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
 VARIABLE PL          \ the pipeline being made: [to][end][end's length][state: 0, 1 list, 2 path][code][its length][a segment's end][last?]
 : PL@ ( i --- x )   CELLS PL @ + @ ;
 : PL! ( x i --- )   CELLS PL @ + ! ;
-: PL+ ( c-addr u --- )   4 PL@ 5 PL@ 2SWAP ++ 5 PL! 4 PL! ;
+: PL+ ( c-addr u --- )   \ to the pipeline's code, joined in place as SEQ+ (891: a program given 5,000 words was too big)
+  5 PL@ 0= IF TOP$ ELSE 4 PL@ 5 PL@ 2SWAP SEQ+ THEN 5 PL! 4 PL! ;
 : RD-OP ( w --- c-addr u n )   \ a redirection's Forth after its file's, n 1 - a dup's, n 0 - or n -1, neither
   DUP BARE? 0= IF DROP 0 0 -1 EXIT THEN  BARE$
   S" >" NAMED? IF 2DROP S" W/O 1 RD-FILE" 1 EXIT THEN
@@ -631,11 +663,11 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
   N+ DUP @ N-BK <> IF 2DROP 0 EXIT THEN  -1 ;
 255 CONSTANT SESSION-SLOTS
 : NAMES-NEW ( --- )   \ no names yet: a script's, or a session's start
-  0 CC-N !  0 DEFS# !  0 DEFS-SAID !  DEF-MAX 4 * RC DEFS !  0 CAPS !
+  0 CC-N !  0 DEFS# !  0 DEFS-SAID !  0 CAPS !  0 CAPS-CAP !
   0 NEW-FRAME FR !  0 SC !  SCOPE(  S" %def" 0 0 VAR+ DROP  FR @ MAIN-FR !  SC @ MAIN-SC ! ;
 : SCRIPT$ ( --- c-addr u )   SESSION @ SYS-ARGC 1 < OR IF S" " ELSE 0 SYS-ARG DUP CSTRLEN THEN ;
 : SF-START ( c-addr u --- )   \ the script's, or a prompt line's: the files read before forgotten, their texts freed
-  SF-T @ 0= IF  SF-MAX 11 * CELLS ALLOCATE THROW SF-T !  THEN
+  SF-T @ 0= IF  8 DUP SF-CAP !  DUP 6 * CELLS ALLOCATE THROW SF-T !  5 * CELLS ALLOCATE THROW SF-S !  THEN
   SF-N @ 1 MAX 1 ?DO  I SF 4 CELLS + @ FREE DROP  LOOP  1 SF-N !  0 SF-SP !  0 SF-CUR !  0 SF-SEEN !  0 TOP-CMD !
   LINES# DUP SF-NEXT !  0 SF CELL+ !  0 0 SF !  SCRIPT$ 0 SF 3 CELLS + !  0 SF 2 CELLS + !  0 0 SF 5 CELLS + ! ;
 : CM-COMPILE1 ( c-addr u --- c-addr2 u2 )   \ a script's text made Forth - the output, to EVALUATE
@@ -647,10 +679,10 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
   ND0 @  0 0 CMDS N)
   DUP BEGIN DUP @ WHILE  DUP DEF-LINE? IF DUP PLAIN-DEF? >R @A >R BARE$ R> R> DEF-ADD THEN  NSKIP REPEAT DROP   \ defs known before their first call
   DEFS# @ DEFS-SAID @ ?DO  DEFS @ I 4 * CELLS + DUP @ SWAP CELL+ @
-    S" DEFER CM.D." 2OVER CAT S" VARIABLE CM.D." ++ 2OVER CAT S" #" CAT S" VARIABLE CM.D." ++ 2SWAP CAT S" %" CAT OUT+  LOOP
+    S" DEFER" 2OVER DNAME ++ S" VARIABLE" ++ 2OVER DNAME ++ S" #" CAT S" VARIABLE" ++ 2SWAP DNAME ++ S" %" CAT OUT+  LOOP
   DEFS# @ DEFS-SAID !  SCAN-CAPS
-  0 0 ROT BEGIN DUP @ WHILE  DUP >R CMD-CODE ?DUP IF S" R-GC?" 2SWAP ++ ++ ELSE DROP THEN  R> NSKIP REPEAT DROP
-  SESSION @ IF  FR @ CELL+ @ SESSION-SLOTS > IF S" the prompt holds 254 variables at most" G-ERR THEN
+  0 0 TOP$ ROT BEGIN DUP @ WHILE  DUP >R CMD-CODE DUP IF S" R-GC?" 2SWAP ++ THEN SEQ+  R> NSKIP REPEAT DROP
+  SESSION @ IF
     S" M" FRESH 2SWAP 2OVER S" :" 2SWAP ++ 2SWAP ++ S" ;" ++ 2SWAP ++ OUT+     \ run in the session's frame
   ELSE  S" : CM.MAIN" 2SWAP ++ S" ;" ++ OUT+  FR @ CELL+ @ 1- #$ S" ' CM.MAIN DEF-RUN CM-END" ++ OUT+  THEN
   OU0 @ OUP @ OVER - ;

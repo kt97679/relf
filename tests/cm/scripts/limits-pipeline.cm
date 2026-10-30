@@ -1,0 +1,3 @@
+# a size that had a most (891) - 16 programs in a pipeline: past it the pids and pipe ends went over the next buffers
+echo x | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat | cat
+echo status $status

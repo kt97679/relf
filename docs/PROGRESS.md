@@ -914,6 +914,7 @@ do not trust the absence of a line below.
 - 888 — the owner's decisions recorded (many results one by one, split no exception; strict def scope; size and features balanced); the handoff
 - 889 — a session's start: what the container lacked (cc -m32, five reference shells, gforth, a git identity) now tools/container-setup.sh; the baseline green here; `source` planned
 - 890 — `source file`: a script read into another when it is read, each file's lines its own in errors; seven script tests and a prompt's
+- 891 — sizes without a most: variables (some 65 had been too big), defs (64), captures, recursion's stacks, texts past 255, long def names; two memory faults (pipelines past 16, redirections past 8)
 
 ### Not tied to an iteration
 

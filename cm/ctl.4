@@ -11,8 +11,9 @@
 VARIABLE ACTS   VARIABLE STATUS
 256 CONSTANT CTL-MAX
 CTL-MAX CELLS BUFFER: CTLS   VARIABLE CTL#
+VARIABLE CTL-CAP  CTL-MAX CTL-CAP !   ' CTLS >BODY START @ - CONSTANT CTLS'   \ grown when full (891)
 : ACT-PUSH ( --- id )
-  CTL# @ CTL-MAX < 0= IF S" cm: loops and defs too deep" R-FAIL THEN
+  R-DEEP?  CTL# @ CTL-CAP @ < 0= IF  CTLS' BODY-OF BUF-GROW  CTL-CAP @ 2* CTL-CAP !  THEN
   1 ACTS +!  ACTS @  DUP CTLS CTL# @ CELLS + !  1 CTL# +! ;
 : ACT-POP ( --- )   -1 CTL# +! ;
 : ACT-TOP ( --- id )   CTLS CTL# @ 1- CELLS + @ ;

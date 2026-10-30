@@ -1,0 +1,43 @@
+# a size that had a most (891) - a block capturing more than 32 variables
+var c0 0
+var c1 1
+var c2 2
+var c3 3
+var c4 4
+var c5 5
+var c6 6
+var c7 7
+var c8 8
+var c9 9
+var c10 10
+var c11 11
+var c12 12
+var c13 13
+var c14 14
+var c15 15
+var c16 16
+var c17 17
+var c18 18
+var c19 19
+var c20 20
+var c21 21
+var c22 22
+var c23 23
+var c24 24
+var c25 25
+var c26 26
+var c27 27
+var c28 28
+var c29 29
+var c30 30
+var c31 31
+var c32 32
+var c33 33
+var c34 34
+var c35 35
+var c36 36
+var c37 37
+var c38 38
+var c39 39
+var b { echo $c0 $c1 $c2 $c3 $c4 $c5 $c6 $c7 $c8 $c9 $c10 $c11 $c12 $c13 $c14 $c15 $c16 $c17 $c18 $c19 $c20 $c21 $c22 $c23 $c24 $c25 $c26 $c27 $c28 $c29 $c30 $c31 $c32 $c33 $c34 $c35 $c36 $c37 $c38 $c39 }
+$b | wc -w

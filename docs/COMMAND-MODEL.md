@@ -653,6 +653,11 @@ the script's own, a def in it seeing the script's variables declared before the 
 has lines of its own, so an error in one says `lib.cm line 3`, read-time or runtime, and the script's
 own say `line 3` as before. A file sourced twice is an error naming the line of the first - no cycles,
 no def made twice; one that cannot be read, an error at the source line.
+At 891 no size has a most but memory: variables, defs, a block's captures, the files sourced, a
+text's length, a list's or a command's words, captures and activations nested, jobs - each grows (some 65
+variables, 64 defs and 255-character texts had been the limits). Recursion is bounded by the engine's
+64 KB return stack, said as "recursion too deep for the stacks": about 2,500 calls deep, 1,000 through
+`$( )`, 700 in a def with `return`. A pipeline holds 64 programs, a command 32 redirections.
 Still to come: a smaller front end.
 
 ## What it costs
