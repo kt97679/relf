@@ -607,7 +607,12 @@ way to make a condition: a command's status, or true or false.
 At 877, `match text pattern` - the shell's `case`, as a command: status 0 when the whole text matches the
 glob pattern (quoted, or globbing takes it first); and `else` or `elif` at a line's start, which ran as a
 program named else, an error that says they go on the line of if's `}`.
-Still to come: a smaller front end, and a call's remaining cost.
+At 878 a call lost its CATCHes where nothing needs them: a def with no `return` in it is called with no
+activation and no CATCH (in a script; at the prompt a def may be made again, so every call keeps them),
+and a capture with no `break`, `continue` or `return` inside with no CATCH - an error goes on up, and
+what catches it at the top puts the frames and sinks back. `calls` 108 to 85 million dispatches, 139 to
+102 ms against the image before, alternating.
+Still to come: a smaller front end.
 
 ## What it costs
 

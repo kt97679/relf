@@ -44,6 +44,11 @@ SINK-MAX CELLS BUFFER: SKINDS                  \ each sink's kind (868): 0 a lis
   SINK# @ SINK-MAX < 0= IF S" cm: captures too deep" R-FAIL THEN
   R-NEW-LIST K-LIST R-BOX  SINKS SINK# @ CELLS + !  0 SKINDS SINK# @ CELLS + !  1 SINK# +!
   CATCH  SINK SWAP  -1 SINK# +!  THROW ;
+: CAPTURE1-P ( i*x xt --- j*x item )   \ CAPTURE1 with no break, continue or return inside (878): no CATCH -
+  SINK# @ SINK-MAX < 0= IF S" cm: captures too deep" R-FAIL THEN     \ an error goes on up, and the top puts SINK# back
+  0 SINKS SINK# @ CELLS + !  1 SKINDS SINK# @ CELLS + !  1 SINK# +!
+  EXECUTE  SINK# @ 1- CELLS DUP SINKS + @ SWAP SKINDS + @  -1 SINK# +!
+  1 = IF DROP S" cm: $( ) got no value" R-FAIL THEN ;
 : CAPTURE1 ( i*x xt --- j*x item )   \ $( ) of a function: its one value, kept in the sink's own cell - no list (868)
   SINK# @ SINK-MAX < 0= IF S" cm: captures too deep" R-FAIL THEN
   0 SINKS SINK# @ CELLS + !  1 SKINDS SINK# @ CELLS + !  1 SINK# +!

@@ -1,0 +1,5 @@
+cm: $(( )) takes numbers - a text that reads as none
+after the error: 42
+i 1
+i 2
+status 0

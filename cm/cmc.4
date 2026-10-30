@@ -53,6 +53,10 @@ VARIABLE IN-LINE  VARIABLE LN                      \ the line read; the line of 
 : BARE? ( w --- f )   N+ DUP @ N-TX = SWAP N+ @ 0= AND ;     \ a word that is one text
 : BARE$ ( w --- c-addr u )   N+ DUP @A SWAP @B ;
 : BARE= ( w c-addr u --- f )   ROT DUP BARE? IF BARE$ COMPARE 0= ELSE DROP 2DROP 0 THEN ;
+: BARE-IN? ( node c-addr u --- f )   \ a bare word so anywhere in node's subtree
+  >R >R DUP NSKIP SWAP
+  BEGIN 2DUP <> WHILE  DUP @ N-WRD = IF DUP R> R> 2DUP >R >R BARE= IF 2DROP R> R> 2DROP -1 EXIT THEN THEN  N+ REPEAT
+  2DROP R> R> 2DROP 0 ;
 
 \ ---- reading: the first pass, as cmc.py's parse_ functions
 VARIABLE IN-TEXT  VARIABLE IN-LEN  VARIABLE IN-POS           \ the text, its length, where reading is
@@ -212,12 +216,12 @@ VARIABLE FR  VARIABLE SC                           \ the frame and the scope bei
 64 CONSTANT DEF-MAX
 VARIABLE DEFS  VARIABLE DEFS#                       \ the script's defs: [name][length][parameters] each
 : DEF-FIND ( c-addr u --- entry | 0 )
-  DEFS# @ 0 ?DO  2DUP DEFS @ I 3 * CELLS + DUP @ SWAP CELL+ @ COMPARE 0= IF 2DROP DEFS @ I 3 * CELLS + UNLOOP EXIT THEN  LOOP
+  DEFS# @ 0 ?DO  2DUP DEFS @ I 4 * CELLS + DUP @ SWAP CELL+ @ COMPARE 0= IF 2DROP DEFS @ I 4 * CELLS + UNLOOP EXIT THEN  LOOP
   2DROP 0 ;
-: DEF-ADD ( c-addr u n --- )
-  >R 2DUP DEF-FIND ?DUP IF NIP NIP R> SWAP 2 CELLS + ! EXIT THEN
+: DEF-ADD ( c-addr u n plain --- )   \ [name][length][parameters][no return in it: called plain (878)]
+  >R >R 2DUP DEF-FIND ?DUP IF NIP NIP R> OVER 2 CELLS + !  R> SWAP 3 CELLS + ! EXIT THEN
   DEFS# @ DEF-MAX = IF S" too many defs" G-ERR THEN
-  RH$ DEFS @ DEFS# @ 3 * CELLS +  TUCK CELL+ !  TUCK !  R> SWAP 2 CELLS + !  1 DEFS# +! ;
+  RH$ DEFS @ DEFS# @ 4 * CELLS +  TUCK CELL+ !  TUCK !  R> OVER 2 CELLS + !  R> SWAP 3 CELLS + !  1 DEFS# +! ;
 : OUT+ ( c-addr u --- )   \ to the output, a blank after it
   DUP OUP @ + 1+ OUE @ > IF TOO-BIG THEN  OUP @ SWAP DUP >R MOVE  R> OUP +!  BL OUP @ C!  1 OUP +! ;
 : DEF-WORD ( c-addr u c-addr2 u2 --- )   2SWAP S" :" 2SWAP ++ 2SWAP ++ S" ;" ++ OUT+ ;   \ : name body ;
@@ -336,6 +340,8 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
   FR @ )SCOPE R> FR !
   0 0 2 PICK 2 CELLS + @ 0 ?DO  2 PICK 3 I + CELLS + @ REF ++  LOOP
   ROT 2 CELLS + @ #++ S" [']" ++ 2SWAP ++ S" BLK-NEW" ++ ;
+: NO-TRANSFER? ( node --- f )   \ no break, continue or return in it: a capture of it needs no CATCH (878)
+  DUP S" break" BARE-IN? OVER S" continue" BARE-IN? OR SWAP S" return" BARE-IN? OR 0= ;
 : PIECE' ( p --- c-addr u )
   DUP @ CASE
     N-TX OF DUP @A SWAP @B TEXT-CODE ENDOF
@@ -343,7 +349,8 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
     N-BO OF @A IF S" TRUE-BOX" ELSE S" FALSE-BOX" THEN ENDOF
     N-VR OF DUP @A OVER @B READ$ ROT N+ BEGIN DUP @ WHILE DUP >R WORD-CODE ++ S" CM-AT" ++ R> NSKIP REPEAT DROP ENDOF
     N-QU OF N+ DUP @ IF PIECES ELSE DROP 0 0 TEXT-CODE THEN ENDOF
-    N-CP OF DUP PROG-CAP? IF S" PIPE-TEXT" PIPE-CAP ELSE CAPTURE-WORD S" [']" 2SWAP ++ S" CAPTURE1" ++ THEN ENDOF
+    N-CP OF DUP PROG-CAP? IF S" PIPE-TEXT" PIPE-CAP ELSE DUP NO-TRANSFER? >R CAPTURE-WORD S" [']" 2SWAP ++
+      R> IF S" CAPTURE1-P" ELSE S" CAPTURE1" THEN ++ THEN ENDOF
     N-AR OF ARITH ENDOF
     N-LS OF N+ DUP WORDS-END ARGS-CODE ENDOF
     N-MP OF MAP-CODE ENDOF
@@ -468,9 +475,9 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
     S" for" COMPARE 0= IF FOR-CMD ELSE WHILE-CMD THEN EXIT THEN
   S" def" NAMED? IF 2DROP DEF-CMD EXIT THEN
   2DUP DEF-FIND ?DUP IF >R 2SWAP                    \ a def: its arguments on the stack when they are its k words, no @ (868)
-    2DUP R@ 2 CELLS + @ PLAIN-ARGS? DUP >R IF STACK-CODE ELSE ARGS-CODE THEN  R> R> 2 CELLS + @ SWAP >R #++
+    2DUP R@ 2 CELLS + @ PLAIN-ARGS? DUP >R IF STACK-CODE ELSE ARGS-CODE THEN  R> R@ 2 CELLS + @ SWAP >R #++
     S" CM.D." ++ 2OVER CAT S" # @ CM.D." CAT 2OVER CAT S" % @ ['] CM.D." CAT 2SWAP CAT
-    R> IF S" DEF-CALL-S" ELSE S" DEF-CALL-M" THEN ++ EXIT THEN
+    R> IF R@ 3 CELLS + @ IF S" DEF-CALL-P" ELSE S" DEF-CALL-S" THEN ELSE S" DEF-CALL-M" THEN ++ R> DROP EXIT THEN
   S" : no such command" CAT G-ERR ;
 
 \ ---- pipelines (859, 862): programs side by side an OS pipeline, a function's stage run to its end
@@ -560,13 +567,15 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
 ' CMD-RANGE' IS CMD-RANGE
 
 \ ---- a script
+: PLAIN-DEF? ( bk --- f )   \ a def with no return in it, in a script: called with no activation and no CATCH (878)
+  SESSION @ IF DROP 0 EXIT THEN  S" return" BARE-IN? 0= ;
 : DEF-LINE? ( cmd --- w bk -1 | 0 )   \ def name { ... }, exactly
   N+ DUP S" def" BARE= 0= IF DROP 0 EXIT THEN  NSKIP DUP @ 0= IF DROP 0 EXIT THEN  DUP BARE? 0= IF DROP 0 EXIT THEN
   DUP NSKIP DUP @ 0= IF 2DROP 0 EXIT THEN  DUP NSKIP @ IF 2DROP 0 EXIT THEN
   N+ DUP @ N-BK <> IF 2DROP 0 EXIT THEN  -1 ;
 255 CONSTANT SESSION-SLOTS
 : NAMES-NEW ( --- )   \ no names yet: a script's, or a session's start
-  0 CC-N !  0 DEFS# !  0 DEFS-SAID !  DEF-MAX 3 * RC DEFS !  0 CAPS !
+  0 CC-N !  0 DEFS# !  0 DEFS-SAID !  DEF-MAX 4 * RC DEFS !  0 CAPS !
   0 NEW-FRAME FR !  0 SC !  SCOPE(  S" %def" 0 0 VAR+ DROP  FR @ MAIN-FR !  SC @ MAIN-SC ! ;
 : CM-COMPILE ( c-addr u --- c-addr2 u2 )   \ a script's text made Forth - the output, to EVALUATE
   DUP IN-LEN ! OVER IN-TEXT ! 0 IN-POS ! 1 IN-LINE !  NIP
@@ -575,8 +584,8 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
   SESSION @ RH0 @ 0<> AND IF DROP ELSE  16 * 4096 + CELLS  1 20 LSHIFT SESSION @ AND MAX  RH0 RHP RHE AREA  NAMES-NEW  THEN
   MAIN-FR @ FR !  MAIN-SC @ SC !  0 PL !  0 AP !     \ a session's line after an error: back at the top
   ND0 @  0 0 CMDS N)
-  DUP BEGIN DUP @ WHILE  DUP DEF-LINE? IF @A >R BARE$ R> DEF-ADD THEN  NSKIP REPEAT DROP   \ defs known before their first call
-  DEFS# @ DEFS-SAID @ ?DO  DEFS @ I 3 * CELLS + DUP @ SWAP CELL+ @
+  DUP BEGIN DUP @ WHILE  DUP DEF-LINE? IF DUP PLAIN-DEF? >R @A >R BARE$ R> R> DEF-ADD THEN  NSKIP REPEAT DROP   \ defs known before their first call
+  DEFS# @ DEFS-SAID @ ?DO  DEFS @ I 4 * CELLS + DUP @ SWAP CELL+ @
     S" DEFER CM.D." 2OVER CAT S" VARIABLE CM.D." ++ 2OVER CAT S" #" CAT S" VARIABLE CM.D." ++ 2SWAP CAT S" %" CAT OUT+  LOOP
   DEFS# @ DEFS-SAID !  SCAN-CAPS
   0 0 ROT BEGIN DUP @ WHILE  DUP >R CMD-CODE ?DUP IF S" R-GC?" 2SWAP ++ ++ ELSE DROP THEN  R> NSKIP REPEAT DROP

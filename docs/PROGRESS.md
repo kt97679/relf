@@ -901,6 +901,7 @@ do not trust the absence of a line below.
 - 875 — redirections for builtins and functions: echo text > file, f > file, echo x >&2
 - 876 — a condition is a command, true or false: [ -f x ] (a list) is an error, not true
 - 877 — match text pattern (the shell's case, as a command); else/elif on their own line an error
+- 878 — calls and captures without CATCH where nothing needs one: calls -22% in dispatches, -26% in time
 
 ### Not tied to an iteration
 

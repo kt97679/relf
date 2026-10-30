@@ -1,0 +1,6 @@
+def boom {|n| put $(( $n + "x" )) }
+var r $(boom 1)
+def ok {|n| put $(( $n * 2 )) }
+echo after the error: $(ok 21)
+var l [1 2]
+for i @l { echo i $i }
