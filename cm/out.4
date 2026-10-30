@@ -10,56 +10,41 @@ DEFER SHOW ( item --- )
   0 ?DO  DUP I + C@  DUP 33 < OVER [CHAR] [ = OR OVER [CHAR] ] = OR OVER [CHAR] { = OR
          OVER [CHAR] } = OR OVER [CHAR] " = OR SWAP [CHAR] $ = OR
          IF DROP -1 UNLOOP EXIT THEN  LOOP DROP 0 ;
-: SHOW-QUOTED ( c-addr u --- )   [CHAR] " EMIT
-  0 ?DO  DUP I + C@  DUP [CHAR] " = OVER 92 = OR IF 92 EMIT THEN  EMIT  LOOP DROP  [CHAR] " EMIT ;
+: SHOW-QUOTED ( c-addr u --- )   [CHAR] " OUT-EMIT
+  0 ?DO  DUP I + C@  DUP [CHAR] " = OVER 92 = OR IF 92 OUT-EMIT THEN  OUT-EMIT  LOOP DROP  [CHAR] " OUT-EMIT ;
 : SHOW-IN ( item --- )   \ an element: a text quoted when it must be
-  DUP 0<> IF DUP D-KIND K-TEXT = IF CELL+ @ R-T@ 2DUP QUOTE? IF SHOW-QUOTED ELSE TYPE THEN EXIT THEN THEN
+  DUP 0<> IF DUP D-KIND K-TEXT = IF CELL+ @ R-T@ 2DUP QUOTE? IF SHOW-QUOTED ELSE OUT-TYPE THEN EXIT THEN THEN
   SHOW ;
-: SHOW-LIST ( l --- )   [CHAR] [ EMIT
-  DUP @ 0 ?DO  I IF SPACE THEN  DUP R-ITEMS I CELLS + @ SHOW-IN  LOOP DROP  [CHAR] ] EMIT ;
-: SHOW-MAP ( r --- )   DUP @ @ 0= IF DROP ." [:]" EXIT THEN  [CHAR] [ EMIT
-  DUP @ @ 0 ?DO  I IF 2 SPACES THEN
-    DUP @ R-ITEMS I CELLS + @ SHOW-IN  ." : "  DUP CELL+ @ R-ITEMS I CELLS + @ SHOW-IN  LOOP DROP
-  [CHAR] ] EMIT ;
+: SHOW-LIST ( l --- )   [CHAR] [ OUT-EMIT
+  DUP @ 0 ?DO  I IF BL OUT-EMIT THEN  DUP R-ITEMS I CELLS + @ SHOW-IN  LOOP DROP  [CHAR] ] OUT-EMIT ;
+: SHOW-MAP ( r --- )   DUP @ @ 0= IF DROP S" [:]" OUT-TYPE EXIT THEN  [CHAR] [ OUT-EMIT   \ OUT-TYPE, not ." or SPACES: the
+  DUP @ @ 0 ?DO  I IF BL OUT-EMIT BL OUT-EMIT THEN                                                 \ kernel's would miss $( )'s text (896)
+    DUP @ R-ITEMS I CELLS + @ SHOW-IN  S" : " OUT-TYPE  DUP CELL+ @ R-ITEMS I CELLS + @ SHOW-IN  LOOP DROP
+  [CHAR] ] OUT-EMIT ;
 : SHOW-IMPL ( item --- )
-  DUP 0= IF DROP ." none" EXIT THEN
+  DUP 0= IF DROP S" none" OUT-TYPE EXIT THEN
   DUP D-KIND  DUP K-LIST = IF DROP CELL+ @ SHOW-LIST EXIT THEN
   DUP K-REC = IF DROP CELL+ @ SHOW-MAP EXIT THEN
-  DUP K-BLOCK = IF 2DROP ." <block>" EXIT THEN
+  DUP K-BLOCK = IF 2DROP S" <block>" OUT-TYPE EXIT THEN
   K-UPV = IF UPV@ RECURSE EXIT THEN
-  D-TEXT R-T@ TYPE ;
+  D-TEXT R-T@ OUT-TYPE ;
 ' SHOW-IMPL IS SHOW
 
-\ ---- value output: a stack of sinks - each a capture's list; none, the terminal ----
+\ ---- value output: a stack of sinks - each @( )'s list; 0, printed - at the terminal, or into $( )'s text ----
 64 CONSTANT SINK-MAX
 SINK-MAX CELLS BUFFER: SINKS   VARIABLE SINK#
-SINK-MAX CELLS BUFFER: SKINDS                  \ each sink's kind (868): 0 a list; 1 one value wanted, 2 got - in SINKS
 VARIABLE SINK-CAP  SINK-MAX SINK-CAP !           \ grown when full (891): SINK-MAX had been the most
-' SINKS >BODY START @ - CONSTANT SINKS'   ' SKINDS >BODY START @ - CONSTANT SKINDS'
-: SINK-MORE ( --- )   SINKS' BODY-OF BUF-GROW  SKINDS' BODY-OF BUF-GROW  SINK-CAP @ 2* SINK-CAP ! ;
+' SINKS >BODY START @ - CONSTANT SINKS'
+: SINK-MORE ( --- )   SINKS' BODY-OF BUF-GROW  SINK-CAP @ 2* SINK-CAP ! ;
 : SINK ( --- list-item | 0 )   SINK# @ IF SINKS SINK# @ 1- CELLS + @ ELSE 0 THEN ;
-: PUT ( item --- )
-  SINK# @ 0= IF SHOW R-NL EXIT THEN
-  SINK# @ 1- CELLS  DUP SKINDS + @ ?DUP 0= IF SINKS + @ ?DUP IF CELL+ @ R-PUSH ELSE SHOW R-NL THEN EXIT THEN   \ 0: printed
-  1 = IF 2 OVER SKINDS + !  SINKS + ! EXIT THEN
-  2DROP S" cm: $( ) got several values - @( ) takes them all" R-FAIL ;
-: CAPTURE ( i*x xt --- j*x list-item )   \ run xt, the values it puts captured - not its bytes
-  R-DEEP?  SINK# @ SINK-CAP @ < 0= IF SINK-MORE THEN
-  R-NEW-LIST K-LIST R-BOX  SINKS SINK# @ CELLS + !  0 SKINDS SINK# @ CELLS + !  1 SINK# +!
-  CATCH  SINK SWAP  -1 SINK# +!  THROW ;
-: CAPTURE1-P ( i*x xt --- j*x item )   \ CAPTURE1 with no break, continue or return inside (878): no CATCH -
-  R-DEEP?  SINK# @ SINK-CAP @ < 0= IF SINK-MORE THEN     \ an error goes on up, and the top puts SINK# back
-  0 SINKS SINK# @ CELLS + !  1 SKINDS SINK# @ CELLS + !  1 SINK# +!
-  EXECUTE  SINK# @ 1- CELLS DUP SINKS + @ SWAP SKINDS + @  -1 SINK# +!
-  1 = IF DROP S" cm: $( ) got no value" R-FAIL THEN ;
-: CAPTURE1 ( i*x xt --- j*x item )   \ $( ) of a function: its one value, kept in the sink's own cell - no list (868)
-  R-DEEP?  SINK# @ SINK-CAP @ < 0= IF SINK-MORE THEN
-  0 SINKS SINK# @ CELLS + !  1 SKINDS SINK# @ CELLS + !  1 SINK# +!
-  CATCH  SINK# @ 1- CELLS DUP SINKS + @ SWAP SKINDS + @  -1 SINK# +!  ROT THROW
-  1 = IF DROP S" cm: $( ) got no value" R-FAIL THEN ;
-: ONE ( list-item --- item )   \ $( ): exactly one value
+: PUT ( item --- )   SINK ?DUP IF CELL+ @ R-PUSH ELSE SHOW R-NL THEN ;   \ taken by @( ) - or printed (896: $( )
+  \ takes no values of its own - one value wanted, got, several were SKINDS' kinds 1 and 2, gone)
+: SINK+ ( list-item|0 --- )   R-DEEP?  SINK# @ SINK-CAP @ < 0= IF SINK-MORE THEN  SINKS SINK# @ CELLS + !  1 SINK# +! ;
+: CAPTURE ( i*x xt --- j*x list-item )   \ @( ): run xt, the values it puts captured - not its bytes
+  R-NEW-LIST K-LIST R-BOX SINK+  CATCH  SINK SWAP  -1 SINK# +!  THROW ;
+: ONE ( list-item --- item )   \ var x @(...) and set's: the one value there (896)
   CELL+ @  DUP @ 1 = IF R-ITEMS @ EXIT THEN
-  @ IF S" cm: $( ) got several values - @( ) takes them all" ELSE S" cm: $( ) got no value" THEN R-FAIL ;
+  R-ERR> ." cm: one value goes here - @( ) gave " @ R-.N R-ERR-NL -4004 THROW ;
 
 \ ---- the collector: the captures' lists too ----
 : G-MORE-OUT ( --- )   G-MORE-CM  SINK# @ 0 ?DO  SINKS I CELLS + DUP @ G-BOX SWAP !  LOOP ;

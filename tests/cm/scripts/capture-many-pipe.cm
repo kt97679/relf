@@ -1,4 +1,4 @@
-# the same for a pipeline's last stage: its values are the capture's
+# a pipeline ending in a function: its printed values, one text (896)
 def two { put a b }
 echo before
-echo $(two | each {|x| put $x })
+echo "[$(two | each {|x| put $x })]"

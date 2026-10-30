@@ -44,9 +44,11 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
    rest are its arguments.
 2. A bare word is text. `$name` is a variable's value; `$name[key]` an element of it, any depth;
    (867: no `${name}` - `$name` the one way); `@name` and `@name[key]` spread a list into several arguments. `$(cmd)` is
-   exactly one value - a function's single value, or a program's text with its trailing newlines
-   dropped; `@(cmd)` is several - a function's values, a program's lines. A capture takes value
-   output only: a function's `echo` text is never captured, it goes on to the byte output (852).
+   text: everything the commands print - a program's bytes, `echo`'s, and values nobody takes, in their
+   printed form - one text, its trailing newlines dropped, as sh's (896; until then a function's one
+   value, an error for none or several). `@(cmd)` is values - a function's, a program's lines - spread
+   where they stand; `[@(cmd)]` a list, and `var x @(cmd)` (or set's) the one value, an error for
+   none or several (896). `has` gives a status, as `match` does: `if has $m $k { }`.
 3. A substitution's result is a value and is never read again: never split, never globbed. Globs
    come from a word's own characters.
 4. `'...'` is text; `"..."` substitutes as rule 2 does, `$` only.
@@ -658,12 +660,8 @@ text's length, a list's or a command's words, captures and activations nested, j
 variables, 64 defs and 255-character texts had been the limits). Recursion is bounded by the engine's
 64 KB return stack, said as "recursion too deep for the stacks": about 2,500 calls deep, 1,000 through
 `$( )`, 700 in a def with `return`. A pipeline holds 64 programs, a command 32 redirections.
-At 893 `$( )` around `split`, `range`, `keys` or `each` - one command, or a pipeline's last stage - is an
-error when the script is read, naming `[@(split ...)]` and `@(split ...)`: their values come one by one, as
-many as the data has, so `$(split $line ,)` worked on a line of one field and failed on two. The owner
-called it what it is - an inconsistency, `$( )` meaning one value for functions and the whole text for
-programs, with the count of a function's values known only as it runs - to be revisited (893's entry has
-the two ideas).
+At 893 `$( )` around `split`, `range`, `keys` or `each` was made an error when read; at 896 `$( )` became
+text - everything printed - and the error went: `$(split carol,37 ,)` is the text carol, newline, 37.
 Still to come: a smaller front end.
 
 ## What it costs

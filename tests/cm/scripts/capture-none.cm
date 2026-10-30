@@ -1,4 +1,7 @@
-# $( ) of a function that puts nothing (868: a one-value capture, no list)
+# $( ) is what its commands print, one text (896): echo's bytes are in it, and a function that prints
+# nothing gives an empty text - it had been a one-value capture, "got no value" (868)
 def none { echo said, not put }
 var x $(none)
-echo never
+echo "[$x]"
+def quiet { }
+echo "[$(quiet)]"

@@ -1,3 +1,11 @@
+[1
 between
-cm: $( ) got several values - @( ) takes them all (line 2)
+2
+after] 17
+between
+after
+[1 2]
+between
+after
+cm: one value goes here - @( ) gave 2 (line 8)
 status 2

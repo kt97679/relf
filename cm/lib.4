@@ -23,7 +23,7 @@ VARIABLE TB  VARIABLE TB#  VARIABLE TB-CAP
 : ARGN ( list i --- item )   SWAP CELL+ @ R-ITEMS SWAP CELLS + @ ;
 
 \ ---- the builtins ----
-: ECHO ( args --- )   DUP #ARGS 0 ?DO  I IF SPACE THEN  DUP I ARGN SHOW  LOOP DROP R-NL ;   \ a newline, no carriage return (882): files and pipes get lines
+: ECHO ( args --- )   DUP #ARGS 0 ?DO  I IF BL OUT-EMIT THEN  DUP I ARGN SHOW  LOOP DROP R-NL ;   \ a newline, no carriage return (882): files and pipes get lines
 : PUTS ( args --- )   DUP #ARGS 0 ?DO  DUP I ARGN PUT  LOOP DROP ;
 : APPEND ( list args --- )   SWAP D-LIST SWAP  DUP #ARGS 0 ?DO  DUP I ARGN  2 PICK R-PUSH  LOOP 2DROP ;
 : COUNT-OF ( args --- )   DUP #ARGS 1 <> IF S" cm: count takes one value" R-FAIL THEN  0 ARGN
@@ -79,6 +79,7 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
 VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ grown when full (891)
 : RDK-PUSH ( fd saved --- )   RDK# @ RDK-CAP @ = IF  RDK' BODY-OF BUF-GROW  RDK-CAP @ 2* RDK-CAP !  THEN  RDK RDK# @ 2* CELLS + TUCK CELL+ ! !  1 RDK# +! ;
 : RDK-BACK ( n --- )   PAD 0 1 WRITE DROP  0 ?DO  -1 RDK# +!  RDK RDK# @ 2* CELLS + DUP CELL+ @ SWAP @  OVER SWAP DUP2 DROP CLOSE-FILE DROP  LOOP ;
+: RD-FD1? ( --- f )   0 RR-N @ 0 ?DO  RR-F I CELLS + @ 1 = OR  LOOP ;
 : RD-RUN ( xt --- )   \ the command, R-RD-FILE's and R-RD-DUP's redirections round it
   PAD 0 1 WRITE DROP  RR-N @ 0 ?DO
     RR-F I CELLS + @  DUP 10 DUP-FROM  RDK-PUSH
@@ -86,7 +87,8 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
     ELSE  RR-T I CELLS + @ R-T@  RR-M I CELLS + @  OPEN-FILE IF
         DROP I 1+ RDK-BACK  R-ERR> ." cm: cannot open " RR-T I CELLS + @ R-TYPE R-ERR-NL R-OUT-BACK  DROP 1 STATUS !  UNLOOP EXIT THEN
       DUP RR-F I CELLS + @ DUP2 DROP  CLOSE-FILE DROP  THEN
-  LOOP  RR-N @ >R  CATCH  R> RDK-BACK  THROW ;
+  LOOP  CT-ON @ >R  RD-FD1? IF 0 CT-ON ! THEN          \ stdout redirected: to its file, not $( )'s text (896)
+  RR-N @ >R  CATCH  R> RDK-BACK  R> CT-ON !  THROW ;
 : D-COND ( item --- f )   \ a value as if's or while's condition: true or false, nothing else (876) - the
   DUP D-KIND K-BOOL = IF D-TRUE? EXIT THEN            \ shell's [ -f x ] is a list here, and was taken as true
   D-KIND K-LIST = IF S" cm: a list is no condition - [ ] makes a list here; test -f x tests a file" R-FAIL THEN
@@ -115,8 +117,9 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
 : EXIT-OF ( args --- )   \ exit [n]: the script ends - or the prompt - with n, else the last status (873)
   DUP #ARGS DUP 1 > IF S" cm: exit takes one status" R-FAIL THEN
   IF 0 ARGN D-NUMERIC D>N ELSE DROP STATUS @ THEN  R-EXIT ;
-: HAS-OF ( args --- )   \ has $m key, has $l value: true if the map has the key, the list the value (865)
-  DUP #ARGS 2 <> IF S" cm: has takes a map or list and a value" R-FAIL THEN  DUP 1 ARGN SWAP 0 ARGN D-IN PUT ;
+: HAS-OF ( args --- )   \ has $m key, has $l value: status 0 if the map has the key, the list the value (865) - a
+  \ status, as match's, since $( ) is text (896): `if has $m $k { }`, not `if $(has $m $k) { }`
+  DUP #ARGS 2 <> IF S" cm: has takes a map or list and a value" R-FAIL THEN  DUP 1 ARGN SWAP 0 ARGN D-IN D-TRUE? 0= 1 AND STATUS ! ;
 : FOR-ONE ( args --- args )   \ for x $l: one value, a list - @ spreads it
   DUP #ARGS 1 = IF DUP 0 ARGN D-KIND K-LIST = IF S" cm: for over one list - @ spreads it" R-FAIL THEN THEN ;
 
@@ -146,7 +149,7 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
     D-STR  ROT SWAP ARG SWAP  LOOP DROP  CELL+ @ ;   \ a number given as it was (870: head -n 1 faulted)
 : RD-FILE ( item mode fd --- )   ROT D-STR CELL+ @ ROT ROT R-RD-FILE ;
 : PSTAGE ( args last? --- )   >R ARG-TEXTS R> PL-STAGE-L ;
-: PIPE-END ( --- )   PL-END STATUS ! ;
+: PIPE-END ( --- )   PL-CAPR @ -1 <> >R  PL-END STATUS !  R> IF R-T@ CT+ THEN ;   \ read for a $( ) (896)
 : TRIM-NLS ( t --- t )   \ every trailing newline off (rule 4 of C.1)
   BEGIN  DUP @ DUP IF OVER CELL+ + 1- C@ 10 = THEN  WHILE  -1 OVER +!  REPEAT ;   \ an empty text: its 0 the flag (881:
 \ it was left under one, so a capture of nothing - $(printf "") - made a broken value and the next use crashed)

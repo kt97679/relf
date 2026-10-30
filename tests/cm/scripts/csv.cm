@@ -5,7 +5,7 @@ var totals [:]
 for line @(tail -n +2 $file) {
     var f [@(split $line ,)]
     var cat $f[0]
-    if $(has $totals $cat) { set totals[$cat] $(( $totals[$cat] + $f[1] )) } else { set totals[$cat] $f[1] }
+    if has $totals $cat { set totals[$cat] $(( $totals[$cat] + $f[1] )) } else { set totals[$cat] $f[1] }
 }
 for k @(keys $totals) { echo $totals[$k] $k } | sort -rn
 rm $file

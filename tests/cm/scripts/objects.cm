@@ -7,7 +7,7 @@ def account {|owner|
     set self[report] { echo $owner has $balance }
     put $self
 }
-var a $(account ada)
+var a @(account ada)
 $a[twice] 50
 $a[report]
 

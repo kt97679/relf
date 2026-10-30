@@ -13,23 +13,23 @@ NEW-M DUP S" name" T$ S" ada" T$ D-SET  DUP S" tags" T$ NEW-L S" x" T$ L+ S" y" 
 NEW-M PUT                                                           \ put [:]
 0 ' NOOP BLK-NEW PUT                                                \ put { }
 
-\ def one-list { put [1 2] } - $(one-list) is that list itself
+\ def one-list { put [1 2] } - var x @(one-list) is that list itself (896: $( ) is text)
 VARIABLE KEPT  KEPT R-ITEM R-ROOT  NEW-L 1 D-NUM L+ 2 D-NUM L+ KEPT !
 : ONE-LIST ( --- )   KEPT @ PUT ;
 .( the captured value is the value put: ) ' ONE-LIST CAPTURE ONE KEPT @ = . CR
 
-\ def noisy { echo noise; put 7 } - echo's bytes are not captured
+\ def noisy { echo noise; put 7 } - @( ) captures no bytes
 : NOISY ( --- )   ." noise" CR  7 D-NUM PUT ;
 .( a capture of noisy, its echo first: ) CR ' NOISY CAPTURE ONE .( the value: ) D>N . CR
 
-\ def three { put 1; put 2; put 3 } - @(three) takes them all; $(three) is an error
+\ def three { put 1; put 2; put 3 } - @(three) takes them all; var x @(three) is an error
 : THREE ( --- )   1 D-NUM PUT  2 D-NUM PUT  3 D-NUM PUT ;
 .( @ of three: ) ' THREE CAPTURE PUT
-.( $ of three, caught: ) ' THREE CAPTURE ' ONE CATCH . DROP CR
+.( var x @ of three, caught: ) ' THREE CAPTURE ' ONE CATCH . DROP CR
 
 \ def outer { put [@(three)] } - captures nest
 : OUTER ( --- )   ['] THREE CAPTURE PUT ;
-.( $ of outer: ) ' OUTER CAPTURE ONE PUT
+.( var x @ of outer: ) ' OUTER CAPTURE ONE PUT
 
 \ a collection inside a capture: what it has caught so far survives
 : COLLECTING ( --- )   S" kept" T$ PUT  R-GC  S" after" T$ PUT  R-GC ;

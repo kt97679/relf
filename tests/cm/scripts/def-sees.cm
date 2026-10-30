@@ -10,7 +10,7 @@ echo count $count
 greet Ada
 var n 10
 def mk { put { echo n is $n } }
-var b $(mk)
+var b @(mk)
 $b
 set n 11
 $b

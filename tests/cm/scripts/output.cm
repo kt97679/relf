@@ -1,4 +1,4 @@
-# values put and captured, bytes echoed and never captured, the printed form
+# values put and captured by @( ); $( ) is what is printed, one text - echo's bytes and the values (896)
 put 42 "hello world" [a "b c" [1 2]] [name: ada  tags: [x y]] [:] { }
 def three { put 1; put 2; put 3 }
 var all [@(three)]
@@ -6,8 +6,11 @@ echo all: $all count: $(count $all)
 def noisy { echo noise; put 7 }
 var seven $(noisy)
 echo seven: $seven
-var m $(merge [a: 1  b: 2] [b: 3  c: 4])
+var only @(noisy)
+echo only: $only $(kind $only)
+var m @(merge [a: 1  b: 2] [b: 3  c: 4])
 put $m
+echo $m[c] $(kind $m)
 var big [1 2]
 append big 3 @all
 put $big

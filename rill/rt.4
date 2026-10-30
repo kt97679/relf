@@ -3,6 +3,19 @@
 \ word. At 873 its genes fixed at their defaults (the constants below; rill/genes.tsv and tools/rill-genes.py
 \ gone with Rill's search) and the words nothing of the command model reaches taken out - Rill's library,
 \ JSON, jobs' extras, the range and slice forms: in git before 873. Its messages say cm.
+\ ---- the shell's own output, into $( )'s text when one is being made (896) ---------------------------
+\ TYPE is the engine's: to fd 1, through its buffer. While CT-ON, what the command model prints - echo,
+\ values nobody takes - is added to CT-BUF instead, the text a $( ) is making: no file, no descriptor
+\ (a temporary file each had made calls 100 times slower). OUT-TYPE and OUT-EMIT, not TYPE and EMIT
+\ defined again: the words that print the command model's output use them - SHOW's, ECHO, R-NL, R-TYPE.
+\ Errors (R-ERR>) and output redirected to a file (RD-RUN, a function stage's file) put it off while they
+\ write; a program's pipeline, its stdout not redirected, is read into it (PL-BEGIN 2, PIPE-END).
+VARIABLE CT-ON   VARIABLE CT-BUF   VARIABLE CT-LEN   VARIABLE CT-CAP   VARIABLE CT-WAS
+: CT+ ( c-addr u --- )
+  DUP CT-LEN @ +  DUP CT-CAP @ > IF  2* 4096 MAX DUP CT-CAP !  CT-BUF @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW CT-BUF !
+  ELSE DROP THEN  CT-BUF @ CT-LEN @ + SWAP DUP CT-LEN +! MOVE ;
+: OUT-TYPE ( c-addr u --- )   CT-ON @ IF CT+ ELSE TYPE THEN ;
+: OUT-EMIT ( c --- )   SP@ 1 OUT-TYPE DROP ;
 4 CONSTANT G-LISTCAP   4 CONSTANT G-GROWTH   16 CONSTANT G-RECHASH
 \ rill/rt.4 - Rill's runtime, stage 1a (Iteration 736): text values in an
 \ arena, joining them, and the boot word of Rill's image. Loaded after
@@ -34,8 +47,8 @@ VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
   RC-T @ ;
 : R-T= ( t1 t2 --- f )   >R R-T@ R> R-T@ COMPARE 0= ;
 : R-TCMP ( t1 t2 --- n )   >R R-T@ R> R-T@ COMPARE ;   \ texts in order, by their bytes: Python's order for UTF-8 (786)
-: R-TYPE ( t --- )   R-T@ TYPE ;
-: R-NL ( --- )   10 EMIT ;
+: R-TYPE ( t --- )   R-T@ OUT-TYPE ;
+: R-NL ( --- )   10 OUT-EMIT ;
 
 \ ---- Lists and records (stage 2, Iteration 739) -------------------------
 \ An item of a list or a field of a record is a box: two cells, its kind
@@ -72,10 +85,11 @@ VARIABLE MK-A  VARIABLE MK-N  VARIABLE MK-CAP
 \ of the message, its line included, goes there. R-BOOT puts stdout back before on EXIT runs.
 VARIABLE R-OUT-KEPT                       \ the real stdout while an error is told; 0, none
 : R-ERR> ( --- )
-  R-OUT-KEPT @ IF EXIT THEN
+  R-OUT-KEPT @ IF EXIT THEN  CT-ON @ CT-WAS !  0 CT-ON !          \ an error is not $( )'s text (896)
   PAD 0 1 WRITE DROP  1 10 DUP-FROM DUP 0< IF DROP EXIT THEN  R-OUT-KEPT !  2 1 DUP2 DROP ;
 : R-OUT-BACK ( --- )
-  R-OUT-KEPT @ ?DUP 0= IF EXIT THEN  PAD 0 1 WRITE DROP  1 DUP2 DROP  R-OUT-KEPT @ CLOSE-FILE DROP  0 R-OUT-KEPT ! ;
+  R-OUT-KEPT @ ?DUP 0= IF EXIT THEN  PAD 0 1 WRITE DROP  1 DUP2 DROP  R-OUT-KEPT @ CLOSE-FILE DROP  0 R-OUT-KEPT !
+  CT-WAS @ CT-ON ! ;
 DEFER R-LINE. ( n --- )   \ "line n" - the command model's says the file, for a sourced one's (890)
 : R-LINE-N. ( n --- )   ." line " 0 <# #S #> TYPE ;   ' R-LINE-N. IS R-LINE.
 : R-WHERE ( --- )   \ " (line n)", the innermost of the script's statements running
@@ -314,7 +328,8 @@ VARIABLE PL-DEPTH   VARIABLE PL-SAVED
 : PL-RESTORE ( --- )
   PL-SAVED @ DUP @ PL-SAVED !  DUP >R CELL+
   PL-NPARTS 0 DO  I PL-PART >R  OVER SWAP R@ CELLS MOVE  R> CELLS +  LOOP DROP  R> FREE DROP ;
-: PL-BEGIN ( capture? --- )
+: PL-BEGIN ( capture? --- )   \ 2: captured if a $( ) is being made - its stdout read into that text (896)
+  DUP 2 = IF DROP CT-ON @ THEN
   PL-DEPTH @ IF PL-SAVE THEN  1 PL-DEPTH +!                 \ inside another's arguments: that one put aside (795)
   0 PL-NP !  0 PL-NF !  -1 PL-PREV !  -1 PL-CAPW !  -1 PL-CAPR !  R-RD-RESET
   IF  PIPE THROW  DUP PL-CAPW ! PL-FD+  DUP PL-CAPR ! PL-FD+  THEN ;

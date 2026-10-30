@@ -5,8 +5,11 @@ hello world
 [:]
 <block>
 all: [1 2 3] count: 3
+seven: noise
+7
 noise
-seven: 7
+only: 7 number
 [a: 1  b: 3  c: 4]
+4 map
 [1 2 3 1 2 3]
 status 0

@@ -1,2 +1,4 @@
-cm: line 4: $(split ...) can give several values, one by one - [@(split ...)] for a list, @(split ...) for words
-status 2
+[alice] [carol
+37]
+[carol 37] 37
+status 0

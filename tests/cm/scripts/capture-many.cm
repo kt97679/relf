@@ -1,5 +1,7 @@
-# $( ) around split, range, keys or each is an error when the script is read (893): they give their values
-# one by one, as many as the data has, so $(split $line ,) worked on a line of one field and failed on two
-var line 'alice'
-var name $(split $line ,)
-echo never
+# $(split ...) is the fields as printed, one text, whatever their number (896): 893 had made it an error,
+# since a one-value capture had worked on a line of one field and failed on two
+var one $(split alice ,)
+var two $(split carol,37 ,)
+echo "[$one]" "[$two]"
+var fields [@(split carol,37 ,)]
+echo $fields $fields[1]

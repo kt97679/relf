@@ -9,7 +9,7 @@ for f $dir/* {
     var name $(basename $f)
     var ext none
     if match $name '*.*' { set ext $(echo $name | sed 's/.*\.//') }
-    if $(has $groups $ext) { append groups[$ext] $name } else { set groups[$ext] [$name] }
+    if has $groups $ext { append groups[$ext] $name } else { set groups[$ext] [$name] }
 }
 for k @(keys $groups) { echo $k: $(join ", " @groups[$k]) }
 rm -rf $dir

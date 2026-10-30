@@ -1,2 +1,4 @@
-cm: line 4: $(each ...) can give several values, one by one - [@(each ...)] for a list, @(each ...) for words
-status 2
+before
+[a
+b]
+status 0
