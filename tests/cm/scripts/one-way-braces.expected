@@ -1,2 +1,2 @@
-cm: line 3: $name reads a variable - ${name} is not this language's
+cm: line 3: $name reads a variable - ${name} is not this language's: $k'd' puts text after one
 status 2

@@ -18,6 +18,9 @@ LS-MAX CELLS BUFFER: LS   VARIABLE LS#   VARIABLE FP
 : UNFRAME ( --- )   FP @ 1- DUP LS# !  CELLS LS + @ 2/ FP ! ;
 : LS@ ( i --- item )   FP @ + CELLS LS + @ ;
 : LS! ( item i --- )   FP @ + CELLS LS + ! ;
+VARIABLE MFP                                       \ the main frame's, a script's or the prompt's (884): a def
+: MLS@ ( i --- item )   MFP @ + CELLS LS + @ ;    \ reads and sets the script's variables in it
+: MLS! ( item i --- )   MFP @ + CELLS LS + ! ;
 
 \ ---- upvalues: a captured variable's cell, shared by its frame and the blocks that captured it ----
 : UPV-NEW ( item --- upv )   1 CELLS R-ALLOT  TUCK !  K-UPV R-BOX ;

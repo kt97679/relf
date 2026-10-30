@@ -907,6 +907,7 @@ do not trust the absence of a line below.
 - 881 — from a whole script: set's keys any words, globs with $s, a capture of nothing no longer crashes
 - 882 — four more whole scripts: echo writes LF, not CR LF; a function after a | reads its input on stdin
 - 883 — the suite keeps carriage returns: a \r coming back fails
+- 884 — a def sees the script's variables declared before it; two errors name what to write
 
 ### Not tied to an iteration
 

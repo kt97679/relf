@@ -1,0 +1,3 @@
+a-b
+cm: join takes the separator first - join ' ' @list
+status 2

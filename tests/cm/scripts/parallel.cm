@@ -1,0 +1,10 @@
+# a whole script (884): jobs in parallel, each writing its result to a file; wait; the results summed
+var dir /tmp/cm-884-par
+rm -rf $dir
+mkdir $dir
+for n 3 1 2 { sh -c "sleep 0.$n; echo $(( $n * $n )) > $dir/$n.out" & }
+wait
+var total 0
+for f $dir/*.out { set total $(( $total + $(cat $f) )) }
+echo total $total
+rm -rf $dir

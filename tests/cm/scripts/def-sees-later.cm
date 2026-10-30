@@ -1,0 +1,4 @@
+# a def sees only the script's variables declared before it (884): one after it an error, when read
+def later { echo $y }
+var y 1
+later

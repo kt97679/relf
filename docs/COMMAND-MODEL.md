@@ -451,7 +451,7 @@ numbers, booleans, `"..."` with `$` in it, `$name[key]`, `$( )`, `@( )`, `$(( ))
 lists, maps, blocks with `|params|`. Every variable lives in an upvalue - boxed, no capture analysis
 yet - so blocks capture by reference and a loop's variable is fresh each iteration; a block is a
 word with a frame of its own, a def a deferred word; a safe point before each of the script's own
-statements. Not yet: programs, pipes, redirections; a def seeing the script's variables.
+statements. Not yet: programs, pipes, redirections; a def seeing the script's variables (884: it does).
 
 The draft's own examples, as written, run - `tests/cm/scripts/`: the counter (`two counters: 7 101`);
 the account whose methods call each other through a captured `self` (`ada has 100`); `dog` filling a
@@ -630,6 +630,11 @@ an empty text (an empty list for `@( )`).
 At 882 four more whole scripts (a config reader, a CSV summary, a backup rotation, a recursive walk):
 echo and put at the terminal wrote CR LF - the kernel's CR - so `echo x > f` made a line `x\r` that grep
 -x and sort saw; LF now. And `echo x | f`, where f runs `tr`, hung: f's tr read the terminal (above).
+At 884 four more whole scripts (a to-do list in a file, an insertion sort of records, parallel jobs, texts
+built in loops): a def sees the script's variables declared before it - reads them, sets them, in the main
+frame (MLS@, MLS!) - where it had seen only its own; a variable declared after a def is not its, an
+error when read. And two errors say what to write: `${k}` names `$k'd'`, and `join` given a list first
+names `join ' ' @list`.
 Still to come: a smaller front end.
 
 ## What it costs

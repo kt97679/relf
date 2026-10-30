@@ -1,0 +1,15 @@
+# a whole script (884): a list of records sorted by a field, by insertion sort in the language itself
+var people [[name: Ada age: 36] [name: Bob age: 25] [name: Cy age: 41] [name: Di age: 30]]
+var n $(count $people)
+var i 1
+while $(( $i < $n )) {
+    var cur $people[$i]
+    var j $(( $i - 1 ))
+    while $(( $j >= 0 && $people[$j][age] > $cur[age] )) {
+        set people[$(( $j + 1 ))] $people[$j]
+        set j $(( $j - 1 ))
+    }
+    set people[$(( $j + 1 ))] $cur
+    set i $(( $i + 1 ))
+}
+for p @people { echo $p[name] $p[age] }

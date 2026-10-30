@@ -1,0 +1,4 @@
+# join takes the separator first, then items (884): a list first is an error that shows how
+var l [a b]
+echo $(join - @l)
+echo $(join $l -)

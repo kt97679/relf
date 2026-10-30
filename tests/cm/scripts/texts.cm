@@ -1,0 +1,10 @@
+# a whole script (884): texts built in loops - words reversed, each capitalised; join's separator first
+var line "the quick brown fox"
+var words [@(split $line " ")]
+var out ""
+var i $(( $(count $words) - 1 ))
+while $(( $i >= 0 )) { set out "$out $words[$i]"; set i $(( $i - 1 )) }
+echo reversed:$out
+var caps []
+for w @words { append caps "$(echo $w[0] | tr a-z A-Z)$(echo $w | cut -c2-)" }
+echo $(join " " @caps)

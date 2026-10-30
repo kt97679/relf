@@ -1,0 +1,16 @@
+# a whole script (884): a to-do list kept in a file - it found a def could not see the script's variables,
+# and ${k}d had no counterpart named: $k'd' (or "$k"d)
+var file /tmp/cm-884-todo.txt
+rm -f $file
+touch $file
+def add {|item| echo $item >> $file }
+def list { var n 0; for line @(cat $file) { set n $(( $n + 1 )); echo "$n. $line" } }
+def done {|k| sed -i "$k"d $file }
+add "buy milk"
+add "write report"
+add "call Ada"
+list
+done 2
+echo after done 2:
+list
+rm $file

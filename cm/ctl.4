@@ -47,7 +47,7 @@ VARIABLE T-TARGET
 \ frame and the activations put back whatever a throw from deep inside left.
 : CM-END ( --- )   STATUS @ ?DUP IF R-STATUS ! -4000 THROW THEN ;   \ a script, a session: ending with the last status (869)
 : DEF-RUN ( n xt --- )
-  SWAP 1+ FRAME  ACT-PUSH D-NUM 0 LS!  FP @ >R  CTL# @ >R
+  SWAP 1+ FRAME  FP @ MFP !  ACT-PUSH D-NUM 0 LS!  FP @ >R  CTL# @ >R
   CATCH  R> CTL# !  R> FP !
   0 LS@ D>N  OVER T-RETURN = OVER T-TARGET @ = AND IF 2DROP 0 ELSE DROP THEN
   ACT-POP UNFRAME  THROW ;

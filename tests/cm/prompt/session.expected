@@ -8,7 +8,7 @@ A
 env: 'nosuchprogram_cm_869': No such file or directory
 after a failure: 127
 [a b c]
-cm: line 1: $name reads a variable - ${name} is not this language's
+cm: line 1: $name reads a variable - ${name} is not this language's: $k'd' puts text after one
 the prompt goes on: 5
 8
 2

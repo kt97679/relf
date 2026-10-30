@@ -85,7 +85,7 @@ DEFER CMDS ( close closer --- )   DEFER WORD-P ( closer --- )   DEFER ARITH-P ( 
 : DOLLAR-P ( --- )   \ after a $: (( )), ( ), a name - or the $ itself, a text (867: no ${name} - one way)
   CUR [CHAR] ( = IF  1 PK [CHAR] ( = IF GET GET 2DROP ARITH-P EXIT THEN
     GET DROP 0 0 N-CP N,  [CHAR] ) DUP CMDS  N) EXIT THEN
-  CUR [CHAR] { = IF S" $name reads a variable - ${name} is not this language's" P-ERR THEN
+  CUR [CHAR] { = IF S" $name reads a variable - ${name} is not this language's: $k'd' puts text after one" P-ERR THEN
   CUR NAME0? IF VAR-P EXIT THEN
   S" $" N-TX N, ;
 : QUOTED-P ( --- )   \ "...": a N-QU of texts - \n, \t and \ before any other character in them - and $s
@@ -210,8 +210,11 @@ VARIABLE FR  VARIABLE SC                           \ the frame and the scope bei
   FR @ 2 CELLS + @ 0 ?DO  FR @ 3 I + CELLS + @ OVER = IF DROP I UNLOOP EXIT THEN  LOOP
   FR @ 2 CELLS + @ CAP-MAX = IF S" a block captures too many variables" G-ERR THEN
   FR @ 2 CELLS + @ TUCK 3 + CELLS FR @ + !  1 FR @ 2 CELLS + +! ;
-: REF ( v --- c-addr u )   \ v's cell - its value, unboxed: in this frame's slots, or this block's captures
-  DUP 3 CELLS + @ FR @ = IF V-SLOT #$ S" LS@" ++ EXIT THEN  CAP-INDEX #$ S" E@" ++ ;
+VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ the prompt's session (869)
+: MAIN-V? ( v --- f )   3 CELLS + @ MAIN-FR @ =  FR @ @ 1 = AND ;   \ the script's variable, seen from a def (884)
+: REF ( v --- c-addr u )   \ v's cell - its value, unboxed: in this frame's slots, the main frame's, or this block's captures
+  DUP 3 CELLS + @ FR @ = IF V-SLOT #$ S" LS@" ++ EXIT THEN
+  DUP MAIN-V? IF V-SLOT #$ S" MLS@" ++ EXIT THEN  CAP-INDEX #$ S" E@" ++ ;
 : READ$ ( c-addr u --- c-addr2 u2 )   \ $name
   2DUP FIND-VAR ?DUP IF NIP NIP DUP REF ROT 5 CELLS + @ IF S" UPV@" ++ THEN EXIT THEN
   2DUP S" status" COMPARE 0= IF 2DROP S" STATUS @ D-NUM" EXIT THEN
@@ -311,7 +314,6 @@ DEFER A-OR ( --- c-addr u )
   BEGIN DUP @ WHILE  >R S" DUP" ++ R@ BARE$ TEXT-CODE ++  R> NSKIP DUP >R WORD-CODE ++ S" D-SET" ++  R> NSKIP REPEAT DROP ;
 VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block refers to: those variables boxed (866)
 : CAPS+ ( c-addr u --- )   CAPS# @ CAPS-MAX = IF TOO-BIG THEN  CAPS @ CAPS# @ 2* CELLS + TUCK CELL+ ! !  1 CAPS# +! ;
-VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ the prompt's session (869)
 : CAPTURED? ( c-addr u --- f )   \ at the prompt every variable of the session's own is boxed: a later line may capture it
   SESSION @ FR @ MAIN-FR @ = AND IF 2DROP -1 EXIT THEN
   CAPS# @ 0 ?DO  2DUP CAPS @ I 2* CELLS + DUP @ SWAP CELL+ @ COMPARE 0= IF 2DROP -1 UNLOOP EXIT THEN  LOOP 2DROP 0 ;
@@ -415,7 +417,7 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
   FR @ @ SC @ @ OR IF S" def is for the script's top level (v0)" G-ERR THEN
   OVER SWAP TWO? 0= IF DEF-ERR THEN  DUP BARE? 0= IF DEF-ERR THEN
   DUP NSKIP N+ DUP @ N-BK <> IF DEF-ERR THEN
-  SWAP BARE$ ROT  FR @ >R SC @ >R  1 NEW-FRAME FR !  0 SC !  SCOPE(  S" %def" 0 0 VAR+ DROP
+  SWAP BARE$ ROT  FR @ >R SC @ >R  1 NEW-FRAME FR !  SCOPE(  S" %def" 0 0 VAR+ DROP   \ its scope's parent the script's (884)
   N+ PARAMS >R  BODY-CODE
   S" D" FRESH 2SWAP 2OVER S" :" 2SWAP ++ 2SWAP ++ S" ;" ++ S" '" ++ 2SWAP ++     \ its word a fresh name: made again at the prompt (869)
   S" IS CM.D." ++ 2OVER CAT
@@ -442,7 +444,8 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
   DUP N+ @ IF SET-KEYS EXIT THEN
   DUP @A SWAP @B  2DUP FIND-VAR ?DUP 0= IF S" set: no variable" S| 2SWAP ++ S" - var makes one" ++ G-ERR THEN
   NIP NIP  DUP 5 CELLS + @ IF REF ++ S" UPV!" ++ EXIT THEN
-  DUP 3 CELLS + @ FR @ <> IF S" cm: an unboxed variable set from a block" G-ERR THEN  V-SLOT #++ S" LS!" ++ ;
+  DUP 3 CELLS + @ FR @ = IF V-SLOT #++ S" LS!" ++ EXIT THEN
+  DUP MAIN-V? IF V-SLOT #++ S" MLS!" ++ EXIT THEN  S" cm: an unboxed variable set from a block" G-ERR ;
 : ARITY-CHECK ( c-addr u from to k --- c-addr u )   \ a def given its words, none an @: their count checked here (879)
   >R  0 ROT ROT SWAP BEGIN 2DUP <> WHILE  DUP N+ @ N-SP = IF 2DROP DROP R> DROP EXIT THEN  ROT 1+ ROT ROT NSKIP REPEAT 2DROP
   DUP R@ = IF DROP R> DROP EXIT THEN

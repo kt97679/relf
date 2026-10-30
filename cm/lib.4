@@ -51,6 +51,7 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
   REPEAT DROP  SPL-A @ OVER + SPL-U @ ROT - TXT PUT ;
 : JOIN-OF ( args --- )   \ join sep items...: one text, sep between the items' texts
   DUP #ARGS 0= IF S" cm: join takes a separator, then items" R-FAIL THEN
+  DUP 0 ARGN D-KIND K-LIST = IF S" cm: join takes the separator first - join ' ' @list" R-FAIL THEN   \ (884)
   0 0 R-TEXT  OVER #ARGS 1 ?DO  I 1 > IF OVER 0 ARGN D-TEXT 2 R-CONCAT THEN  OVER I ARGN D-TEXT 2 R-CONCAT  LOOP
   K-TEXT R-BOX PUT DROP ;
 : KEYS-OF ( args --- )   \ keys $map: each key put
