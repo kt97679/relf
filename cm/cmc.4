@@ -420,9 +420,12 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
 : NAME? ( c-addr u --- f )   DUP 0= IF 2DROP 0 EXIT THEN  OVER C@ NAME0? ROT ROT 0 ?DO DUP I + C@ NAMEC? ROT AND SWAP LOOP DROP ;
 : BIND ( from to --- name value )   \ var name value, set name value: their two words
   2DUP TWO? 0= IF S" var name value, set name value" G-ERR THEN  DROP DUP NSKIP ;
+: IN-SCOPE? ( c-addr u --- f )   \ the name declared in this scope itself
+  SC @ CELL+ @ BEGIN ?DUP WHILE  >R 2DUP R@ CELL+ @ R@ 2 CELLS + @ COMPARE 0= IF 2DROP R> DROP -1 EXIT THEN  R> @ REPEAT 2DROP 0 ;
 : VAR-CMD ( from to --- c-addr u )   \ var name value
   BIND OVER BARE? 0= IF S" var: a name first" G-ERR THEN  WORD-CODE ROT BARE$
   2DUP NAME? 0= IF S" var: a name, not" S| 2SWAP ++ G-ERR THEN
+  2DUP IN-SCOPE? SESSION @ 0= AND IF S| S" is declared here already - set changes it" ++ G-ERR THEN   \ (879)
   2DUP CAPTURED? DUP >R DECLARE V-SLOT R> IF >R S" UPV-NEW" ++ R> THEN #++ S" LS!" ++ ;
 : SET-ERR ( --- )   S" set: a name, or name[key]" G-ERR ;
 : KEYS? ( c-addr u --- f )   \ [k][k]...: none empty
@@ -445,6 +448,10 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
   BEGIN  1 /STRING 2DUP [CHAR] ] CHAR-AT  DUP >R 2 PICK SWAP KEY-WORD WORD-CODE  2SWAP R> 1+ /STRING
     DUP WHILE  >R >R ++ S" CM-AT" ++ R> R>  REPEAT
   2DROP ++ 2SWAP ++ S" CM-SET" ++ ;
+: ARITY-CHECK ( c-addr u from to k --- c-addr u )   \ a def given its words, none an @: their count checked here (879)
+  >R  0 ROT ROT SWAP BEGIN 2DUP <> WHILE  DUP N+ @ N-SP = IF 2DROP DROP R> DROP EXIT THEN  ROT 1+ ROT ROT NSKIP REPEAT 2DROP
+  DUP R@ = IF DROP R> DROP EXIT THEN
+  >R 2DUP S| S" wants" ++ R> R> SWAP >R #++ S" , given" CAT R> #++ G-ERR ;
 : PLAIN-ARGS? ( from to k --- f )   \ k words, none an @ spread: a def's arguments go on the stack
   >R BEGIN 2DUP <> WHILE  OVER N+ @ N-SP = IF 2DROP R> DROP 0 EXIT THEN  R> 1- >R  SWAP NSKIP SWAP  REPEAT 2DROP R> 0= ;
 : STACK-CODE ( from to --- c-addr u )   \ each word's value, in order
@@ -475,6 +482,7 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
     S" for" COMPARE 0= IF FOR-CMD ELSE WHILE-CMD THEN EXIT THEN
   S" def" NAMED? IF 2DROP DEF-CMD EXIT THEN
   2DUP DEF-FIND ?DUP IF >R 2SWAP                    \ a def: its arguments on the stack when they are its k words, no @ (868)
+    2OVER 2OVER R@ 2 CELLS + @ ARITY-CHECK 2DROP
     2DUP R@ 2 CELLS + @ PLAIN-ARGS? DUP >R IF STACK-CODE ELSE ARGS-CODE THEN  R> R@ 2 CELLS + @ SWAP >R #++
     S" CM.D." ++ 2OVER CAT S" # @ CM.D." CAT 2OVER CAT S" % @ ['] CM.D." CAT 2SWAP CAT
     R> IF R@ 3 CELLS + @ IF S" DEF-CALL-P" ELSE S" DEF-CALL-S" THEN ELSE S" DEF-CALL-M" THEN ++ R> DROP EXIT THEN

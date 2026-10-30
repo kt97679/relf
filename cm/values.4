@@ -58,9 +58,15 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
   DUP D-KIND K-TEXT = IF D-TEXT SWAP D-TEXT R-CONTAINS D-BOOL EXIT THEN
   D-LIST DUP R-LEN 0 ?DO 2DUP I R-AT D-ITEM D== D-TRUE? IF 2DROP TRUE-BOX UNLOOP EXIT THEN LOOP  2DROP FALSE-BOX ;
 : D-IDX ( n len --- n' )   OVER 0< IF + ELSE DROP THEN ;          \ a negative index from the end
+: U-COUNT ( c-addr u --- n )   0 ROT ROT OVER + SWAP ?DO I C@ CONT? 0= - LOOP ;   \ a text's characters, UTF-8 (879)
+: U-START ( c-addr u i --- off )   \ the byte where character i starts, or u
+  >R 0 BEGIN DUP 2 PICK < WHILE
+    2 PICK OVER + C@ CONT? 0= IF R@ 0= IF NIP NIP R> DROP EXIT THEN R> 1- >R THEN  1+
+  REPEAT NIP NIP R> DROP ;
+: T-CHAR ( t i --- t2 )   >R DUP R-T@ R@ U-START  OVER R-T@ R> 1+ U-START  R-TSLICE ;   \ character i, its bytes
 : D-AT ( a i --- item )   \ a list's item, a text's character, a record's value
   OVER D-KIND K-REC = IF D-TEXT SWAP D-REC R-GET D-ITEM EXIT THEN
-  OVER D-KIND K-TEXT = IF D>N SWAP D-TEXT DUP R-T@ NIP ROT SWAP D-IDX DUP 1+ R-TSLICE K-TEXT R-BOX EXIT THEN
+  OVER D-KIND K-TEXT = IF D>N SWAP D-TEXT DUP R-T@ U-COUNT ROT SWAP D-IDX T-CHAR K-TEXT R-BOX EXIT THEN
   D>N SWAP D-LIST DUP R-LEN ROT SWAP D-IDX R-AT D-ITEM ;
 : D-SET ( x i v --- )   \ x[i] = v
   D-BOXED ROT  DUP D-KIND K-REC = IF D-REC ROT D-TEXT SWAP R-PUT EXIT THEN

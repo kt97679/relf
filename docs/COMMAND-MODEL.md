@@ -612,7 +612,12 @@ activation and no CATCH (in a script; at the prompt a def may be made again, so 
 and a capture with no `break`, `continue` or `return` inside with no CATCH - an error goes on up, and
 what catches it at the top puts the frames and sinks back. `calls` 108 to 85 million dispatches, 139 to
 102 ms against the image before, alternating.
-Still to come: a smaller front end.
+At 879 texts became UTF-8 in what counts: `count $t` and `$t[i]` count characters, not bytes - `$h[1]` of
+`héllo` had been half an é - and match's `?` takes a character. And two mistakes are found when a
+script is read, not when it runs: a def given the wrong number of words (with no `@` among them) - "sq
+wants 1, given 2" - and a variable declared twice in one scope ("x is declared here already - set
+changes it"; at the prompt, where lines are run again, allowed).
+Still to come: a smaller front end; globs with wildcards before the last `/`.
 
 ## What it costs
 

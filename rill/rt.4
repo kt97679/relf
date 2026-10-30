@@ -626,10 +626,12 @@ VARIABLE GC-C  VARIABLE GC-NEG  VARIABLE GC-HIT  VARIABLE GC-K0
       DUP GL-PC GC-C @ > 0= OVER 2 + GL-PC GC-C @ < 0= AND IF -1 GC-HIT ! THEN 3 +
     ELSE DUP GL-PC GC-C @ = IF -1 GC-HIT ! THEN 1+ THEN
   REPEAT DROP 0 0 ;
+: CONT? ( c --- f )   192 AND 128 = ;           \ a UTF-8 byte that goes on a character, starting none (879)
 : GL-STEP? ( --- f )   \ the pattern at J takes the text's character at I: both moved past
   GL-J @ GL-M @ < 0= IF 0 EXIT THEN
   GL-I @ GL-T @ + C@  GL-J @ GL-PC
-  DUP [CHAR] ? = IF 2DROP 1 GL-I +! 1 GL-J +! -1 EXIT THEN
+  DUP [CHAR] ? = IF 2DROP 1 GL-I +! 1 GL-J +!                    \ ? takes a character - its bytes all (879)
+    BEGIN GL-I @ GL-N @ < IF GL-I @ GL-T @ + C@ CONT? ELSE 0 THEN WHILE 1 GL-I +! REPEAT  -1 EXIT THEN
   DUP [CHAR] [ = IF DROP GL-J @ GL-CLASS OVER IF IF GL-J ! 1 GL-I +! -1 ELSE DROP 0 THEN EXIT THEN
     2DROP GL-I @ GL-T @ + C@ [CHAR] [ THEN
   DUP [CHAR] \ = GL-J @ 1+ GL-M @ < AND IF DROP 1 GL-J +! GL-J @ GL-PC THEN

@@ -1,0 +1,6 @@
+# texts are UTF-8 (879): count and [i] count characters, not bytes; match's ? takes a character
+var h "héllo wörld"
+echo $(count $h) $h[1] $h[-1] $h[7] "[$h[20]]"
+match héllo 'h?llo' && echo "h?llo matches héllo"
+var j 日本語
+echo $(count $j) $j[1]

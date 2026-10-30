@@ -21,7 +21,7 @@
 : APPEND ( list args --- )   SWAP D-LIST SWAP  DUP #ARGS 0 ?DO  DUP I ARGN  2 PICK R-PUSH  LOOP 2DROP ;
 : COUNT-OF ( args --- )   DUP #ARGS 1 <> IF S" cm: count takes one value" R-FAIL THEN  0 ARGN
   DUP D-KIND DUP K-LIST = IF DROP CELL+ @ @ ELSE DUP K-REC = IF DROP CELL+ @ @ @ ELSE
-  K-TEXT = IF CELL+ @ @ ELSE S" cm: count of something with no count" R-FAIL THEN THEN THEN  D-NUM PUT ;
+  K-TEXT = IF CELL+ @ R-T@ U-COUNT ELSE S" cm: count of something with no count" R-FAIL THEN THEN THEN  D-NUM PUT ;
 : RANGE-OF ( args --- )   DUP #ARGS 1 <> IF S" cm: range takes one number" R-FAIL THEN
   0 ARGN D>N 0 ?DO I D-NUM PUT LOOP ;
 : MERGE-OF ( args --- )   \ merge $a $b: a new map, a's entries, b's over them - the top level copied

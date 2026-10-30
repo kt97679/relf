@@ -1,3 +1,2 @@
-9
-cm: a call with the wrong number of arguments
+cm: line 4: sq wants 1, given 2
 status 2

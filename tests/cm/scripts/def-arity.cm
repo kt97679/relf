@@ -1,4 +1,4 @@
-# a def called with the wrong number of arguments: the list path, its runtime error (868)
+# a def given its words, none an @, has their count checked when the script is read (879): an error naming it
 def sq {|n| put $(( $n * $n )) }
 echo $(sq 3)
 echo $(sq 3 4)

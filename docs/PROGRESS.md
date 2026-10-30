@@ -902,6 +902,7 @@ do not trust the absence of a line below.
 - 876 — a condition is a command, true or false: [ -f x ] (a list) is an error, not true
 - 877 — match text pattern (the shell's case, as a command); else/elif on their own line an error
 - 878 — calls and captures without CATCH where nothing needs one: calls -22% in dispatches, -26% in time
+- 879 — texts counted and indexed as UTF-8; a def's word count and a variable declared twice found when read
 
 ### Not tied to an iteration
 
