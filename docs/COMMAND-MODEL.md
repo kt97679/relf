@@ -635,6 +635,10 @@ built in loops): a def sees the script's variables declared before it - reads th
 frame (MLS@, MLS!) - where it had seen only its own; a variable declared after a def is not its, an
 error when read. And two errors say what to write: `${k}` names `$k'd'`, and `join` given a list first
 names `join ' ' @list`.
+At 885 four more whole scripts (files grouped by extension, a small make, failures handled, primes):
+`append` reads its target as `set` does, so `append groups[$ext] $name` adds to a list inside a map.
+Measured on the way: a loop over 20,000 lines summing and counting, 56 ms (dash 62, bash 164); fib(20)
+by a def calling itself, 10 ms.
 Still to come: a smaller front end.
 
 ## What it costs

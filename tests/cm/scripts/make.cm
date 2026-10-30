@@ -1,0 +1,20 @@
+# a whole script (885): a small make - a target rebuilt when its source is newer, or it is missing
+var dir /tmp/cm-885-make
+rm -rf $dir
+mkdir $dir
+echo one > $dir/a.src
+echo two > $dir/b.src
+def build {|src out| echo building $(basename $out); tr a-z A-Z < $src > $out }
+def stale {|src out| if test ! -e $out { return 0 }; test $src -nt $out }
+def make {
+    for src $dir/*.src {
+        var out $(echo $src | sed 's/\.src$/.out/')
+        if stale $src $out { build $src $out } else { echo up to date: $(basename $out) }
+    }
+}
+make
+sleep 1
+echo three > $dir/b.src
+make
+cat $dir/*.out
+rm -rf $dir

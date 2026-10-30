@@ -1,0 +1,5 @@
+none: README
+txt: a.txt, c.txt
+md: b.md, e.md
+cm: d.cm
+status 0

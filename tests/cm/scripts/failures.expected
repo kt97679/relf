@@ -1,0 +1,8 @@
+sh found
+missing: no-such-program-885
+a needed program is missing
+1 fails
+3 passes
+false failed, as it does
+ls failed with 2
+status 3

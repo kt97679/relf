@@ -1,0 +1,15 @@
+# a whole script (885): files grouped by extension, a map of lists - it found append's target could not
+# have a key: append groups[$ext] $name
+var dir /tmp/cm-885-g
+rm -rf $dir
+mkdir $dir
+touch $dir/a.txt $dir/b.md $dir/c.txt $dir/d.cm $dir/e.md $dir/README
+var groups [:]
+for f $dir/* {
+    var name $(basename $f)
+    var ext none
+    if match $name '*.*' { set ext $(echo $name | sed 's/.*\.//') }
+    if $(has $groups $ext) { append groups[$ext] $name } else { set groups[$ext] [$name] }
+}
+for k @(keys $groups) { echo $k: $(join ", " @groups[$k]) }
+rm -rf $dir

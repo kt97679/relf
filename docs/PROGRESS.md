@@ -908,6 +908,7 @@ do not trust the absence of a line below.
 - 882 — four more whole scripts: echo writes LF, not CR LF; a function after a | reads its input on stdin
 - 883 — the suite keeps carriage returns: a \r coming back fails
 - 884 — a def sees the script's variables declared before it; two errors name what to write
+- 885 — append name[key]; four more whole scripts; a 20,000-line loop 56 ms (dash 62, bash 164)
 
 ### Not tied to an iteration
 

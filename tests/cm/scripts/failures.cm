@@ -1,0 +1,9 @@
+# a whole script (885): failures handled - statuses, || with a block, return from a def's block, exit 3
+def need {|prog| which $prog > /dev/null || { echo missing: $prog; return 1 } }
+need sh && echo sh found
+need no-such-program-885 || echo "a needed program is missing"
+def check {|n| if $(( $n > 2 )) { return 0 }; return 1 }
+for n 1 3 { if check $n { echo $n passes } else { echo $n fails } }
+false || echo false failed, as it does
+ls /no/such/dir 2> /dev/null || echo "ls failed with $status"
+exit 3

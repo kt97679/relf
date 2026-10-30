@@ -171,7 +171,8 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
   PIECES-P N) ;
 ' WORD-P' IS WORD-P
 : GOES-ON? ( w --- f )   DUP S" |" BARE= OVER S" &&" BARE= OR SWAP S" ||" BARE= OR ;
-: SET-FIRST? ( last --- f )   DUP 0= IF EXIT THEN  DUP 3 CELLS - @ N-CMD = SWAP S" set" BARE= AND ;
+: SET-FIRST? ( last --- f )   \ the command's first word set or append: its target next (append's too, 885)
+  DUP 0= IF EXIT THEN  DUP 3 CELLS - @ N-CMD = SWAP DUP S" set" BARE= SWAP S" append" BARE= OR AND ;
 : SET-TARGET-P ( closer --- )   \ set's target, after the command's first word set: read as after a $ (881)
   CUR NAME0? 0= IF WORD-P EXIT THEN  >R 0 0 N-WRD N, VAR-P N)
   CUR R> WORD-END? 0= IF S" set: a name, or name[key]" P-ERR THEN ;
@@ -318,12 +319,10 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   SESSION @ FR @ MAIN-FR @ = AND IF 2DROP -1 EXIT THEN
   CAPS# @ 0 ?DO  2DUP CAPS @ I 2* CELLS + DUP @ SWAP CELL+ @ COMPARE 0= IF 2DROP -1 UNLOOP EXIT THEN  LOOP 2DROP 0 ;
 : NAME-LEN ( c-addr u --- k )   0 BEGIN 2DUP > IF 2 PICK OVER + C@ NAMEC? ELSE 0 THEN WHILE 1+ REPEAT NIP NIP ;
-: SCAN-BLOCK ( bk --- )   \ $names (set's targets too, 881) and append's names in a block's code
+: SCAN-BLOCK ( bk --- )   \ $names in a block's code - set's and append's targets are N-VRs (881, 885)
   DUP NSKIP SWAP N+
   BEGIN 2DUP <> WHILE
     DUP @ N-VR = IF DUP @A OVER @B CAPS+ THEN
-    DUP @ N-CMD = IF DUP N+ DUP S" append" BARE= IF                 \ set's target is a N-VR (881)
-      NSKIP DUP @ N-WRD = IF DUP BARE? IF DUP BARE$ CAPS+ THEN THEN THEN DROP THEN
   N+ REPEAT 2DROP ;
 : MARK ( w --- )   N+ DUP @ N-BK = IF 1 SWAP 2 CELLS + ! ELSE DROP THEN ;   \ a body made in place, or in its own frame
 : MARK-CMD ( cmd --- )   \ if's, elif's and else's bodies, a loop's, a def's: no value, nothing captured
@@ -454,7 +453,7 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   >R BEGIN 2DUP <> WHILE  OVER N+ @ N-SP = IF 2DROP R> DROP 0 EXIT THEN  R> 1- >R  SWAP NSKIP SWAP  REPEAT 2DROP R> 0= ;
 : STACK-CODE ( from to --- c-addr u )   \ each word's value, in order
   >R >R 0 0  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R WORD-CODE ++ REPEAT  R> R> 2DROP ;
-: APPEND-ERR ( --- )   S" append name values" G-ERR ;
+: APPEND-ERR ( --- )   S" append name values - name a list's variable, name[key] too" G-ERR ;
 : SINGLE ( from to --- c-addr u )   \ one command, not a program's
   OVER BARE? 0= IF  OVER NSKIP OVER ARGS-CODE  ROT DROP ROT WORD-CODE ++ S" CALL-VALUE" ++ EXIT THEN   \ rule 11
   OVER BARE$ 2SWAP SWAP NSKIP SWAP 2SWAP
@@ -465,8 +464,8 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   S" echo" NAMED? IF 2DROP ARGS-CODE S" ECHO" ++ OK$ EXIT THEN
   2DUP S" cd exit wait match" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT EXIT THEN      \ they set the status themselves (873)
   2DUP S" count range merge each has split join keys" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT OK$ EXIT THEN
-  S" append" NAMED? IF 2DROP  2DUP = IF APPEND-ERR THEN  OVER BARE? 0= IF APPEND-ERR THEN
-    OVER BARE$ READ$ 2SWAP SWAP NSKIP SWAP ARGS-CODE ++ S" APPEND" ++ OK$ EXIT THEN
+  S" append" NAMED? IF 2DROP  2DUP = IF APPEND-ERR THEN  OVER N+ DUP @ N-VR = SWAP NSKIP @ 0= AND 0= IF APPEND-ERR THEN
+    OVER WORD-CODE 2SWAP SWAP NSKIP SWAP ARGS-CODE ++ S" APPEND" ++ OK$ EXIT THEN      \ name[key] too (885)
   S" true" NAMED? IF 2DROP 2DROP S" 0 STATUS !" EXIT THEN
   S" false" NAMED? IF 2DROP 2DROP S" 1 STATUS !" EXIT THEN
   2DUP S" break continue" IN-LIST? IF 2SWAP 2DROP  S" %loop" FIND-VAR ?DUP 0= IF S" outside a loop" ++ G-ERR THEN
