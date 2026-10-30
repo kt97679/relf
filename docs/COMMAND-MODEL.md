@@ -596,6 +596,10 @@ Rule 8's `&`, never built, came at 874: a program pipeline ending in `&` runs in
 /dev/null; `wait` waits for every job, its status the last's; a job not waited for gets TERM when the
 script ends (a function cannot go in the background - it runs in the shell: an error says so). And a
 quoted text is a value in `$(( ))`, so `if $(( $answer == "yes" ))` is the one way to compare with a text.
+Rule 8's redirections for functions and builtins came at 875 - `echo text > file`, `greet > f`, `echo x >&2`
+had passed the redirection on as words: now a builtin's or a function's redirections, after its words (the
+one way: last), hold in the shell's own descriptors while it runs, put back after; a file not opened is
+said, status 1, the command not run, as sh does.
 Still to come: a smaller front end, and a call's remaining cost.
 
 ## What it costs

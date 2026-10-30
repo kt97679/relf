@@ -1,0 +1,15 @@
+# a builtin's or a function's redirections (875, rule 8): after its words, in the shell's own descriptors while
+# it runs, put back after; a file not opened is said, status 1, the command not run - as sh
+echo hello > /tmp/cm-875.txt
+echo more >> /tmp/cm-875.txt
+cat /tmp/cm-875.txt
+def greet {|who| echo hi $who; put done }
+greet ada > /tmp/cm-875.txt
+cat /tmp/cm-875.txt
+def outer { echo inner > /tmp/cm-875-in.txt; echo outer }
+outer > /tmp/cm-875-out.txt
+cat /tmp/cm-875-in.txt /tmp/cm-875-out.txt
+echo said on stderr, here on stdout 2>&1 >&2
+echo x > /no/such/dir/f
+echo status $status, stdout as it was
+rm -f /tmp/cm-875.txt /tmp/cm-875-in.txt /tmp/cm-875-out.txt

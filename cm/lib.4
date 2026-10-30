@@ -58,6 +58,20 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
 : GLOB ( text --- list )   \ an unquoted word with * or ?, an argument: the paths it matches, sorted - none an error (872)
   DUP D-TEXT R-GLOB DUP R-LEN 0= IF DROP R-ERR> ." cm: no file matches " D-TEXT R-T@ TYPE R-ERR-NL -4004 THROW THEN
   NIP K-LIST R-BOX ;
+\ ---- a builtin's or a function's redirections (875): in the shell's own descriptors while it runs - each
+\ one put aside first (a copy at 10 and up), put back after, the last first; a file not opened is said,
+\ status 1, and the command not run, as sh does. Nested ones stack.
+32 CONSTANT RDK-MAX   RDK-MAX 2* CELLS BUFFER: RDK   VARIABLE RDK#
+: RDK-PUSH ( fd saved --- )   RDK# @ RDK-MAX = IF S" cm: redirections nested too deep" R-FAIL THEN  RDK RDK# @ 2* CELLS + TUCK CELL+ ! !  1 RDK# +! ;
+: RDK-BACK ( n --- )   PAD 0 1 WRITE DROP  0 ?DO  -1 RDK# +!  RDK RDK# @ 2* CELLS + DUP CELL+ @ SWAP @  OVER SWAP DUP2 DROP CLOSE-FILE DROP  LOOP ;
+: RD-RUN ( xt --- )   \ the command, R-RD-FILE's and R-RD-DUP's redirections round it
+  PAD 0 1 WRITE DROP  RR-N @ 0 ?DO
+    RR-F I CELLS + @  DUP 10 DUP-FROM  RDK-PUSH
+    RR-T I CELLS + @ -1 = IF  RR-M I CELLS + @  RR-F I CELLS + @  DUP2 DROP
+    ELSE  RR-T I CELLS + @ R-T@  RR-M I CELLS + @  OPEN-FILE IF
+        DROP I 1+ RDK-BACK  R-ERR> ." cm: cannot open " RR-T I CELLS + @ R-TYPE R-ERR-NL R-OUT-BACK  DROP 1 STATUS !  UNLOOP EXIT THEN
+      DUP RR-F I CELLS + @ DUP2 DROP  CLOSE-FILE DROP  THEN
+  LOOP  RR-N @ >R  CATCH  R> RDK-BACK  THROW ;
 : WAIT-OF ( args --- )   \ wait: every job & started waited for; the status the last ended with (874)
   DROP  PAD 0 1 WRITE DROP                         \ what was said before it out first: a write flushes
   0  JB-N @ 0 ?DO  DROP 0  JB-NP I CELLS + @ 0 ?DO  J I JB-PID @ R-WAIT R-DECODE ?DUP IF NIP THEN  LOOP  LOOP

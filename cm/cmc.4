@@ -530,10 +530,25 @@ VARIABLE PL          \ the pipeline being made: [to][end][end's length][state: 0
 : BG? ( from to --- from to' f )   2DUP = IF 0 EXIT THEN  2DUP LAST-W DUP S" &" BARE= IF NIP -1 ELSE DROP 0 THEN ;
 : ALL-PROGRAMS? ( from to --- f )   \ each stage's first word a program's
   SWAP BEGIN DUP PROGRAM? 0= IF 2DROP 0 EXIT THEN  2DUP SWAP TO-PIPE DUP 3 PICK = IF 2DROP DROP -1 EXIT THEN NIP NSKIP AGAIN ;
+: RD-WORD? ( w --- f )   RD-OP NIP NIP 0< 0= ;
+: TO-RD ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP RD-WORD? IF NIP EXIT THEN NSKIP REPEAT DROP ;
+VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth being made
+: RD+ ( c-addr u --- )   RDA @ RDU @ 2SWAP ++ RDU ! RDA ! ;
+: RD-CODE ( from to --- c-addr u )   \ a builtin's or a function's redirections, after its words (875)
+  RDA @ >R RDU @ >R  0 RDA ! 0 RDU !  SWAP
+  BEGIN 2DUP <> WHILE
+    DUP RD-OP DUP 0< IF S" a builtin's or a function's redirections come after its words" G-ERR THEN
+    IF >R >R NSKIP DUP 2 PICK = IF S" a redirection wants a file" G-ERR THEN DUP WORD-CODE RD+ R> R> RD+ NSKIP
+    ELSE RD+ NSKIP THEN
+  REPEAT 2DROP  RDA @ RDU @  R> RDU ! R> RDA ! ;
 : SEGMENT ( from to --- c-addr u )   \ a | b | c, or a program: a pipeline; else one command - ending in &: in the background
   BG? IF  2DUP = IF S" & after nothing" G-ERR THEN  2DUP ALL-PROGRAMS? 0= IF S" & runs programs - a function runs here" G-ERR THEN
     S" &" PIPELINE S" 0 STATUS !" ++ EXIT THEN                                        \ (874)
-  2DUP TO-PIPE OVER <> 2 PICK PROGRAM? OR IF 0 0 PIPELINE ELSE SINGLE THEN ;
+  2DUP TO-PIPE OVER <> 2 PICK PROGRAM? OR IF 0 0 PIPELINE EXIT THEN
+  2DUP TO-RD DUP 2 PICK = IF DROP SINGLE EXIT THEN                      \ a builtin or a function, redirected (875):
+  DUP 3 PICK = IF S" a redirection with no command" G-ERR THEN          \ the command a word of its own, run by RD-RUN
+  TUCK SWAP RD-CODE 2SWAP  S" S" FRESH 2SWAP SCOPE( SINGLE )SCOPE 2OVER 2SWAP DEF-WORD
+  2SWAP S" R-RD-RESET" 2SWAP ++ S" [']" ++ 2SWAP ++ S" RD-RUN" ++ ;
 : ERR-ANDOR ( --- )   S" && and || stand between commands" G-ERR ;
 : CMD-RANGE' ( from to --- c-addr u )   \ a && b || c, as sh chains them (859)
   TUCK OVER SWAP TO-ANDOR TUCK  2DUP = IF ERR-ANDOR THEN  SEGMENT
