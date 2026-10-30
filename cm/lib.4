@@ -76,6 +76,9 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
   DUP D-KIND K-BOOL = IF D-TRUE? EXIT THEN            \ shell's [ -f x ] is a list here, and was taken as true
   D-KIND K-LIST = IF S" cm: a list is no condition - [ ] makes a list here; test -f x tests a file" R-FAIL THEN
   S" cm: a condition is a command, true or false - $(( )) makes one of a number" R-FAIL ;
+: MATCH-OF ( args --- )   \ match text pattern: status 0 if the whole text matches - * ? [...], as a glob's (877)
+  DUP #ARGS 2 <> IF S" cm: match takes a text and one pattern - quote the pattern, or it is globbed" R-FAIL THEN
+  DUP 0 ARGN D-TEXT SWAP 1 ARGN D-TEXT R-GLOB? 0= 1 AND STATUS ! ;
 : WAIT-OF ( args --- )   \ wait: every job & started waited for; the status the last ended with (874)
   DROP  PAD 0 1 WRITE DROP                         \ what was said before it out first: a write flushes
   0  JB-N @ 0 ?DO  DROP 0  JB-NP I CELLS + @ 0 ?DO  J I JB-PID @ R-WAIT R-DECODE ?DUP IF NIP THEN  LOOP  LOOP

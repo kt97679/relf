@@ -604,6 +604,9 @@ At 876 a condition became true or false only: `if [ -f x ] { }`, the shell's tes
 been taken as true - truthy like Python's; now a value as `if`'s or `while`'s condition must be a
 boolean, and a list or a number is an error that says what to write (`test -f x`; `$(( $n != 0 ))`). One
 way to make a condition: a command's status, or true or false.
+At 877, `match text pattern` - the shell's `case`, as a command: status 0 when the whole text matches the
+glob pattern (quoted, or globbing takes it first); and `else` or `elif` at a line's start, which ran as a
+program named else, an error that says they go on the line of if's `}`.
 Still to come: a smaller front end, and a call's remaining cost.
 
 ## What it costs

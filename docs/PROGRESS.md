@@ -900,6 +900,7 @@ do not trust the absence of a line below.
 - 874 — & and wait (programs in the background); texts in $(( )) for comparing
 - 875 — redirections for builtins and functions: echo text > file, f > file, echo x >&2
 - 876 — a condition is a command, true or false: [ -f x ] (a list) is an error, not true
+- 877 — match text pattern (the shell's case, as a command); else/elif on their own line an error
 
 ### Not tied to an iteration
 

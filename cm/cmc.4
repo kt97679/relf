@@ -241,7 +241,7 @@ VARIABLE CC-N
   REPEAT 2DROP 2DROP 0 ;
 : PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program
   DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
-  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait" IN-LIST?
+  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match" IN-LIST?
   >R DEF-FIND R> OR 0= ;
 : TO-ANDOR ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" &&" BARE= OVER S" ||" BARE= OR IF NIP EXIT THEN NSKIP REPEAT DROP ;
 : TO-PIPE ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" |" BARE= IF NIP EXIT THEN NSKIP REPEAT DROP ;
@@ -451,7 +451,7 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
   S" put" NAMED? IF 2DROP  2DUP <> IF OVER NSKIP OVER = 2 PICK N+ @ N-SP <> AND IF DROP WORD-CODE S" PUT" ++ OK$ EXIT THEN THEN
     ARGS-CODE S" PUTS" ++ OK$ EXIT THEN                     \ put one value: PUT it, no list made (866)
   S" echo" NAMED? IF 2DROP ARGS-CODE S" ECHO" ++ OK$ EXIT THEN
-  2DUP S" cd exit wait" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT EXIT THEN      \ they set the status themselves (873)
+  2DUP S" cd exit wait match" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT EXIT THEN      \ they set the status themselves (873)
   2DUP S" count range merge each has split join keys" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT OK$ EXIT THEN
   S" append" NAMED? IF 2DROP  2DUP = IF APPEND-ERR THEN  OVER BARE? 0= IF APPEND-ERR THEN
     OVER BARE$ READ$ 2SWAP SWAP NSKIP SWAP ARGS-CODE ++ S" APPEND" ++ OK$ EXIT THEN
@@ -542,6 +542,7 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
     ELSE RD+ NSKIP THEN
   REPEAT 2DROP  RDA @ RDU @  R> RDU ! R> RDA ! ;
 : SEGMENT ( from to --- c-addr u )   \ a | b | c, or a program: a pipeline; else one command - ending in &: in the background
+  OVER S" else" BARE= 2 PICK S" elif" BARE= OR IF S" else and elif go on the line of if's } - } else {" G-ERR THEN   \ (877)
   BG? IF  2DUP = IF S" & after nothing" G-ERR THEN  2DUP ALL-PROGRAMS? 0= IF S" & runs programs - a function runs here" G-ERR THEN
     S" &" PIPELINE S" 0 STATUS !" ++ EXIT THEN                                        \ (874)
   2DUP TO-PIPE OVER <> 2 PICK PROGRAM? OR IF 0 0 PIPELINE EXIT THEN
