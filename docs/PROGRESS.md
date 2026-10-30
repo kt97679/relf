@@ -909,6 +909,7 @@ do not trust the absence of a line below.
 - 883 — the suite keeps carriage returns: a \r coming back fails
 - 884 — a def sees the script's variables declared before it; two errors name what to write
 - 885 — append name[key]; four more whole scripts; a 20,000-line loop 56 ms (dash 62, bash 164)
+- 886 — read name (a line of stdin, while read line) and kind value; three more whole scripts
 
 ### Not tied to an iteration
 

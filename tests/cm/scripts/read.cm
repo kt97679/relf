@@ -1,0 +1,19 @@
+# read name (886): a line of stdin into a variable, a byte at a time, so what follows is left for the next
+# reader; status 1 at the end - while read line. Here a def's stdin, its input from a pipe (882)
+def asker {
+    echo "your name?"
+    var name ""
+    read name
+    echo hello $name
+    var sum 0
+    var line ""
+    while read line {
+        if match $line '' { break }
+        set sum $(( $sum + $line ))
+    }
+    echo the sum is $sum
+    echo "what is left:" $(cat)
+    read line
+    echo "read at the end: status $status, [$line]"
+}
+printf 'Ada\n3\n4\n\n9\n' | asker

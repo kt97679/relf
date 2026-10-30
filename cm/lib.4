@@ -86,6 +86,16 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
 : MATCH-OF ( args --- )   \ match text pattern: status 0 if the whole text matches - * ? [...], as a glob's (877)
   DUP #ARGS 2 <> IF S" cm: match takes a text and one pattern - quote the pattern, or it is globbed" R-FAIL THEN
   DUP 0 ARGN D-TEXT SWAP 1 ARGN D-TEXT R-GLOB? 0= 1 AND STATUS ! ;
+: STDIN-LINE ( --- item )   \ read name: a line of stdin, a byte at a time, so what comes after it is left for the
+  PAD 0 1 WRITE DROP  0                             \ next reader - status 0, or 1 at the end with nothing read (886)
+  BEGIN  DUP 4096 = IF S" cm: read: a line too long" R-FAIL THEN
+    DUP GE-BUF + 1 0 READ 1 = WHILE  DUP GE-BUF + C@ 10 = IF GE-BUF SWAP R-TEXT K-TEXT R-BOX 0 STATUS ! EXIT THEN  1+
+  REPEAT  DUP 0= 1 AND STATUS !  GE-BUF SWAP R-TEXT K-TEXT R-BOX ;
+: KIND-OF ( args --- )   \ kind value: text, number, bool, list, map or block (886)
+  DUP #ARGS 1 <> IF S" cm: kind takes one value" R-FAIL THEN  0 ARGN D-KIND
+  DUP K-NUM = IF DROP S" number" ELSE DUP K-TEXT = IF DROP S" text" ELSE DUP K-BOOL = IF DROP S" bool" ELSE
+  DUP K-LIST = IF DROP S" list" ELSE DUP K-REC = IF DROP S" map" ELSE DUP K-BLOCK = IF DROP S" block" ELSE
+  DROP S" other" THEN THEN THEN THEN THEN THEN  TXT PUT ;
 : WAIT-OF ( args --- )   \ wait: every job & started waited for; the status the last ended with (874)
   DROP  PAD 0 1 WRITE DROP                         \ what was said before it out first: a write flushes
   0  JB-N @ 0 ?DO  DROP 0  JB-NP I CELLS + @ 0 ?DO  J I JB-PID @ R-WAIT R-DECODE ?DUP IF NIP THEN  LOOP  LOOP

@@ -1,0 +1,6 @@
+# a whole script (886): nested data written as JSON by a def that calls itself on the kind of its value
+def json {|v|
+    var k $(kind $v)
+    if match $k list { put "[$(join ", " @(for x @v { put $(json $x) }))]" } elif match $k map { put "{$(join ", " @(for key @(keys $v) { put "\"$key\": $(json $v[$key])" }))}" } elif match $k text { put "\"$v\"" } else { put $v }
+}
+echo $(json [name: Ada  langs: [cm forth]  age: 36  ok: true])

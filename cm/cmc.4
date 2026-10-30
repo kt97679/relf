@@ -172,10 +172,10 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
 ' WORD-P' IS WORD-P
 : GOES-ON? ( w --- f )   DUP S" |" BARE= OVER S" &&" BARE= OR SWAP S" ||" BARE= OR ;
 : SET-FIRST? ( last --- f )   \ the command's first word set or append: its target next (append's too, 885)
-  DUP 0= IF EXIT THEN  DUP 3 CELLS - @ N-CMD = SWAP DUP S" set" BARE= SWAP S" append" BARE= OR AND ;
+  DUP 0= IF EXIT THEN  DUP 3 CELLS - @ N-CMD = SWAP DUP S" set" BARE= OVER S" append" BARE= OR SWAP S" read" BARE= OR AND ;
 : SET-TARGET-P ( closer --- )   \ set's target, after the command's first word set: read as after a $ (881)
   CUR NAME0? 0= IF WORD-P EXIT THEN  >R 0 0 N-WRD N, VAR-P N)
-  CUR R> WORD-END? 0= IF S" set: a name, or name[key]" P-ERR THEN ;
+  CUR R> WORD-END? 0= IF S" a name, or name[key], to set" P-ERR THEN ;
 : CMDS' ( close closer --- )   \ commands up to close - 0, the text's end - each a N-CMD of its words; the
   0 BEGIN  0 SKIP-WS CUR       \ third cell: 0, or the command's last word so far
     DUP 0= IF DROP  2 PICK IF S" a closing bracket is missing" P-ERR THEN  IF N) THEN 2DROP EXIT THEN
@@ -254,7 +254,7 @@ VARIABLE CC-N
   REPEAT 2DROP 2DROP 0 ;
 : PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program
   DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
-  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match" IN-LIST?
+  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match read kind" IN-LIST?
   >R DEF-FIND R> OR 0= ;
 : TO-ANDOR ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" &&" BARE= OVER S" ||" BARE= OR IF NIP EXIT THEN NSKIP REPEAT DROP ;
 : TO-PIPE ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" |" BARE= IF NIP EXIT THEN NSKIP REPEAT DROP ;
@@ -432,19 +432,24 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   2DUP NAME? 0= IF S" var: a name, not" S| 2SWAP ++ G-ERR THEN
   2DUP IN-SCOPE? SESSION @ 0= AND IF S| S" is declared here already - set changes it" ++ G-ERR THEN   \ (879)
   2DUP CAPTURED? DUP >R DECLARE V-SLOT R> IF >R S" UPV-NEW" ++ R> THEN #++ S" LS!" ++ ;
-: SET-ERR ( --- )   S" set: a name, or name[key]" G-ERR ;
+: SET-ERR ( --- )   S" a name, or name[key], to set" G-ERR ;
 : SET-KEYS ( vc vu vr --- c-addr u )   \ name[k1]..[kn] value: name's value through k1..kn-1, kn, the value, CM-SET
   DUP @A OVER @B READ$  ROT N+                                    \ (READ$: no such variable an error; env, $env's)
   BEGIN DUP NSKIP @ WHILE  DUP >R WORD-CODE ++ S" CM-AT" ++ R> NSKIP REPEAT
   WORD-CODE ++  2SWAP ++ S" CM-SET" ++ ;
-: SET-CMD ( from to --- c-addr u )   \ set name value, set name[key]... value - its target read as $'s are,
-  BIND  OVER N+ DUP @ N-VR = OVER NSKIP @ 0= AND 0= IF SET-ERR THEN      \ so a key any word: $k too (881)
-  ROT DROP  SWAP WORD-CODE ROT                                                  ( vc vu vr )
+: TARGET ( w --- vr )   \ set's or read's: a name[key]..., a N-VR - or a plain name, a N-TX, where the reader took
+  N+ DUP @ N-VR = OVER NSKIP @ 0= AND IF EXIT THEN            \ it as a word: while read line (886)
+  DUP @ N-TX = OVER NSKIP @ 0= AND IF DUP @A OVER @B NAME? IF EXIT THEN THEN  SET-ERR ;
+: SET-TO ( vc vu vr --- c-addr u )   \ the value made by vc vu put in the target
   DUP N+ @ IF SET-KEYS EXIT THEN
   DUP @A SWAP @B  2DUP FIND-VAR ?DUP 0= IF S" set: no variable" S| 2SWAP ++ S" - var makes one" ++ G-ERR THEN
   NIP NIP  DUP 5 CELLS + @ IF REF ++ S" UPV!" ++ EXIT THEN
   DUP 3 CELLS + @ FR @ = IF V-SLOT #++ S" LS!" ++ EXIT THEN
   DUP MAIN-V? IF V-SLOT #++ S" MLS!" ++ EXIT THEN  S" cm: an unboxed variable set from a block" G-ERR ;
+: SET-CMD ( from to --- c-addr u )   \ set name value, set name[key]... value - its target read as $'s are,
+  BIND SWAP TARGET >R WORD-CODE R> SET-TO ;           \ so a key any word: $k too (881)
+: READ-CMD ( from to --- c-addr u )   \ read name: a line of stdin into it - status 1 at the end (886)
+  OVER NSKIP <> IF S" read takes one name" G-ERR THEN  TARGET S" STDIN-LINE" ROT SET-TO ;
 : ARITY-CHECK ( c-addr u from to k --- c-addr u )   \ a def given its words, none an @: their count checked here (879)
   >R  0 ROT ROT SWAP BEGIN 2DUP <> WHILE  DUP N+ @ N-SP = IF 2DROP DROP R> DROP EXIT THEN  ROT 1+ ROT ROT NSKIP REPEAT 2DROP
   DUP R@ = IF DROP R> DROP EXIT THEN
@@ -459,11 +464,12 @@ VARIABLE CAPS  VARIABLE CAPS#  512 CONSTANT CAPS-MAX    \ the names some block r
   OVER BARE$ 2SWAP SWAP NSKIP SWAP 2SWAP
   S" var" NAMED? IF 2DROP VAR-CMD OK$ EXIT THEN
   S" set" NAMED? IF 2DROP SET-CMD OK$ EXIT THEN
+  S" read" NAMED? IF 2DROP READ-CMD EXIT THEN                   \ READ-LINE sets the status (886)
   S" put" NAMED? IF 2DROP  2DUP <> IF OVER NSKIP OVER = 2 PICK N+ @ N-SP <> AND IF DROP WORD-CODE S" PUT" ++ OK$ EXIT THEN THEN
     ARGS-CODE S" PUTS" ++ OK$ EXIT THEN                     \ put one value: PUT it, no list made (866)
   S" echo" NAMED? IF 2DROP ARGS-CODE S" ECHO" ++ OK$ EXIT THEN
   2DUP S" cd exit wait match" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT EXIT THEN      \ they set the status themselves (873)
-  2DUP S" count range merge each has split join keys" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT OK$ EXIT THEN
+  2DUP S" count range merge each has split join keys kind" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT OK$ EXIT THEN
   S" append" NAMED? IF 2DROP  2DUP = IF APPEND-ERR THEN  OVER N+ DUP @ N-VR = SWAP NSKIP @ 0= AND 0= IF APPEND-ERR THEN
     OVER WORD-CODE 2SWAP SWAP NSKIP SWAP ARGS-CODE ++ S" APPEND" ++ OK$ EXIT THEN      \ name[key] too (885)
   S" true" NAMED? IF 2DROP 2DROP S" 0 STATUS !" EXIT THEN

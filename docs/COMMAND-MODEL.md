@@ -639,6 +639,10 @@ At 885 four more whole scripts (files grouped by extension, a small make, failur
 `append` reads its target as `set` does, so `append groups[$ext] $name` adds to a list inside a map.
 Measured on the way: a loop over 20,000 lines summing and counting, 56 ms (dash 62, bash 164); fib(20)
 by a def calling itself, 10 ms.
+At 886 three more whole scripts (questions answered on stdin, nested data written as JSON, a template):
+`read name` reads a line of stdin into a variable, a byte at a time so what follows is left for the next
+reader (`head -n 1` had taken it all), status 1 at the end - `while read line { }`; and `kind value`
+puts text, number, bool, list, map or block, for code that walks data of any shape.
 Still to come: a smaller front end.
 
 ## What it costs
