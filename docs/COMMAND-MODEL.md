@@ -592,6 +592,10 @@ directory: `cd dir`, `cd` alone for `$env[HOME]`, a failure said with status 1 a
 `exit n`, or `exit` with the last status, ending a script or the prompt. And the runtime made the command
 model's: its genes fixed, and the 80 words of Rill's that nothing of the command model reaches taken out
 - the image 62,238 bytes - with tools/cm-reach.py in the suite to keep it so.
+Rule 8's `&`, never built, came at 874: a program pipeline ending in `&` runs in the background, its stdin
+/dev/null; `wait` waits for every job, its status the last's; a job not waited for gets TERM when the
+script ends (a function cannot go in the background - it runs in the shell: an error says so). And a
+quoted text is a value in `$(( ))`, so `if $(( $answer == "yes" ))` is the one way to compare with a text.
 Still to come: a smaller front end, and a call's remaining cost.
 
 ## What it costs

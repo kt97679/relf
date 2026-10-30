@@ -58,6 +58,10 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
 : GLOB ( text --- list )   \ an unquoted word with * or ?, an argument: the paths it matches, sorted - none an error (872)
   DUP D-TEXT R-GLOB DUP R-LEN 0= IF DROP R-ERR> ." cm: no file matches " D-TEXT R-T@ TYPE R-ERR-NL -4004 THROW THEN
   NIP K-LIST R-BOX ;
+: WAIT-OF ( args --- )   \ wait: every job & started waited for; the status the last ended with (874)
+  DROP  PAD 0 1 WRITE DROP                         \ what was said before it out first: a write flushes
+  0  JB-N @ 0 ?DO  DROP 0  JB-NP I CELLS + @ 0 ?DO  J I JB-PID @ R-WAIT R-DECODE ?DUP IF NIP THEN  LOOP  LOOP
+  0 JB-N !  STATUS ! ;
 : CD-OF ( args --- )   \ cd dir - with none, $env[HOME]: a failure said, status 1, the script going on (873)
   DUP #ARGS DUP 1 > IF S" cm: cd takes one directory" R-FAIL THEN
   IF 0 ARGN D-TEXT ELSE DROP S" HOME" R-TEXT R-ENV THEN

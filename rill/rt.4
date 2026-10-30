@@ -370,6 +370,15 @@ JB-MAX CELLS BUFFER: JB-KEY   JB-MAX CELLS BUFFER: JB-NP   JB-MAX PL-MAX * CELLS
 
 
 
+: PL-NULL-IN ( --- )   \ & 's begin (874, Rill's spawn, 813): a slot free, and /dev/null the first stage's stdin
+  JB-N @ JB-MAX < 0= IF R-ERR> ." cm: &: 16 jobs not waited for already" R-ERR-NL -4004 THROW THEN
+  S" /dev/null" R/O OPEN-FILE THROW  DUP PL-PREV ! PL-FD+ ;
+: PL-SPAWN ( --- job )   \ the pipeline started, not waited for: its pids kept, its last returned
+  PL-NP @ 0 ?DO  PL-PIDS I CELLS + @  JB-N @ I JB-PID !  LOOP
+  PL-NP @  JB-N @ CELLS JB-NP + !
+  PL-PIDS PL-NP @ 1- CELLS + @  DUP JB-N @ CELLS JB-KEY + !  1 JB-N +!
+  R-SIG-CATCH
+  -1 PL-DEPTH +!  PL-DEPTH @ IF PL-RESTORE THEN ;
 : R-JOBS-STOP ( --- )   \ the script ending: TERM to every stage of every job not waited for
   JB-N @ 0 ?DO  JB-NP I CELLS + @ 0 ?DO  J I JB-PID @ 15 KILL DROP  LOOP  LOOP  0 JB-N ! ;
 : R-ARG ( n --- t )   \ arg(n): the script's nth argument, or empty

@@ -1,0 +1,12 @@
+# & and wait (874): a program pipeline ending in & runs in the background, its stdin /dev/null; wait waits for
+# every job, its status the last's; a job not waited for gets TERM when the script ends
+sh -c 'sleep 0.3; echo second' &
+echo first
+wait
+echo waited: $status
+sh -c 'exit 3' &
+printf 'b\na\n' | sort &
+wait
+echo the last job ended with $status
+sleep 5 &
+echo not waited for: ended with the script

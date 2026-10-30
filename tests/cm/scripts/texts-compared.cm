@@ -1,0 +1,6 @@
+# a text in $(( )) (874): quoted, "..." or '...', a value - == and != compare texts as texts, numbers as numbers
+var answer yes
+if $(( $answer == "yes" )) { echo the answer is yes }
+if $(( $answer != 'no' )) { echo and not no }
+var n $(printf 7)
+echo $(( $n == "7" )) $(( $n == 7 )) $(( "abc" == "abd" ))
