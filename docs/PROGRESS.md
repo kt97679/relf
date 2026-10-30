@@ -918,6 +918,7 @@ do not trust the absence of a line below.
 - 892 — the owner's decision: the return stack, and so recursion's depth, as it is
 - 893 — $( ) around split, range, keys or each an error when read; the inconsistency behind it, two ideas to revisit
 - 894 — $( )'s count: Perl, sh and four options compared, for the owner's choice
+- 895 — what $( ) does, its two modes; four surprises found: $(echo hi), a program's bytes in a value capture, $status after var, 2>/dev/null as a word
 
 ### Not tied to an iteration
 
