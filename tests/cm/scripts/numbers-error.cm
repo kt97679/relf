@@ -1,0 +1,3 @@
+# a text that reads as no number, in $(( )): an error, not a fault (870)
+var t abc
+echo $(( $t + 1 ))

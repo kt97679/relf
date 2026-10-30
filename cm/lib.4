@@ -4,7 +4,7 @@
 : TXT ( c-addr u --- item )   R-TEXT K-TEXT R-BOX ;
 : CHARS>TXT ( c1 .. ck k --- item )   \ a text with characters S" cannot hold
   DUP CELL+ R-ALLOT >R  DUP R@ !  BEGIN DUP WHILE 1- TUCK R@ CELL+ + C! REPEAT DROP  R> K-TEXT R-BOX ;
-: JOIN ( item item --- text )   D-STR SWAP D-STR SWAP D+ ;
+: JOIN ( item item --- text )   D-TEXT SWAP D-TEXT SWAP 2 R-CONCAT K-TEXT R-BOX ;   \ side by side - + is arithmetic only (870)
 
 \ ---- a command's arguments: a list, @ spreading a list into it ----
 : ARGL ( --- list )   R-NEW-LIST K-LIST R-BOX ;
@@ -32,8 +32,29 @@
       4 PICK ROT ROT D-SET  LOOP DROP  LOOP DROP PUT ;
 \ ---- an element of a list or a map (865): a list keeps its items as they are - not boxed, as rill2's
 \ D-AT and D-SET take a list's - so $l[0] read a number as a box and faulted; a map's go through D-SET
-: CM-AT ( c k --- item )   OVER D-KIND K-LIST <> IF D-AT EXIT THEN  D>N SWAP D-LIST DUP R-LEN ROT SWAP D-IDX R-AT ;
-: CM-SET ( c k v --- )   2 PICK D-KIND K-LIST <> IF D-SET EXIT THEN  ROT D-LIST ROT D>N OVER R-LEN D-IDX R-SET ;
+CREATE ENV-BOX 9 , 0 ,                             \ $env: the environment, as a map (870) - outside the arena
+: SCRIPT-ARGS ( --- item )   R-ARGS K-LIST R-BOX ;  \ $args: the script's arguments, each a text (870)
+: CM-AT ( c k --- item )   OVER ENV-BOX = IF NIP D-TEXT R-ENV K-TEXT R-BOX EXIT THEN
+  OVER D-KIND K-LIST <> IF D-AT EXIT THEN  D>N SWAP D-LIST DUP R-LEN ROT SWAP D-IDX R-AT ;
+: CM-SET ( c k v --- )   2 PICK ENV-BOX = IF ROT DROP SWAP D-TEXT SWAP D-TEXT R-SETENV EXIT THEN   \ programs see it
+  2 PICK D-KIND K-LIST <> IF D-SET EXIT THEN  ROT D-LIST ROT D>N OVER R-LEN D-IDX R-SET ;
+\ ---- the library (870): what values need and programs cannot do - split, join, keys; has, count, range,
+\ merge, each above. Texts' other work - case, trimming, replacing - is tr's, sed's, cut's.
+VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
+: SPL-AT ( i --- f )   SPL-A @ + SPL-N @ SPL-S @ SPL-N @ COMPARE 0= ;
+: SPLIT-OF ( args --- )   \ split $text sep: each part put
+  DUP #ARGS 2 <> IF S" cm: split takes a text and a separator" R-FAIL THEN
+  DUP 1 ARGN D-TEXT R-T@ SPL-N ! SPL-S !  0 ARGN D-TEXT R-T@ SPL-U ! SPL-A !
+  SPL-N @ 0= IF S" cm: split's separator is empty" R-FAIL THEN
+  0 0 BEGIN DUP SPL-N @ + SPL-U @ > 0= WHILE
+    DUP SPL-AT IF  2DUP SWAP - >R OVER SPL-A @ + R> TXT PUT  SPL-N @ + NIP DUP  ELSE 1+ THEN
+  REPEAT DROP  SPL-A @ OVER + SPL-U @ ROT - TXT PUT ;
+: JOIN-OF ( args --- )   \ join sep items...: one text, sep between the items' texts
+  DUP #ARGS 0= IF S" cm: join takes a separator, then items" R-FAIL THEN
+  0 0 R-TEXT  OVER #ARGS 1 ?DO  I 1 > IF OVER 0 ARGN D-TEXT 2 R-CONCAT THEN  OVER I ARGN D-TEXT 2 R-CONCAT  LOOP
+  K-TEXT R-BOX PUT DROP ;
+: KEYS-OF ( args --- )   \ keys $map: each key put
+  DUP #ARGS 1 <> IF S" cm: keys takes one map" R-FAIL THEN  0 ARGN D-REC R-KEYS  DUP R-LEN 0 ?DO DUP I R-AT PUT LOOP DROP ;
 : HAS-OF ( args --- )   \ has $m key, has $l value: true if the map has the key, the list the value (865)
   DUP #ARGS 2 <> IF S" cm: has takes a map or list and a value" R-FAIL THEN  DUP 1 ARGN SWAP 0 ARGN D-IN PUT ;
 : FOR-ONE ( args --- args )   \ for x $l: one value, a list - @ spreads it
@@ -64,10 +85,10 @@
   S" cm: a value that is no block or boolean as a command - programs come later" R-FAIL ;
 
 \ ---- programs (859): a command whose first word names no builtin, def or value - its words as texts
-: ARG-TEXTS ( args --- l )   \ numbers, texts and booleans; a list, map or block is an error (rule 12)
-  DUP #ARGS 0 ?DO  DUP I ARGN D-KIND  DUP K-LIST = OVER K-REC = OR SWAP K-BLOCK = OR
-    IF S" cm: a list, map or block given to a program - @ spreads a list, to-json writes one" R-FAIL THEN  LOOP
-  CELL+ @ ;
+: ARG-TEXTS ( args --- l )   \ each as a text - a number its digits, true or false; a list, map or block an error (rule 12)
+  ARGL SWAP  DUP #ARGS 0 ?DO  DUP I ARGN  DUP D-KIND  DUP K-LIST = OVER K-REC = OR SWAP K-BLOCK = OR
+    IF S" cm: a list, map or block given to a program - @ spreads a list, to-json writes one" R-FAIL THEN
+    D-STR  ROT SWAP ARG SWAP  LOOP DROP  CELL+ @ ;   \ a number given as it was (870: head -n 1 faulted)
 : RD-FILE ( item mode fd --- )   ROT D-STR CELL+ @ ROT ROT R-RD-FILE ;
 : PSTAGE ( args last? --- )   >R ARG-TEXTS R> PL-STAGE-L ;
 : PIPE-END ( --- )   PL-END STATUS ! ;

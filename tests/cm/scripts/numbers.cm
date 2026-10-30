@@ -1,0 +1,10 @@
+# numbers and texts (870): a program's output that reads as a number is that number in $(( )); a number given
+# to a program is given as its digits
+var n $(printf 41)
+echo $(( $n + 1 )) $(( $n * 2 )) $(( $n > 9 )) $(( $n == 41 )) $(( $n != 41 ))
+var lines $(printf 'a\nb\nc\n' | wc -l)
+if $(( $lines >= 3 )) { echo three lines or more }
+printf '%s %s %s\n' 7 true $(( 6 * 7 )) | head -n 1
+var ten 10
+var nine $(printf 9)
+echo $(( $nine < $ten )) - as numbers, not as texts

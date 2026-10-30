@@ -355,10 +355,11 @@ VARIABLE PL-DEPTH   VARIABLE PL-SAVED
   DUP -1 <> IF 0 DUP2 DROP ELSE DROP THEN
   PL-NF @ 0 ?DO  PL-FDS I CELLS + @ CLOSE-FILE DROP  LOOP
   R-RD-APPLY ;
-: R-ARGV-L ( l --- argv )   \ a list's items, as texts, a NUL-ended vector, "env" first (a spread, 744)
-  DUP R-LEN DUP RV-N !  2 + CELLS R-ALLOT RV-V !
-  0  RV-V @ RV-N @ 1+ CELLS + !
-  RV-N @ 0 ?DO  DUP I R-AT R-ANY>TEXT R-CSTR  RV-V @ I 1+ CELLS + !  LOOP DROP
+: R-ARGV-L ( l --- argv )   \ a list's items, as texts, a NUL-ended vector: "env", what setenv set (870), the words (744)
+  DUP R-LEN DUP RV-N !  2 + SE-N @ + CELLS R-ALLOT RV-V !
+  0  RV-V @ RV-N @ SE-N @ + 1+ CELLS + !
+  RV-N @ 0 ?DO  DUP I R-AT R-ANY>TEXT R-CSTR  RV-V @ I SE-N @ + 1+ CELLS + !  LOOP DROP
+  SE-N @ 0 ?DO  I CELLS SE-A + @  RV-V @ I 1+ CELLS + !  LOOP
   S" env" R-TEXT R-CSTR RV-V @ !  RV-V @ ;
 : PL-STAGE-V ( argv last? --- )
   >R  PL-PREV @ PL-IN !  -1 PL-NEXT !  0 PL-OWN !

@@ -576,7 +576,12 @@ of a function keeps its one value in the sink's own cell - `calls` 30% fewer dis
 and the prompt going on. With it two rules made true that the prototype had not: every command sets a
 status - a builtin, an `if` taking no branch and a loop 0, `false` 1 - so `&&` and `||` see the command
 before them, and a script ends with its last status; and a line goes on after `|`, `&&` and `||`.
-Still to come, one way each: a library, and Rill's and Rill 2's retirement (one language).
+At 870 its values became its own (cm/values.4): `+` is arithmetic only - texts join side by side - and a
+text that reads as a whole number is that number in `$(( ))`, as the shell's, so `$(( $n + 1 ))` works on a
+program's output. Its library, what values need and programs cannot do: `split $t sep` and `keys $m` put
+each part or key, `join sep items...` one text; with `has`, `count`, `range`, `merge`, `each`. `$env[NAME]`
+reads the environment, `set env[NAME] v` sets it for programs; `$args` is the script's arguments. Still to
+come: Rill's and Rill 2's retirement (one language), then a smaller front end.
 
 ## What it costs
 

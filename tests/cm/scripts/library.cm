@@ -1,0 +1,12 @@
+# the library (870): split, join, keys - with has, count, range, merge, each before it; $env and $args
+var line "a,b,,c"
+var parts [@(split $line ,)]
+echo $parts $(count $parts)
+echo $(join - @parts) "$(join ', ' x y z)"
+var m [b: 2  a: 1]
+for k @(keys $m) { echo $k is $m[$k] }
+echo $(has "hello world" "lo w") $(has $m c)
+set env[CM_870] hello
+sh -c 'echo a program sees $CM_870'
+echo $env[CM_870] $env[CM_870_NOT_SET]"."
+echo args: $args $(count $args)

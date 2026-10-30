@@ -101,13 +101,14 @@ def cm_names(text):
     return own + sorted({n for b in blocks for n in names(b)})      # once each - but beside its own words too (867)
 for f in sorted(x for x in srcs if x.startswith('cm/')):
     for n in cm_names(srcs[f]):
-        if n in image2 or n in kernel: print("%s: %s is defined again - rill2's image has it" % (f, n)); found += 1
+        if f == 'cm/values.4' and (n in image2 or n == 'D+'): pass   # rill2.4's values, the cm image's own (870): D+ as rill2.4's
+        elif n in image2 or n in kernel: print("%s: %s is defined again - rill2's image has it" % (f, n)); found += 1
         elif n in cm_seen: print('%s: %s is defined again - %s has it' % (f, n, cm_seen[n])); found += 1
         else: cm_seen[n] = f
 for f, s in srcs.items():
     program = is_program(f)                                  # a program loaded when it runs, not built into the image
     for n in names(s):
-        if n in kernel or (program and n in runtime):
+        if (n in kernel and (f, n) != ('cm/values.4', 'D+')) or (program and n in runtime):
             print('%s: %s is defined again - the %s has it ("Redefining" in the output)' % (f, n, 'kernel' if n in kernel else 'runtime')); found += 1
     for m in re.finditer(r'(?ms)(?:^|\s):\s+(\S+)(.*?)(?:\s;(?:\s|$))', s):
         name, body = m.group(1), words(m.group(2))
