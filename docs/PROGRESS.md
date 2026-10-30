@@ -911,6 +911,7 @@ do not trust the absence of a line below.
 - 885 — append name[key]; four more whole scripts; a 20,000-line loop 56 ms (dash 62, bash 164)
 - 886 — read name (a line of stdin, while read line) and kind value; three more whole scripts
 - 887 — runtime errors say their line (R-MARK: nothing at run time); three more whole scripts
+- 888 — the owner's decisions recorded (many results one by one, split no exception; strict def scope; size and features balanced); the handoff
 
 ### Not tied to an iteration
 

@@ -251,10 +251,11 @@ the account of what each gained and cost.
    they went). The image: tools/build-cm-image.sh, kernel64-cm.img - the kernel, the
    Forth libraries, Rill's runtime (rill/rt.4, kept: the command model is built on
    it), relfsh's line editor, cm/*.4; `bin/cm script.cm`, or the prompt with none.
-   Open: a smaller front end (cm/cmc.4, 13 KB of a 66 KB image); a call's remaining
-   cost; whatever the language's first real use finds.
-   Checks: `sh tests/cm/run` - the runtime's tests, the scripts, the prompt's
-   sessions - and again with RILL_GC_STRESS=1; in make verify as cm:passed.
+   Open (888's handoff, docs/progress/0800-0899.md): the read-time check of $( ) over
+   builtins giving several values, if the owner agrees; `source`; a reference for script
+   writers; a smaller front end (cm/cmc.4, 16 KB of a 66 KB image); a call's cost.
+   Checks: `sh tests/cm/run` - the runtime's tests, the scripts (whole ones among
+   them), the prompt's sessions - and again with RILL_GC_STRESS=1; in make verify as cm:passed.
 
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22
    and its added items (prompts/SYNC.md lists them, and how to merge):
