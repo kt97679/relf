@@ -361,7 +361,7 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
 : FLAG ( from to --- c-addr u )   \ a condition: ! ..., a value alone, or a command's status (859)
   2DUP = IF S" a condition was expected" G-ERR THEN
   OVER S" !" BARE= IF SWAP NSKIP SWAP RECURSE S" 0=" ++ EXIT THEN
-  OVER NSKIP OVER = 2 PICK N+ @ N-TX <> AND IF DROP WORD-CODE S" D-TRUE?" ++ EXIT THEN
+  OVER NSKIP OVER = 2 PICK N+ @ N-TX <> AND IF DROP WORD-CODE S" D-COND" ++ EXIT THEN     \ true or false only (876)
   CMD-RANGE S" STATUS @ 0=" ++ ;
 : INLINE ( w --- c-addr u )   \ a block with no parameters, its commands made in place
   N+ DUP @ N-BK <> OVER @A OR IF S" a block with no parameters was expected" G-ERR THEN  SCOPE( N+ BODY-CODE )SCOPE ;

@@ -72,6 +72,10 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
         DROP I 1+ RDK-BACK  R-ERR> ." cm: cannot open " RR-T I CELLS + @ R-TYPE R-ERR-NL R-OUT-BACK  DROP 1 STATUS !  UNLOOP EXIT THEN
       DUP RR-F I CELLS + @ DUP2 DROP  CLOSE-FILE DROP  THEN
   LOOP  RR-N @ >R  CATCH  R> RDK-BACK  THROW ;
+: D-COND ( item --- f )   \ a value as if's or while's condition: true or false, nothing else (876) - the
+  DUP D-KIND K-BOOL = IF D-TRUE? EXIT THEN            \ shell's [ -f x ] is a list here, and was taken as true
+  D-KIND K-LIST = IF S" cm: a list is no condition - [ ] makes a list here; test -f x tests a file" R-FAIL THEN
+  S" cm: a condition is a command, true or false - $(( )) makes one of a number" R-FAIL ;
 : WAIT-OF ( args --- )   \ wait: every job & started waited for; the status the last ended with (874)
   DROP  PAD 0 1 WRITE DROP                         \ what was said before it out first: a write flushes
   0  JB-N @ 0 ?DO  DROP 0  JB-NP I CELLS + @ 0 ?DO  J I JB-PID @ R-WAIT R-DECODE ?DUP IF NIP THEN  LOOP  LOOP

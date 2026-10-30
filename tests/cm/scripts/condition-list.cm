@@ -1,0 +1,2 @@
+# a condition is a command, true or false (876): the shell's [ ] is a list here - an error, not true
+if [ -f /no/such/file ] { echo never }

@@ -1,0 +1,3 @@
+# a number is no condition (876): $(( )) makes one of it
+var n 0
+if $n { echo never }

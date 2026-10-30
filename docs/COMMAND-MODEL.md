@@ -600,6 +600,10 @@ Rule 8's redirections for functions and builtins came at 875 - `echo text > file
 had passed the redirection on as words: now a builtin's or a function's redirections, after its words (the
 one way: last), hold in the shell's own descriptors while it runs, put back after; a file not opened is
 said, status 1, the command not run, as sh does.
+At 876 a condition became true or false only: `if [ -f x ] { }`, the shell's test, is a list here and had
+been taken as true - truthy like Python's; now a value as `if`'s or `while`'s condition must be a
+boolean, and a list or a number is an error that says what to write (`test -f x`; `$(( $n != 0 ))`). One
+way to make a condition: a command's status, or true or false.
 Still to come: a smaller front end, and a call's remaining cost.
 
 ## What it costs
