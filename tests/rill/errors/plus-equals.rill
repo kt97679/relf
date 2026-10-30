@@ -1,3 +1,0 @@
-# x += v gone: one way, x = $x + v (800)
-x = 1
-x += 1

@@ -1,2 +1,0 @@
-# input that ends inside a list (817): rillc.py raised IndexError, the image's compiler faulted
-x = [1, 2

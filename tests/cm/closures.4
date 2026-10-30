@@ -1,7 +1,6 @@
 \ tests/cm/closures.4 - the command model's prototype, step 1 (855): the draft's own examples built by
 \ hand on cm/rt-cm.4, and the collector run at every awkward moment. No front end yet: each word below
 \ is what a compiler would make of the line in its comment.
-S" cm/rt-cm.4" INCLUDED
 : KEY$ ( c-addr u --- item )   R-TEXT K-TEXT R-BOX ;
 : N. ( item --- )   D>N . ;
 : CALL-AT ( map c-addr u --- i*x )   KEY$ D-AT BLK-CALL ;

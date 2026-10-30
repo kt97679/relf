@@ -1,6 +1,5 @@
 \ tests/cm/control.4 - the command model's prototype, step 3 (857): break, continue and return
 \ through blocks, each to its own loop or def. Each word is what a compiler would make of its comment.
-S" cm/rt-cm.4" INCLUDED  S" cm/out.4" INCLUDED  S" cm/ctl.4" INCLUDED
 : L+ ( list-item v --- list-item )   OVER CELL+ @ R-PUSH ;
 : NEW-L ( --- list-item )   R-NEW-LIST K-LIST R-BOX ;
 : 0-1-2 ( --- list-item )   NEW-L 0 D-NUM L+ 1 D-NUM L+ 2 D-NUM L+ ;

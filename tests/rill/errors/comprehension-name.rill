@@ -1,2 +1,0 @@
-# a comprehension takes a name too (817)
-x = [1 for { in [2]]

@@ -1,5 +1,0 @@
-# a def inside a def (793)
-def outer() {
-    def inner() { echo hi }
-    inner()
-}

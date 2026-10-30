@@ -1,2 +1,0 @@
-# echo takes no options (805): in-process -n was printed as a word, piped /bin/echo took it
-echo -n "no newline"

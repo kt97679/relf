@@ -83,7 +83,7 @@ for _ in range(N):
 print('a uniform sample of %d: %d break no rule (%.2f%%); rules broken: %s'
       % (N, hist[0], 100.0 * hist[0] / N, ', '.join('%d: %d' % (k, hist[k]) for k in sorted(hist))))
 
-for fe in ('relfsh', 'rill2', 'cm'):
+for fe in ('relfsh', 'cm'):
     per = [sum(1 for v in values[a] if fe in here[(a, v)]) for a in axes]
     print('%-6s has %2d values on %2d of %d axes; genomes from its own values: %d'
           % (fe, sum(per), sum(1 for p in per if p), len(axes), 0 if 0 in per else eval('*'.join(map(str, per)))))

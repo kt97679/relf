@@ -1,2 +1,0 @@
-# a def's parameters in parentheses, as it is called (802)
-def twice x { return $x * 2 }

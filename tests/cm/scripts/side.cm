@@ -1,4 +1,4 @@
-# the program tests/rill2/compare/side.rill and side.r2 are (838), in the command model (865): the same output
+# the program Rill and Rill 2 each ran for comparison (838; both retired, 871), in the command model (865): the same output
 var x 7
 var y $(( $x * 2 + 1 ))
 echo $y

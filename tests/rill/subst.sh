@@ -1,6 +1,0 @@
-echo 'while [ $i -lt 2000 ]; do' | sed -E 's/-lt ([0-9]+)/-lt \100/g'
-echo 'john smith' | sed -E 's/([a-z]+) ([a-z]+)/\2, \1/g'
-echo 'a-b-c' | sed -E 's/-/\\/g'
-echo 'x1 y2' | sed -E 's/([a-z])([0-9])/<\2\1>/g'
-echo 'plain' | sed -E 's/a/A/g'
-printf '%s\n' 'kept \n as is'

@@ -590,23 +590,18 @@ else
 fi
 
 # ---------------------------------------------------------------
-# 3d. Rill (Iteration 819): its suite and its oracle - the two compilers'
-#     Forth word for word - on an image built from rill/*.4 here, since
-#     tests/rill/run builds one only when there is none, and a stale one
-#     tests old code. Until 819 nothing here ran Rill: a change to the
-#     kernel or the engine could break it unseen. relf64 only: `skipped`
-#     where it is not built (a 32-bit host).
+# 3d. The command model (871): its suite, tests/cm/run, on an image it
+#     builds itself - the language's, Rill's and Rill 2's retired with
+#     their suite and oracle (819-870). relf64 only: `skipped` where it
+#     is not built (a 32-bit host).
 # ---------------------------------------------------------------
-echo "== Rill =="
-if [ -x ./relf64 ] && sh tools/build-rill-image.sh > /dev/null 2>&1; then
-    R=$(sh tests/rill/run < /dev/null 2>&1 | tail -1)
-    O=$(sh tests/rill/oracle < /dev/null 2>&1 | tail -1)
-    emit rill:passed "$(echo "$R" | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed.*/\1/p')"
-    emit rill:failed "$(echo "$R" | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed.*/\2/p')"
-    emit rill:oracle-same "$(echo "$O" | sed -n 's/^\([0-9]*\) the same, \([0-9]*\) different.*/\1/p')"
-    emit rill:oracle-different "$(echo "$O" | sed -n 's/^\([0-9]*\) the same, \([0-9]*\) different.*/\2/p')"
+echo "== the command model =="
+if [ -x ./relf64 ]; then
+    R=$(sh tests/cm/run < /dev/null 2>&1 | tail -1)
+    emit cm:passed "$(echo "$R" | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed.*/\1/p')"
+    emit cm:failed "$(echo "$R" | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed.*/\2/p')"
 else
-    for k in rill:passed rill:failed rill:oracle-same rill:oracle-different; do emit "$k" skipped; done
+    for k in cm:passed cm:failed; do emit "$k" skipped; done
 fi
 
 # ---------------------------------------------------------------

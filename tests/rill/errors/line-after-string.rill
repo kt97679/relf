@@ -1,4 +1,0 @@
-# the line after a string over two lines (789)
-s = "two
-lines"
-echo {nonesuch()}

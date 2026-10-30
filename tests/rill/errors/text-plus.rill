@@ -1,3 +1,0 @@
-# + joins no texts: one way, interpolation (800)
-name = "build"
-echo {$name + ".log"}

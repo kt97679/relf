@@ -1,8 +1,0 @@
-# a loop of arithmetic in Rill, Rill 2 and the command model (865): the sum of i * i below 1000000
-s = 0
-i = 0
-while i < 1000000 {
-    s = s + i * i
-    i = i + 1
-}
-print(s)

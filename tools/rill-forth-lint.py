@@ -21,8 +21,10 @@ mechanical guard. Checked in every colon definition of rill/*.4:
 
 Also cm/*.4, the command model's runtime, and tests/cm/*.4 - programs,
 loaded when they run, like a .fth: they may use ['] in a definition,
-may repeat each other's helpers, and may not take a name rill2's image
-or cm's runtime has (855: L! and KEY).
+may repeat each other's helpers, and may not take a name the image
+beneath them has - the Forth libraries, Rill's runtime, the line editor
+- or another cm file has (855: L! and KEY; 871: the image the command
+model's own, Rill's and Rill 2's retired).
 
 Exit status 1 on any finding.
 """
@@ -85,12 +87,15 @@ for f in sorted(srcs):
     for n in names(plain):
         if n in seen: print('%s: %s is defined again - %s has it (the later hides the earlier)' % (f, n, seen[n])); found += 1
         else: seen[n] = f
-# cm's runtime is loaded on rill2's image: a name of its own that the image has, or another cm file has,
-# hides one (855) - Rill's compiler, in another image, is no matter
+# cm's files are loaded on the image beneath them (871: tools/build-cm-image.sh's, Rill 2's before): a name
+# of their own that it has, or another cm file has, hides one (855)
 image2 = set()
-for g in ['rill/rt.4', 'rill/regex.4'] + sorted(glob.glob('rill2/*.4')):
-    image2 |= set(names(open(g).read()))
-cm_defined = set(image2)                                            # what cm's files may use: rill2's image and cm (858: -ROT)
+for g in ['forth/extend.4', 'forth/safety.4', 'forth/pool.4', 'forth/shadow.4', 'forth/save-system.4', 'rill/rt.4', 'shell/edit.4']:
+    t = open(g).read()
+    if g == 'shell/edit.4':                                         # without its TAB completion, as the build cuts it
+        t = re.sub(r'(?ms)^\\ ---- completion: TAB ----.*?(?=^\\ ---- reverse incremental history search)', '', t)
+    image2 |= set(names(t))
+cm_defined = set(image2)                                            # what cm's files may use: the image beneath and cm (858: -ROT)
 for g in glob.glob('cm/*.4'): cm_defined |= {m.upper() for m in re.findall(r'(?m)(?:^|\s):\s+(\S+)', open(g).read())}
 cm_seen = {}
 def cm_names(text):
@@ -101,8 +106,8 @@ def cm_names(text):
     return own + sorted({n for b in blocks for n in names(b)})      # once each - but beside its own words too (867)
 for f in sorted(x for x in srcs if x.startswith('cm/')):
     for n in cm_names(srcs[f]):
-        if f == 'cm/values.4' and (n in image2 or n == 'D+'): pass   # rill2.4's values, the cm image's own (870): D+ as rill2.4's
-        elif n in image2 or n in kernel: print("%s: %s is defined again - rill2's image has it" % (f, n)); found += 1
+        if f == 'cm/values.4' and n == 'D+': pass                     # the values' + over the kernel's double +, as rill2.4's was (870)
+        elif n in image2 or n in kernel: print("%s: %s is defined again - the image beneath has it" % (f, n)); found += 1
         elif n in cm_seen: print('%s: %s is defined again - %s has it' % (f, n, cm_seen[n])); found += 1
         else: cm_seen[n] = f
 for f, s in srcs.items():

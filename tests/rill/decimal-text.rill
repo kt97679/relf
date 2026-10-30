@@ -1,5 +1,0 @@
-# decimal() reads its text whole (811): it read the digits before anything it did not know and
-# dropped the rest - "1e3" gave 1.0, "1.5x" 1.5
-echo {decimal("1e3")} {decimal("-2.5e-1")} {decimal("12")} {decimal(".5")} {decimal("0.1234567")} {decimal("7E2")}
-echo {09223372036854.775807} {00.5} {-0012.25}   # leading zeros: the image's compiler called the first too big (817)
-echo {decimal("1.5x")}

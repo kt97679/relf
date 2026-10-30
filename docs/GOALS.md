@@ -242,59 +242,19 @@ the account of what each gained and cost.
    points - Devanagari's vowel signs among them). Nine scripts' cases
    match bash's readline; four are in the interactive suite.
 
-15. **Rill**, the work now (the language: RILL-REFERENCE.md; how it got
-   here: RILL-ROADMAP.md). The user's rule since 799: one way for each
-   operation, and what a common command does well left to the command -
-   799-802 took out the duplicates. Since 810 (QUESTIONS.md A35): a general
-   shell and script language, minimal and simple; the rewrites judged
-   together for length (tools/rill-audit.py; a rewrite past 5 % longer names
-   its reason in examples/rill/MANIFEST.tsv). Open:
-   - the fuzzer (tools/rill-fuzz.py, 816): run it after any change to
-     either compiler; 817 fixed its seven findings from two runs of seed 816
-     (RILL-ROADMAP.md 817). A longer run, other seeds, is the next look;
-   - **the image's size** (826, at the user's asking): docs/RILL-SIZE.md and
-     tools/rill-size.py - the compiler 43 %, the runtime 22 %, the editor 13 %;
-     six options, the user's to choose: QUESTIONS.md Q39; and the compiler's
-     alternatives - a Forth-style rewrite, an interpreter, a cached compile - Q40;
-   - **a scripting vocabulary on Forth** (829, the user's idea): docs/
-     FORTH-SCRIPTING.md, examples/forth-script/; how far - QUESTIONS.md Q41;
-   - **Rill 2** (834, the user's: the prototype named, its issues mended; 835 its
-     prompt, and lists' functions): docs/RILL2.md, rill2/, bin/rill2, tests/rill2 -
-     Rill kept beside it (A44); what next: Q45;
-   - **on the backburner, the user's word (835)** - Rill's fixes, this first:
-     of the global with its name, shadowed for the call - so a def called
-     meanwhile reads the parameter, and where the kinds differ reads garbage
-     (`@C` for a text); both compilers to give a def's names their own (Q43);
-   - **a minimal parser** (830, the user's direction: regular notation, a small
-     layer): examples/forth-script/mini.4, 12.7 KB against the compiler's 39 - Q42;
-   - **an interactive prompt** (QUESTIONS.md A38; built - 824 the prompt, 825
-     relfsh's editor at it: the user's to try as a shell now): to see if
-     Rill can be the shell people type into - line editing and history,
-     relfsh's editor (shell/edit.4) reused if it can be; the compiler
-     works on whole programs, so a line at a time keeping its variables is
-     the first question. The design, from reading (823): shell/edit.4
-     (860 lines; its entry ED-LINE returns a line and a flag) loads as it is
-     after a shim, rill/edit-shim.4, giving the 21 words it takes from
-     shell.4 a Rill meaning - completion's aliases, functions and builtins
-     none (files and paths still complete), the prompt `rill> ` and its
-     continuation, CHAR-COLS, STR=, N>STR and the like copied; shell/ itself
-     untouched, so the shell's images do not move. The loop: a line - more
-     while a bracket is open - compiled and run under CATCH, an error said
-     and the prompt back, ^C ending the line or the statement running. A
-     line's variables for the next: a prompt mode in compile.4 alone (the
-     prompt is the image's) - globals items, kept declared and set from line
-     to line, defs kept. Tests: stdin not a terminal reads plain lines (the
-     same loop, no editing); a pseudo-terminal case for editing and history.
-     (A7: text blocks built at 823; A37: speed left until a script is slow.
-     And the user's rule: a regression test for every bug found.)
-   (815 fixed what 814 found: a def that only computes is compiled with its
-   parameters as numbers only when its body uses them so - and range(n) of a
-   parameter, which had read its own 0 as n, is no longer such a body.)
-   (Q36 is done: JSON at 811, jobs at 813 - RILL-ROADMAP.md has each. The
-   image since 804: 68,857 bytes to 76,291 at 821 - JSON 3.2 KB, jobs 1.0
-   KB, the rest the fixes' code and messages: the price of general, to watch.)
-   Checks: `sh tests/rill/run` (108), `sh tests/rill/oracle` (61 the same),
-   both again with RILL_GC_STRESS=1 - and, since 819, both in make verify.
+15. **The command model**, the work now (the language: docs/COMMAND-MODEL.md - its
+   rules and "One way"; the design's study: SYNTAX-STUDY.md, SYNTAX-GENES.md). Chosen at
+   867 by the owner's criteria - the smallest binary and image, good speed, short
+   scripts, a consistent and friendly syntax, exactly one way to do each thing - over
+   A.4; Rill (729-833) and Rill 2 (834-862), the attempts before it, retired at 871,
+   their sources, tools, tests and docs out (git keeps them; docs/progress has how
+   they went). The image: tools/build-cm-image.sh, kernel64-cm.img - the kernel, the
+   Forth libraries, Rill's runtime (rill/rt.4, kept: the command model is built on
+   it), relfsh's line editor, cm/*.4; `bin/cm script.cm`, or the prompt with none.
+   Open: a smaller front end (cm/cmc.4, 13 KB of a 66 KB image); a call's remaining
+   cost; whatever the language's first real use finds.
+   Checks: `sh tests/cm/run` - the runtime's tests, the scripts, the prompt's
+   sessions - and again with RILL_GC_STRESS=1; in make verify as cm:passed.
 
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22
    and its added items (prompts/SYNC.md lists them, and how to merge):

@@ -894,6 +894,7 @@ do not trust the absence of a line below.
 - 868 — a call's arguments on the stack, its one value without a list: calls -30%, 2.3 times Rill 2's; slots inline tried, no gain in time
 - 869 — the command model's prompt, one session across lines; every command sets a status; a line goes on after | && ||
 - 870 — the command model's own values (cm/values.4), its library (split, join, keys; $env, $args), numeric texts in $(( )); numbers to programs mended
+- 871 — Rill and Rill 2 retired: one language, the command model's own image (66,338 bytes), bin/cm, tests/cm/run
 
 ### Not tied to an iteration
 

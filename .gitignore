@@ -18,11 +18,10 @@ FATEST2.TXT
 # images stay tracked - cross.4 runs on kernel64.img to produce it, so
 # they are the bootstrap seed and cannot be rebuilt from nothing.
 kernel64-shell.img
-# Rill's image is one too: tools/build-rill-image.sh makes it, and
-# bin/rill makes it again whenever a rill/ source is newer (797);
-# tests/verify's portability check found it neither tracked nor
-# ignored (804).
-kernel64-rill.img
+# The command model's image is one too: tools/build-cm-image.sh makes it, and
+# bin/cm makes it again whenever a source is newer (871; Rill's image was
+# here before, 797-870).
+kernel64-cm.img
 kernel32-shell.img
 
 # The engines are build products - 40 KB of C through cc. They were
@@ -106,5 +105,3 @@ native-kcut10.4
 native-os.4
 relfsh-native
 native-kernel.map
-kernel64-rill2.img
-kernel64-cm.img

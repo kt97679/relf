@@ -1,5 +1,0 @@
-# a value returned by a def that names no kind (805): it was left on the stack, a cell a call
-def g(a) {
-    return $a
-}
-g(1)

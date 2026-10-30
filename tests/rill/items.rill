@@ -1,6 +1,0 @@
-# an item of a list compared with a text, either side (749: the Forth compiler read the wrong
-# stack place for the right side's kind, and only the search's workloads had this)
-toks = words("a : b")
-if ($toks[1] == ":") { echo left item }
-if (":" == $toks[1]) { echo right item }
-if ($toks[0] != ":") { echo not equal }

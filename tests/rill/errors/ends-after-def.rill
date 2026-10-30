@@ -1,2 +1,0 @@
-# a def whose body never opens (817): rillc.py raised IndexError, the image's compiler faulted
-def f() }

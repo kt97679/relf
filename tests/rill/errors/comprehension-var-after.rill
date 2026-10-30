@@ -1,3 +1,0 @@
-# a comprehension variable read after it (808): it was the script's, and gave the last item
-last = [$q for q in [1, 2]]
-echo $q

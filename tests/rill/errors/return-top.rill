@@ -1,3 +1,0 @@
-# return at the top level (805): exit ends a script
-echo start
-return

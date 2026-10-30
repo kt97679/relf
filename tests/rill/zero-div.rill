@@ -1,4 +1,0 @@
-# division by zero: an error naming the line (794)
-n = 0
-echo {7 / 2} {-7 % 3} {sum([1, 2.5, 3])}
-echo {1 / $n}

@@ -1,8 +1,0 @@
-# <, <=, >, >= on texts: by their bytes, as Python's order of str (786) - tests/rill/order.py
-words = ["apple", "Apple", "banana", "app", "", "été", "zebra", "10", "9"]
-for a in ["apple", "app", "été", "9"] {
-    echo $a {join([$w for w in $words if $a < $w], " ")} {len([$w for w in $words if $a >= $w])}
-}
-x = $words[1]
-if ($x > "A") { echo "an item and a text" }
-echo {"b" > "a"} {"a" <= "a"} {"Z" < "a"}

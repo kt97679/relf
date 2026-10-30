@@ -1,3 +1,0 @@
-# x[i] -= v gone: one way, x[i] = $x[i] - v (800)
-l = [5]
-l[0] -= 1

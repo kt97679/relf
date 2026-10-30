@@ -1,2 +1,0 @@
-# a for takes a name - a number is none (817): both compilers took it, as a variable named 5
-for 5 in [1] { echo x }

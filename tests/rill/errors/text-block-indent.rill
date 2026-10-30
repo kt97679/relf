@@ -1,5 +1,0 @@
-# a line of a text block indented less than its closing """ (823)
-x = """
-      one
-    two
-      """

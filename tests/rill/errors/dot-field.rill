@@ -1,3 +1,0 @@
-# a field is $r[f]: one way (801)
-r = {a: 1}
-echo {$r.a}

@@ -2,12 +2,13 @@
 # Rows: axis (an independent choice a design makes), value (one way to make it, who makes it so, and
 # whether a front end here has it), rule (two values that cannot go together, or one that needs another).
 # Read by tools/syntax-space.py. "here": the front ends of this repository that have the value -
-# relfsh (POSIX), rill2 (A-like), cm (the command model, tools/cmc.py and cm/cmc.4); "-" none.
+# relfsh (POSIX), cm (the command model, cm/cmc.4); "-" none. (rill2, A-like, retired at 871: a system
+# in "used by" still, as one surveyed.)
 # Groups: L lexical (renames - no semantics), S structural (a parser's shape), V values (the runtime's
 # model too), F where the front end lives. Sources: docs/SYNTAX-GENES.md, docs/SYNTAX-STUDY.md.
 # kind	axis	value	used by	here	note
 axis	L1	comments		-	what starts a comment
-value	L1	hash-word	sh rc fish Elvish Nushell PowerShell Ion C.2	relfsh rill2 cm	# at a word's start to the line's end
+value	L1	hash-word	sh rc fish Elvish Nushell PowerShell Ion C.2	relfsh cm	# at a word's start to the line's end
 value	L1	dashdash	Lua	-	-- to the line's end
 value	L1	backslash	Forth cosh	-	\ to the line's end, a word of its own
 axis	L2	keywords		-	the spelling of the defining words: def / fn / proc / function / :
@@ -23,7 +24,7 @@ value	L3	open-bracket	C.2 Nushell Python	cm	inside an open ( [ { and after | && 
 value	L3	both	Elvish YSH	-	
 axis	S1	variable-read		-	how a variable's value is read
 value	S1	dollar-everywhere	sh rc fish Elvish Nushell PowerShell Tcl murex C.2	relfsh cm	$x in commands and in arithmetic
-value	S1	dollar-in-commands	YSH rill2	rill2	$x in commands, x bare in expressions
+value	S1	dollar-in-commands	YSH rill2	-	$x in commands, x bare in expressions
 value	S1	bare-everywhere	Hush zx xonsh-python Lua	-	x bare; commands quoted or in their own blocks
 value	S1	sigil-by-kind	Ion Perl	-	$x a text, @x a list
 value	S1	stack	Forth cosh Joy	-	no variable needed: values on a stack
@@ -32,7 +33,7 @@ value	S2	name-eq	sh rc	relfsh	x=v, no blanks
 value	S2	set-word	Tcl fish	-	set x v
 value	S2	keyword-eq	Elvish Nushell YSH Ion Lua	cm	cm's gene s2 (865)var x = v / let x = v
 value	S2	sigil-eq	PowerShell murex	-	$x = v
-value	S2	bare-eq	Rill xonsh-python	rill2	x = v
+value	S2	bare-eq	Rill xonsh-python	-	x = v
 value	S2	keyword-word	C.2	cm	var x v; set x v
 value	S2	store	Forth cosh	-	v x ! / v -> x
 axis	S3	block-delimiters		-	how a body is marked out
@@ -42,35 +43,35 @@ value	S3	braces	rc es Elvish Nushell Tcl YSH C.2	cm	{ ... }
 value	S3	indentation	Python xonsh-python	-	
 value	S3	quotation	cosh Joy Factor	-	[ ... ] as a value
 axis	S4	control		-	what if, while and for are
-value	S4	parser-keywords	sh rc fish Ion YSH	relfsh rill2	the parser knows them
+value	S4	parser-keywords	sh rc fish Ion YSH	relfsh	the parser knows them
 value	S4	commands-taking-blocks	Tcl Elvish C.2	cm	ordinary commands; their bodies are blocks
 value	S4	functions-on-fragments	es execline cosh	-	replaceable functions or programs given code
 axis	S5	list-literal		-	how a list is written
 value	S5	none	sh	relfsh	positional parameters only
 value	S5	parens	rc bash	-	(a b c)
 value	S5	brackets	Elvish Nushell Ion C.2	cm	[a b c]
-value	S5	brackets-commas	YSH Python Rill murex	rill2	[a, b, c] in expressions
+value	S5	brackets-commas	YSH Python Rill murex	-	[a, b, c] in expressions
 axis	S6	map-literal		-	how a map is written
 value	S6	none	sh rc fish	relfsh	
 value	S6	amp-brackets	Elvish	-	[&k=v]
-value	S6	braces-colon	Nushell YSH	rill2	{k: v}
+value	S6	braces-colon	Nushell YSH	-	{k: v}
 value	S6	at-braces	PowerShell	-	@{k=v}
 value	S6	brackets-colon	C.2	cm	[k: v], [:]
 axis	S7	capture		-	how a command's output becomes a value
-value	S7	dollar-paren	sh YSH Ion C.2	relfsh rill2 cm	$(cmd)
+value	S7	dollar-paren	sh YSH Ion C.2	relfsh cm	$(cmd)
 value	S7	paren	fish Elvish Nushell	cm	cm's gene s7 (865)(cmd)
 value	S7	backquote-brace	rc es	-	`{cmd}
 value	S7	value-and-list	YSH Ion C.2	cm	$(cmd) one value, @(cmd) its lines or values
 axis	S8	interpolation		-	values inside a quoted text
 value	S8	in-double-quotes	sh fish PowerShell Ion C.2	relfsh cm	"a $x b"
-value	S8	braces-expression	Rill Python-f	rill2 cm	cm's gene s8 (865)"a {x + 1} b"
+value	S8	braces-expression	Rill Python-f	cm	cm's gene s8 (865)"a {x + 1} b"
 value	S8	prefixed-strings	Nushell	-	$"a (expr) b"
 value	S8	none-concatenate	rc es Elvish	-	no interpolation: a^$x^b, or words side by side
 axis	S9	expressions		-	where infix arithmetic and comparison are
 value	S9	arith-brackets	sh C.2	relfsh cm	$(( )) / (( ))
 value	S9	command	fish Elvish expr	-	math 1 + 2 / + 1 2
 value	S9	in-a-mode	YSH PowerShell Nushell	-	infix where the syntax says expression
-value	S9	everywhere	Rill xonsh-python Lua	rill2	
+value	S9	everywhere	Rill xonsh-python Lua	-	
 value	S9	postfix	Forth cosh	-	1 2 +
 value	S9	prefix-lists	scsh Rash Closh	-	(+ 1 2)
 value	S9	prefix-brackets	-	cm	(( + $n 1 )): prefix inside (( )) - cm's gene s9 (865), no precedence to parse
@@ -78,28 +79,28 @@ axis	S10	parameters		-	how a function names its parameters
 value	S10	positional	sh fish	relfsh	$1 $2 / $argv
 value	S10	after-name	es Ion Tcl	-	fn name a b { }
 value	S10	bars-in-block	Elvish Nushell C.2	cm	{|a b| ... }
-value	S10	parens	YSH PowerShell Lua Rill	rill2	(a, b)
+value	S10	parens	YSH PowerShell Lua Rill	-	(a, b)
 value	S10	stack	Forth cosh	-	none: the stack
 axis	S11	spread		-	how a list becomes several arguments
 value	S11	implicit	rc fish es	-	every list spreads
-value	S11	at-sign	YSH PowerShell Ion rill2 C.2	rill2 cm	@x
+value	S11	at-sign	YSH PowerShell Ion rill2 C.2	cm	@x
 value	S11	bracket-at	bash	relfsh	"${a[@]}"
 value	S11	dollar-at	Elvish	-	$@x
 axis	S12	first-word		-	how the first word chooses what runs
 value	S12	lookup-runs	sh rc fish Elvish es	relfsh	builtin, function, then program; the parse is the same
-value	S12	lookup-parses	xonsh rill2	rill2	a known name makes the line code
+value	S12	lookup-parses	xonsh rill2	-	a known name makes the line code
 value	S12	syntax-modes	YSH PowerShell Nushell	-	the first token decides command or expression
 value	S12	marked-commands	Hush zx cosh	-	commands only inside a wrapper, or prefixed
 value	S12	value-runs	C.2 es Elvish	cm	a block, boolean or text as the first word runs (rule 11)
 axis	V1	splitting		-	a substituted value split into words and globbed
 value	V1	split	sh bash	relfsh	
-value	V1	never	rc fish Elvish Nushell YSH Ion C.2	rill2 cm	
+value	V1	never	rc fish Elvish Nushell YSH Ion C.2	cm	
 axis	V2	values		-	what a variable holds
 value	V2	text	sh	relfsh	
 value	V2	flat-lists	rc es fish	-	every value a list of texts
-value	V2	nested	Elvish Nushell PowerShell YSH Tcl murex C.2	rill2 cm	lists and maps in each other
+value	V2	nested	Elvish Nushell PowerShell YSH Tcl murex C.2	cm	lists and maps in each other
 axis	V3	pipes		-	what flows between stages
-value	V3	bytes	sh rc fish Ion	relfsh rill2	
+value	V3	bytes	sh rc fish Ion	relfsh	
 value	V3	typed-bytes	murex	-	bytes, their format named
 value	V3	values-and-bytes	Elvish C.2	cm	values between functions, bytes between programs
 value	V3	objects	PowerShell Nushell	-	records and tables, everywhere
@@ -107,22 +108,22 @@ axis	V4	returns		-	how a function gives its result
 value	V4	status-stdout	sh rc fish	relfsh	
 value	V4	value-output	Elvish C.2	cm	put; a capture collects
 value	V4	output-stream	PowerShell	-	whatever is not captured is returned
-value	V4	return-value	YSH Nushell Rill Lua	rill2	return x / the last expression
+value	V4	return-value	YSH Nushell Rill Lua	-	return x / the last expression
 axis	V5	errors		-	how a failure travels
 value	V5	status	sh rc fish	relfsh	exit statuses, set -e
 value	V5	exceptions	es Elvish Nushell PowerShell YSH	-	
 value	V5	status-strict	C.2	cm	status kept, strict stops unless tested
-value	V5	fatal	rill2	rill2	an error ends the script; nothing catches it
+value	V5	fatal	rill2	-	an error ends the script; nothing catches it
 axis	V6	scope		-	where a name is seen
 value	V6	dynamic	sh bash	relfsh	
-value	V6	lexical	es Elvish Nushell YSH Lua C.2	rill2 cm	
+value	V6	lexical	es Elvish Nushell YSH Lua C.2	cm	
 axis	V7	code-values		-	code as a value
-value	V7	none	sh rc fish	relfsh rill2	
+value	V7	none	sh rc fish	relfsh	
 value	V7	closures	es Elvish Nushell C.2	cm	blocks capture their variables
 value	V7	strings	Tcl	-	code is a string, evaluated when run
 value	V7	quotations	cosh Joy Factor	-	
 axis	F1	front-end		-	where the script is made into code
-value	F1	resident	sh rc fish Elvish Nushell rill2	rill2 cm	the parser in the running image
+value	F1	resident	sh rc fish Elvish Nushell rill2	cm	the parser in the running image
 value	F1	ahead	Rill execline	-	compiled before it runs; the image holds no parser (Rill's rillc.py; execlineb leaves)
 value	F1	overlay	-	cm	the parser loaded only to compile: CM_FRONT=overlay (865)
 rule	excludes	S1=dollar-in-commands	S9=arith-brackets	bare names in expressions need an expression mode

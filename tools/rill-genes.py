@@ -16,7 +16,7 @@ def read_genes(root=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..
         if int(value) not in values[name]: sys.exit('rill-genes: %s=%s is not one of %s' % (name, value, values[name]))
         genes[name] = int(value)
     return genes
-SOURCES = ('rt.4', 'regex.4', 'compile.4')
+SOURCES = ('rt.4',)                                       # Rill's compiler and regex engine retired with it (871)
 def filtered(text, g):
     r"""A Forth source as a genome has it (751): the lines between \ [gene NAME] and \ [/gene] kept only
     when NAME is on, between \ [gene !NAME] and \ [/gene] only when it is off - so a gene's code is

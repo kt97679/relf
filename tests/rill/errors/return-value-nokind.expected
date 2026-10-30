@@ -1,1 +1,0 @@
-g names no kind, so returns no value: def g(...) -> kind

@@ -1,8 +1,0 @@
-7 7 2.5
-true false true true true
-true false true
-0x02 - LIT -
-4 0 5 0
-3 DUP,SWAP
-3 one+two+three
-31 -16 12 10

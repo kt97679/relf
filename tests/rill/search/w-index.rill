@@ -1,6 +1,0 @@
-# selection workload (750): a record with many keys, built and read - rechash
-idx = {}; i = 0
-while ($i < 1200) { idx["k$i"] = $i * 2; i = $i + 1 }
-total = 0; i = 0
-while ($i < 1200) { total = $total + $idx["k{($i * 7) % 1200}"]; i = $i + 1 }
-echo index {len($idx)} $total

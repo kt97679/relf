@@ -1,8 +1,0 @@
-# "$x.f" is x and then the text .f, as the shell reads it; a field is {$r[f]} (787; one way, 801)
-def log-name(name) -> text { return "$name.log" }
-echo {log-name("build")}
-ops = [{name: "DUP", lab: "L_dup"}, {name: "SWAP", lab: "L_swap"}]
-for x in $ops { echo "&&{$x[lab]} for {$x[name]}" }
-r = {a: {b: "deep"}}
-echo "{$r[a][b]}"
-for f in ["one.txt", "two"] { echo "$f.bak" }

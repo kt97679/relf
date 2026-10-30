@@ -1,5 +1,0 @@
-# + past 64 bits: an error naming the line, not a wrapped number (794)
-big = 9223372036854775806
-echo {$big + 1}
-x = $big + 1
-echo {$x + 2}

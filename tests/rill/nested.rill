@@ -1,9 +1,0 @@
-# double quotes inside a string's {...} and $(...): strings of their own (789)
-l = ["a", "b"]
-echo "{join($l, ", ")}"
-echo "[{join($l, "] [")}]"
-r = {name: "x"}
-echo "{$r["name"]} and {trim("{$r[name]}")}"
-echo "{len("a\"b")} {len('it"s')}"
-echo "$(echo "inner quoted")"
-echo "{join(["{1 + 1}", '}{'], "|")}"

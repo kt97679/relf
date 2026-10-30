@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""tools/rill-profile.py [--calls] PROGRAM [ARGS...] - where a Rill program's dispatches go (Iteration 768).
+"""tools/rill-profile.py [--calls] PROGRAM [ARGS...] - where a program's dispatches go (Iteration 768;
+Rill's then, the command model's since 871).
 
-PROGRAM is a .rill - compiled by tools/rillc.py first, so the compiler's
-own work is not counted - or a .4 already compiled. It runs on CV8 with
+PROGRAM is a .cm script, or a .4 of Forth. It runs on CV8 with
 the counting engine tools/profile.py builds (every dispatch counted per
 instruction, in a file mapped MAP_SHARED so forked children count too),
-in kernel64-rill.img. The image is decoded with tools/image-audit.py and
+in kernel64-cm.img, or the image RILL_IMG names. The image is decoded with tools/image-audit.py and
 the counts attributed to its words: each word's own instructions, not
 its callees'. The program's own words - R-MAIN, its defs, compiled when
 it runs - are not in the image file; their dispatches are one line, "the
@@ -28,7 +28,7 @@ args = [a for a in args if a != '--calls']
 if not args:
     sys.exit(__doc__)
 prog, rest = args[0], args[1:]
-IMG = os.environ.get('RILL_IMG', 'kernel64-rill.img')
+IMG = os.environ.get('RILL_IMG', 'kernel64-cm.img')
 
 def patch(text, old, new):
     if text.count(old) != 1:
@@ -47,11 +47,6 @@ src = patch(src, '    NEXT();\ndo_call:',
 open(os.path.join(work, 'prof.c'), 'w').write(src)
 subprocess.run(['cc', '-O2', '-I', 'engine', '-o', engine, os.path.join(work, 'prof.c')], check=True)
 
-if prog.endswith('.rill'):
-    compiled = os.path.join(work, 'prog.4')
-    with open(compiled, 'w') as out:
-        subprocess.run(['python3', 'tools/rillc.py', prog], stdout=out, check=True)
-    prog = compiled
 open(counts, 'wb').write(bytes(SLOTS * 4))
 r = subprocess.run([engine, IMG, prog] + rest, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
 print('ran: %s %s  (status %d)' % (args[0], ' '.join(rest), r.returncode))

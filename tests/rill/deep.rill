@@ -1,9 +1,0 @@
-# recursion past the stacks (818): a Rill error with its line - the kernel's trap said `relf: return
-# stack overflow or data stack underflow`, and then `rill: error -5`, with no line
-def depth(n) -> number {
-    if ($n == 0) { return 0 }
-    return depth($n - 1) + 1
-}
-echo {depth(1000)}
-echo {depth(100000)}
-echo not reached

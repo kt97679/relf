@@ -1,5 +1,0 @@
-# the runtime's own errors (818): each its message and its line, status 2 - they were ABORT"s, which
-# added the word they were in (` R-MAIN`) and then `rill: error -2`, with no line
-for c in ['echo {min([])}', 'echo {max([])}', 'echo {range(1, 5, 0)}', 'echo {split("abc", "")}'] {
-    echo "$(bin/rill -c $c err>out ?? true) - {code((bin/rill -c $c all> /dev/null))}"
-}

@@ -1,5 +1,0 @@
-# echo ... out>err: a line to the err port, without a process (799; warn before)
-name = at($args, 0, nobody)
-echo hello $name
-echo "careful:" $name now out>err
-echo out>err

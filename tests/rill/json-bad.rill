@@ -1,3 +1,0 @@
-# JSON that is not (811): a run-time error saying what and where - Python's json refuses it too
-v = from-json('{"a": 1,}')
-echo not reached

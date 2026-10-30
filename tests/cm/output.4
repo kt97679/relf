@@ -1,6 +1,5 @@
 \ tests/cm/output.4 - the command model's prototype, step 2 (856): values put and captured, bytes
 \ echoed and never captured, the printed form. Each word is what a compiler would make of its comment.
-S" cm/rt-cm.4" INCLUDED  S" cm/out.4" INCLUDED
 : T$ ( c-addr u --- item )   R-TEXT K-TEXT R-BOX ;
 : L+ ( list-item v --- list-item )   OVER CELL+ @ R-PUSH ;
 : NEW-L ( --- list-item )   R-NEW-LIST K-LIST R-BOX ;

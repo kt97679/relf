@@ -1,0 +1,18 @@
+#!/bin/sh
+# cm [script.cm [args...]]    run a command-model script (docs/COMMAND-MODEL.md) - or, with none, its prompt;
+#                             a script that starts #!/usr/bin/env cm runs as itself
+# kernel64-cm.img is built first when it is missing or older than its sources.
+self=$0
+while [ -h "$self" ]; do
+    link=$(readlink "$self")
+    case $link in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+root=$(cd "$(dirname "$self")/.." && pwd) || exit 2
+img=$root/kernel64-cm.img
+for src in "$root"/cm/*.4 "$root/rill/rt.4" "$root/rill/genes.tsv" "$root/shell/edit.4"; do
+    if [ ! "$img" -nt "$src" ]; then
+        sh "$root/tools/build-cm-image.sh" "$root/relf64" "$root/forth/kernel64.img" "$img" > /dev/null || exit 2
+        break
+    fi
+done
+exec "$root/relf64" "$img" "$@"

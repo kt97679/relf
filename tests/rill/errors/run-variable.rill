@@ -1,3 +1,0 @@
-# ( name ) runs a program: a variable of that name means $ was left out (805)
-ready = true
-if (ready) { echo yes }

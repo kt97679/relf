@@ -1,7 +1,0 @@
-# sub(text, pattern, replacement): \1 .. \9 the groups, \\ a backslash, as sed's (787) - tests/rill/subst.sh
-echo {sub('while [ $i -lt 2000 ]; do', '-lt ([0-9]+)', '-lt \100')}
-echo {sub("john smith", '([a-z]+) ([a-z]+)', '\2, \1')}
-echo {sub("a-b-c", '-', '\\')}
-echo {sub("x1 y2", '([a-z])([0-9])', '<\2\1>')}
-echo {sub("plain", 'a', 'A')}
-echo {sub("keep \\n as is", 'keep', 'kept')}

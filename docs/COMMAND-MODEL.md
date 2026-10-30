@@ -580,8 +580,10 @@ At 870 its values became its own (cm/values.4): `+` is arithmetic only - texts j
 text that reads as a whole number is that number in `$(( ))`, as the shell's, so `$(( $n + 1 ))` works on a
 program's output. Its library, what values need and programs cannot do: `split $t sep` and `keys $m` put
 each part or key, `join sep items...` one text; with `has`, `count`, `range`, `merge`, `each`. `$env[NAME]`
-reads the environment, `set env[NAME] v` sets it for programs; `$args` is the script's arguments. Still to
-come: Rill's and Rill 2's retirement (one language), then a smaller front end.
+reads the environment, `set env[NAME] v` sets it for programs; `$args` is the script's arguments. At 871
+Rill and Rill 2 were retired - one language: the image is the command model's own (66,338 bytes: Rill's
+regex engine, which nothing of the command model used, left out), `bin/cm` runs it, `tests/cm/run` checks
+it. Still to come: a smaller front end, and a call's remaining cost.
 
 ## What it costs
 
