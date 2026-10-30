@@ -912,6 +912,7 @@ do not trust the absence of a line below.
 - 886 — read name (a line of stdin, while read line) and kind value; three more whole scripts
 - 887 — runtime errors say their line (R-MARK: nothing at run time); three more whole scripts
 - 888 — the owner's decisions recorded (many results one by one, split no exception; strict def scope; size and features balanced); the handoff
+- 889 — a session's start: what the container lacked (cc -m32, five reference shells, gforth, a git identity) now tools/container-setup.sh; the baseline green here; `source` planned
 
 ### Not tied to an iteration
 
