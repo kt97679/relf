@@ -1,0 +1,3 @@
+echo one
+exit 4
+echo never

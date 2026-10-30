@@ -58,6 +58,13 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
 : GLOB ( text --- list )   \ an unquoted word with * or ?, an argument: the paths it matches, sorted - none an error (872)
   DUP D-TEXT R-GLOB DUP R-LEN 0= IF DROP R-ERR> ." cm: no file matches " D-TEXT R-T@ TYPE R-ERR-NL -4004 THROW THEN
   NIP K-LIST R-BOX ;
+: CD-OF ( args --- )   \ cd dir - with none, $env[HOME]: a failure said, status 1, the script going on (873)
+  DUP #ARGS DUP 1 > IF S" cm: cd takes one directory" R-FAIL THEN
+  IF 0 ARGN D-TEXT ELSE DROP S" HOME" R-TEXT R-ENV THEN
+  DUP R-CSTR CHDIR IF R-ERR> ." cm: cd: cannot change to " R-T@ TYPE R-ERR-NL 1 ELSE DROP 0 THEN STATUS ! ;
+: EXIT-OF ( args --- )   \ exit [n]: the script ends - or the prompt - with n, else the last status (873)
+  DUP #ARGS DUP 1 > IF S" cm: exit takes one status" R-FAIL THEN
+  IF 0 ARGN D-NUMERIC D>N ELSE DROP STATUS @ THEN  R-EXIT ;
 : HAS-OF ( args --- )   \ has $m key, has $l value: true if the map has the key, the list the value (865)
   DUP #ARGS 2 <> IF S" cm: has takes a map or list and a value" R-FAIL THEN  DUP 1 ARGN SWAP 0 ARGN D-IN PUT ;
 : FOR-ONE ( args --- args )   \ for x $l: one value, a list - @ spreads it

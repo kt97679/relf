@@ -587,6 +587,11 @@ it. Globbing came at 872, as rule 7 said and the prototype had not done: an unqu
 among a command's words - a program's, a builtin's, a list's - is the paths it matches, sorted (a name
 starting with `.` only for a pattern that does, as the shell's); none an error that names the pattern, as
 zsh and fish have it - one way: quote a pattern to pass it as it is. As var's value it stays itself.
+`cd` and `exit` came at 873 - a shell has to have them, and only a builtin can change the shell's own
+directory: `cd dir`, `cd` alone for `$env[HOME]`, a failure said with status 1 and the script going on;
+`exit n`, or `exit` with the last status, ending a script or the prompt. And the runtime made the command
+model's: its genes fixed, and the 80 words of Rill's that nothing of the command model reaches taken out
+- the image 62,238 bytes - with tools/cm-reach.py in the suite to keep it so.
 Still to come: a smaller front end, and a call's remaining cost.
 
 ## What it costs

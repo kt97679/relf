@@ -1,0 +1,5 @@
+/tmp
+cm: cd: cannot change to /no/such/dir
+cd failed: 1
+/
+status 3

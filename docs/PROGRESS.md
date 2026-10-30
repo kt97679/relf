@@ -896,6 +896,7 @@ do not trust the absence of a line below.
 - 870 — the command model's own values (cm/values.4), its library (split, join, keys; $env, $args), numeric texts in $(( )); numbers to programs mended
 - 871 — Rill and Rill 2 retired: one language, the command model's own image (66,338 bytes), bin/cm, tests/cm/run
 - 872 — globbing: an unquoted word with * or ? among a command's words is its paths; none an error
+- 873 — the runtime made the command model's: genes fixed, 80 unreached words out (image 62,238 bytes); cd and exit
 
 ### Not tied to an iteration
 

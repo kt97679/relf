@@ -1,7 +1,7 @@
 #!/bin/sh
 # tools/build-cm-image.sh [ENGINE] [KERNEL] [OUT] - the command model's image (863, docs/COMMAND-MODEL.md).
 #
-# The kernel, the Forth libraries, Rill's runtime (rill/rt.4, its genes resolved by tools/rill-genes.py)
+# The kernel, the Forth libraries, the runtime (rill/rt.4 - Rill's, the command model's since 871)
 # and relfsh's line editor, its TAB completion cut out, with cm/edit-shim.4; then cm/values.4, cm's runtime
 # (rt-cm, out, ctl, lib, pipe), cm/cmc.4 - the front end - and cm/prompt.4. A script whose name ends .cm is
 # read, made Forth by cm/cmc.4 and run: ./relf64 kernel64-cm.img script.cm; with no script, the prompt.
@@ -9,12 +9,10 @@
 cd "$(dirname "$0")/.." || exit 2
 engine=${1:-./relf64} kernel=${2:-forth/kernel64.img} out=${3:-kernel64-cm.img}
 tmp=$out.tmp.$$
-python3 tools/rill-genes.py --forth > "$tmp.genes.4" || exit 1
-python3 tools/rill-genes.py --source "$tmp.src" || exit 1
 awk '/^\\ Characters. widths on screen/ {p = 1} p {print} p && /^: CHAR-COLS/ {c = 1} c && / ;$/ {exit}' shell/shell.4 > "$tmp.widths.4"
 awk '/^\\ ---- completion: TAB ----/ {skip = 1} /^\\ ---- reverse incremental history search/ {skip = 0} !skip {print}' shell/edit.4 > "$tmp.edit.4"
 {
-    for f in forth/extend.4 forth/safety.4 forth/pool.4 forth/shadow.4 forth/save-system.4 "$tmp.genes.4" "$tmp.src/rt.4" "$tmp.widths.4" cm/edit-shim.4 "$tmp.edit.4" cm/values.4 cm/rt-cm.4 cm/out.4 cm/ctl.4 cm/lib.4 cm/pipe.4 cm/cmc.4 cm/prompt.4; do
+    for f in forth/extend.4 forth/safety.4 forth/pool.4 forth/shadow.4 forth/save-system.4 rill/rt.4 "$tmp.widths.4" cm/edit-shim.4 "$tmp.edit.4" cm/values.4 cm/rt-cm.4 cm/out.4 cm/ctl.4 cm/lib.4 cm/pipe.4 cm/cmc.4 cm/prompt.4; do
         printf 'S" %s" INCLUDED\n' "$f"
     done
     printf ": CM-SUFFIX ( --- c-addr u )   S\" .cm\" ;  ' CM-COMPILE IS R-COMPILE  ' CM-SUFFIX IS R-SUFFIX  ' CM-REPL IS R-REPL-D\n"
@@ -23,7 +21,7 @@ awk '/^\\ ---- completion: TAB ----/ {skip = 1} /^\\ ---- reverse incremental hi
 if [ ! -s "$tmp" ] || grep -qE 'Undefined word|[Uu]nderflow|[Oo]verflow|not unique|Incomplete control' "$tmp.log"; then
     echo "build-cm-image: $out not built; the build said:" >&2
     tr -d '\r' < "$tmp.log" | grep -vE '^(Redefining: |OK$|Welcome to Forth)' | grep -v '^[[:space:]]*$' | head -20 | sed 's/^/    /' >&2
-    rm -rf "$tmp" "$tmp.log" "$tmp.genes.4" "$tmp.src" "$tmp.widths.4" "$tmp.edit.4" "$tmp.values.4"; exit 1
+    rm -rf "$tmp" "$tmp.log" "$tmp.widths.4" "$tmp.edit.4" "$tmp.values.4"; exit 1
 fi
-mv -f "$tmp" "$out"; rm -rf "$tmp.log" "$tmp.genes.4" "$tmp.src" "$tmp.widths.4" "$tmp.edit.4" "$tmp.values.4"
+mv -f "$tmp" "$out"; rm -rf "$tmp.log" "$tmp.widths.4" "$tmp.edit.4" "$tmp.values.4"
 echo "$out: $(wc -c < "$out") bytes"

@@ -2,13 +2,15 @@
 # tests/cm/run - the command model's suite (871: the language's own; Rill's and Rill 2's suites retired with
 # them, tests/rill/run's command-model checks moved here). Its image built (tools/build-cm-image.sh); in it,
 # the runtime's own tests (tests/cm/*.4, driven from Forth), the scripts (tests/cm/scripts/*.cm, each with
-# its output and status) and the prompt's sessions (tests/cm/prompt/*.in, piped). Besides: the Forth lint
-# and the syntax features' table. RILL_GC_STRESS=1 runs it all with a collection at every safe point.
+# its output and status) and the prompt's sessions (tests/cm/prompt/*.in, piped). Besides: the Forth lint,
+# the syntax features' table, and no word of the runtime unreached (tools/cm-reach.py). RILL_GC_STRESS=1 runs it all with a collection at every safe point.
 cd "$(dirname "$0")/../.." || exit 2
 python3 tools/rill-forth-lint.py > /dev/null || { python3 tools/rill-forth-lint.py; echo 'FAIL rill-forth-lint'; exit 1; }   # 742
 pass=0 fail=0
 if python3 tools/syntax-space.py 1000 > /tmp/cm-out.$$ 2>&1; then pass=$((pass + 1))   # the syntax features' table (864)
 else fail=$((fail + 1)); echo "FAIL tools/syntax-space.py"; grep -v '^genomes\|^a uniform\|has .* values' /tmp/cm-out.$$ | head -5; fi
+if python3 tools/cm-reach.py > /tmp/cm-out.$$ 2>&1; then pass=$((pass + 1))      # no runtime word unreached (873)
+else fail=$((fail + 1)); echo "FAIL tools/cm-reach.py"; cat /tmp/cm-out.$$; fi
 if sh tools/build-cm-image.sh ./relf64 forth/kernel64.img /tmp/cm.$$.img > /dev/null 2>&1; then
     for t in tests/cm/*.4; do                                           # the runtime, driven from Forth (855-857)
         printf 'S" %s" INCLUDED\n' "$t" > /tmp/cm-run.$$.4

@@ -28,8 +28,9 @@ VARIABLE CL-FP  VARIABLE CL-LS#  VARIABLE CL-CTL#           \ the session's fram
 VARIABLE CL-RUN-XT   ' CL-RUN CL-RUN-XT !XT
 : CL-BACK ( --- )   \ after an error: the session's frame and nothing deeper, nothing captured, nothing compiling
   CL-FP @ FP !  CL-LS# @ LS# !  CL-CTL# @ CTL# !  0 SINK# !  0 IN# !  0 ENV# !  0 STATE !  R-OUT-BACK ;
-: CL-CAUGHT ( code --- )   \ said already, if cm's or the runtime's; else said here
-  DUP -4100 -3999 WITHIN 0= IF R-ERR> ." cm: error " DUP . R-NL R-OUT-BACK THEN  DROP  0 R-SIGGED !  CL-BACK ;
+: CL-CAUGHT ( code --- )   \ said already, if cm's or the runtime's; else said here - exit ends the prompt (873)
+  DUP -4100 -3999 WITHIN 0= IF R-ERR> ." cm: error " DUP . R-NL R-OUT-BACK THEN
+  DUP -4000 = R-EXITED @ AND IF CL-BACK THROW THEN  DROP  0 R-SIGGED !  CL-BACK ;
 : CM-REPL ( --- )
   -1 SESSION !  0 ISATTY CL-TTY !  CL-MAX ALLOCATE THROW CL-BUF !  R-SIG-CATCH
   SESSION-SLOTS 1+ FRAME  ACT-PUSH D-NUM 0 LS!  FP @ CL-FP !  LS# @ CL-LS# !  CTL# @ CL-CTL# !

@@ -1,3 +1,9 @@
+\ rill/rt.4 - the command model's runtime (873): Rill's (736-870), kept when Rill was retired - values in an
+\ arena and its collector, texts, lists and maps, processes and pipelines, the environment, globs; the boot
+\ word. At 873 its genes fixed at their defaults (the constants below; rill/genes.tsv and tools/rill-genes.py
+\ gone with Rill's search) and the words nothing of the command model reaches taken out - Rill's library,
+\ JSON, jobs' extras, the range and slice forms: in git before 873. Its messages say cm.
+4 CONSTANT G-LISTCAP   4 CONSTANT G-GROWTH   16 CONSTANT G-RECHASH
 \ rill/rt.4 - Rill's runtime, stage 1a (Iteration 736): text values in an
 \ arena, joining them, and the boot word of Rill's image. Loaded after
 \ the Forth libraries the shell's image also loads (SHELL-LANGUAGE.md
@@ -17,9 +23,7 @@ DEFER R-FULL   \ the arena full: R-FULL-IMPL below says why, and where (791)
 : R-TEXT ( c-addr u --- t )   DUP CELL+ R-ALLOT >R  DUP R@ !  R@ CELL+ SWAP MOVE  R> ;
 : R-T@ ( t --- c-addr u )   DUP CELL+ SWAP @ ;
 VARIABLE RB-T
-: R-BYTES ( b1 .. bn n --- t )   \ a text from n bytes on the stack: literals with " or a line end
-  DUP CELL+ R-ALLOT RB-T !  DUP RB-T @ !
-  BEGIN DUP WHILE  1-  SWAP OVER RB-T @ CELL+ + C!  REPEAT DROP  RB-T @ ;
+
 : R-NUM ( n --- t )   DUP ABS 0 <# #S ROT SIGN #> R-TEXT ;
 VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
 : R-CONCAT ( t1 .. tn n --- t )   \ n texts joined, the deepest first
@@ -51,10 +55,7 @@ VARIABLE RL   VARIABLE RJ-SEP
 \ down the return stack for the innermost address in the script's own code:
 \ above the first mark, below HERE. The table lives in the C heap. Gene lines.
 VARIABLE MK-A  VARIABLE MK-N  VARIABLE MK-CAP
-: R-MARK ( n --- )   \ between [ and ], as a statement is compiled
-  MK-N @ MK-CAP @ = IF
-    MK-CAP @ 2* 256 MAX DUP MK-CAP !  2* CELLS  MK-A @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW MK-A ! THEN
-  HERE  MK-A @ MK-N @ 2* CELLS + 2!  1 MK-N +! ;
+
 : MK-LINE ( a --- n )   \ the line whose code holds a; 0: not the script's code
   MK-N @ 0= IF DROP 0 EXIT THEN
   DUP MK-A @ @ U< IF DROP 0 EXIT THEN
@@ -75,12 +76,12 @@ VARIABLE R-OUT-KEPT                       \ the real stdout while an error is to
   R0 @ RP@ ?DO  I @ MK-LINE ?DUP IF ."  (line " 0 <# #S #> TYPE ." )" UNLOOP EXIT THEN  1 CELLS +LOOP ;
 : R-ERR-NL ( --- )   R-WHERE R-NL ;
 : R-FAIL ( c-addr u --- )   R-ERR> TYPE R-ERR-NL -4004 THROW ;   \ a Rill error: its message, its line, status 2 - not ABORT", which
-                                                            \ added the word it was in, then `rill: error -2`, no line (818)
+                                                            \ added the word it was in, then `cm: error -2`, no line (818)
 : R-.N ( n --- )   DUP ABS 0 <# #S ROT SIGN #> TYPE ;   \ a number, no blank after: before " (line n)" (799)
 \ ---- Checked arithmetic (Iteration 794): past 64 bits - a decimal past 9223372036854.775807 - or a division by zero
 \ is an error naming the line, not a wrapped number or the engine's trap. 1+ and 1- stay plain: counting cannot get there.
-: R-OVF ( --- )   R-ERR> ." rill: a number too big for 64 bits (a decimal: past 9223372036854.775807)" R-ERR-NL -4008 THROW ;
-: R-ZDIV ( --- )   R-ERR> ." rill: division by zero" R-ERR-NL -4008 THROW ;
+: R-OVF ( --- )   R-ERR> ." cm: a number too big for 64 bits (a decimal: past 9223372036854.775807)" R-ERR-NL -4008 THROW ;
+: R-ZDIV ( --- )   R-ERR> ." cm: division by zero" R-ERR-NL -4008 THROW ;
 : R-ADD ( a b --- c )   2DUP + >R  R@ XOR SWAP R@ XOR AND 0< IF R> DROP R-OVF THEN R> ;
 : R-MINUS ( a b --- c )   2DUP - >R  OVER XOR  SWAP R@ XOR  AND 0< IF R> DROP R-OVF THEN R> ;
 : R-MUL ( a b --- c )   M*  OVER 0< IF DUP -1 <> ELSE DUP 0<> THEN NIP IF DROP R-OVF THEN ;
@@ -97,16 +98,13 @@ VARIABLE R-OUT-KEPT                       \ the real stdout while an error is to
   DUP R@ U< 0= IF R> R> 2DROP 2DROP R-OVF THEN  R> UM/MOD
   DUP 0< IF R> DROP 2DROP R-OVF THEN  R> IF SWAP IF 1+ THEN NEGATE ELSE NIP THEN ;
 : R-FULL-IMPL ( --- )   \ (791) the arena (128 MB) full: memory is collected between the script's top-level statements only
-  R-ERR> ." rill: out of memory - 128 MB in use since the last collection, which happens between the script's top-level statements, not inside a function"
+  R-ERR> ." cm: out of memory - 128 MB in use since the last collection, which happens between the script's top-level statements, not inside a function"
   R-ERR-NL  -4006 THROW ;
 ' R-FULL-IMPL IS R-FULL
 
-: R-KIND-ERR ( --- )   R-ERR> ." rill: a value of the wrong kind" R-ERR-NL  -4001 THROW ;
+: R-KIND-ERR ( --- )   R-ERR> ." cm: a value of the wrong kind" R-ERR-NL  -4001 THROW ;
 : R-ANY>NUM ( box --- n )   R-UNBOX DUP K-NUM = OVER K-BOOL = OR 0= IF R-KIND-ERR THEN DROP ;
-\ [gene truth]
-: R-ANY>BOOL ( box --- f )   \ an item as a condition (751): an empty text, list or record false
-  R-UNBOX  DUP K-TEXT = OVER K-LIST = OR IF DROP @ 0<> EXIT THEN  K-REC = IF @ @ 0<> EXIT THEN  0<> ;
-\ [/gene]
+
 DEFER R-CONT>TEXT-D   \ a list's or a record's text: R-CONT>TEXT, below (793)
 : R-ANY>TEXT ( box --- t )
   R-UNBOX  DUP K-TEXT = IF DROP EXIT THEN
@@ -126,16 +124,12 @@ DEFER R-CONT>TEXT-D   \ a list's or a record's text: R-CONT>TEXT, below (793)
 : R-INDEX ( l i --- l i' )   \ an index the unsigned test refused: from the end when negative and in the list,
   \ as Python's $l[-1] (771); past either end an error. Reached only where the plain read would fail.
   DUP 0< IF OVER @ OVER + DUP 0< 0= IF NIP EXIT THEN DROP THEN
-  R-ERR> ." rill: index " . ." past a list of " @ R-.N R-ERR-NL -4002 THROW ;
+  R-ERR> ." cm: index " . ." past a list of " @ R-.N R-ERR-NL -4002 THROW ;
 : R-AT ( l i --- box )   OVER @ OVER U> 0= IF R-INDEX THEN  CELLS SWAP 2 CELLS + @ + @ ;
 : R-SET ( box l i --- )   OVER @ OVER U> 0= IF R-INDEX THEN  CELLS SWAP R-ITEMS + ! ;
-: R-EXTEND ( l m --- )   DUP @ 0 ?DO  DUP I R-AT 2 PICK R-PUSH  LOOP 2DROP ;
-: R-BOUND ( n len --- n' )   OVER 0< IF + 0 MAX ELSE MIN THEN ;   \ a slice's bound: negative from the end, within the list
-: R-SLICE ( l a b --- l2 )   \ items a up to (not with) b - negative bounds from the end, as Python's (771)
-  \ The new list in a variable, not on the return stack: inside DO, R@
-  \ is the loop's index - R-JOIN, R-SLICE and R-RANGE faulted on it.
-  R-NEW-LIST RL !  2 PICK @ R-BOUND >R  OVER @ R-BOUND R>
-  2DUP < IF SWAP ?DO  DUP I R-AT RL @ R-PUSH  LOOP ELSE 2DROP THEN  DROP  RL @ ;
+
+   \ a slice's bound: negative from the end, within the list
+
 DEFER R-LIST=-D  DEFER R-REC=-D   \ defined below, with the words they need (782)
 : R-BOX= ( box1 box2 --- f )   \ Python's ==: texts by their bytes, lists and records by what they hold, 1 == 1.0 (782)
   R-UNBOX ROT R-UNBOX                                             ( v2 k2 v1 k1 )
@@ -147,19 +141,13 @@ DEFER R-LIST=-D  DEFER R-REC=-D   \ defined below, with the words they need (782
   DUP K-REC = IF DROP R-REC=-D EXIT THEN
   DROP = ;
 VARIABLE RK-A  VARIABLE RK-U   \ a key's bytes, while it is looked for (775)
-: R-IN ( box l --- f )   \ x in a list - a text compared in place with the items that are texts (775)
-  OVER @ K-TEXT = IF
-    SWAP CELL+ @ DUP CELL+ RK-A ! @ RK-U !  DUP @ SWAP 2 CELLS + @ SWAP
-    0 ?DO  DUP I CELLS + @ DUP @ K-TEXT = IF CELL+ @ DUP @ RK-U @ = IF CELL+ RK-U @ RK-A @ RK-U @ COMPARE 0= IF
-      DROP -1 UNLOOP EXIT THEN ELSE DROP THEN ELSE DROP THEN  LOOP  DROP 0 EXIT THEN
-  0 SWAP DUP @ 0 ?DO  DUP I R-AT 3 PICK R-BOX= IF NIP -1 SWAP LEAVE THEN  LOOP DROP NIP ;
+
 \ records
 VARIABLE RK
 : R-NEW-RECORD ( --- r )   \ keys, values, and a hash table and its size (0 0: none yet; gene rechash, 750)
   4 CELLS R-ALLOT  R-NEW-LIST OVER !  R-NEW-LIST OVER CELL+ !  0 OVER 2 CELLS + !  0 OVER 3 CELLS + ! ;
 : R-KEYS ( r --- l )   @ ;
 : R-VALS ( r --- l )   CELL+ @ ;
-\ [gene rechash]
 : R-HASH ( t --- h )   R-T@ OVER + SWAP 2166136261 ROT ROT ?DO I C@ XOR 16777619 * LOOP ;   \ FNV-1a: its low 32 bits the same, no mask per byte (775)
 : RH-TABLE ( r --- a )   2 CELLS + @ ;
 : RH-CAP ( r --- n )   3 CELLS + @ ;
@@ -183,51 +171,24 @@ VARIABLE RH-R  VARIABLE RH-K
   OVER RH-TABLE 0= IF  DUP G-RECHASH > IF 4 * RH-POW2 RH-BUILD ELSE 2DROP THEN EXIT  THEN
   DUP 2* 2 PICK RH-CAP > IF 4 * RH-POW2 RH-BUILD EXIT THEN
   1- >R  DUP @ R@ R-AT R-UNBOX DROP OVER RH-PROBE  R> 1+ SWAP !  DROP ;
-\ [/gene]
-\ [gene rechash]
 : R-FIND-LINEAR ( key r --- i | -1 )   \ key a text
-\ [/gene]
-\ [gene !rechash]
-: R-FIND ( key r --- i | -1 )   \ key a text
-\ [/gene]
   SWAP DUP CELL+ RK-A ! @ RK-U !  R-KEYS DUP @ SWAP 2 CELLS + @ SWAP      \ 775: each key's bytes compared in place
   0 ?DO  DUP I CELLS + @ CELL+ @  DUP @ RK-U @ = IF CELL+ RK-U @ RK-A @ RK-U @ COMPARE 0= IF DROP I UNLOOP EXIT THEN ELSE DROP THEN  LOOP
   DROP -1 ;
-\ [gene rechash]
 : R-FIND ( key r --- i | -1 )   \ through the table when the record has one
   DUP RH-TABLE IF RH-PROBE @ 1- EXIT THEN  R-FIND-LINEAR ;
-\ [/gene]
 : R-PUT ( box key r --- )
   2DUP R-FIND DUP 0< IF  DROP  >R K-TEXT R-BOX R@ R-KEYS R-PUSH  R@ R-VALS R-PUSH  R>
-\ [gene rechash]
     RH-MAINTAIN
-\ [/gene]
-\ [gene !rechash]
-    DROP
-\ [/gene]
     EXIT  THEN
   ROT DROP SWAP R-VALS SWAP R-SET ;
 : R-GET ( key r --- box )
-  2DUP R-FIND DUP 0< IF DROP DROP R-ERR> ." rill: no field " R-TYPE R-ERR-NL -4003 THROW THEN  ROT DROP SWAP R-VALS SWAP R-AT ;
+  2DUP R-FIND DUP 0< IF DROP DROP R-ERR> ." cm: no field " R-TYPE R-ERR-NL -4003 THROW THEN  ROT DROP SWAP R-VALS SWAP R-AT ;
 : R-HAS ( key r --- f )   R-FIND 0< 0= ;
 \ texts and lists
 VARIABLE SW-END
-: R-SPLIT-WS ( t --- l )   \ the words of a text: runs of bytes above 32 (775: an address walked to an end, no /STRING a byte)
-  R-NEW-LIST >R  R-T@ OVER + SW-END !
-  BEGIN
-    BEGIN DUP SW-END @ < IF DUP C@ 33 < ELSE 0 THEN WHILE 1+ REPEAT
-    DUP SW-END @ <
-  WHILE
-    DUP BEGIN DUP SW-END @ < IF DUP C@ 32 > ELSE 0 THEN WHILE 1+ REPEAT
-    TUCK OVER - R-TEXT K-TEXT R-BOX R@ R-PUSH
-  REPEAT DROP R> ;
-: R-LINES ( t --- l )   \ its lines; a last empty one not counted
-  R-NEW-LIST >R  R-T@
-  BEGIN DUP WHILE
-    2DUP 10 SCAN  2SWAP DROP                       ( a2 u2 a )   \ a2: at the LF, or the end
-    2 PICK OVER - R-TEXT K-TEXT R-BOX R@ R-PUSH
-    DUP IF 1 /STRING THEN
-  REPEAT 2DROP R> ;
+
+
 DEFER R-SHOW-D   \ R-SHOW, below (793)
 : R-ITEM>TEXT ( box --- t )   \ an item among others: a list or a record in it as Rill writes them (793)
   DUP R-UNBOX NIP DUP K-LIST = SWAP K-REC = OR IF R-SHOW-D ELSE R-ANY>TEXT THEN ;
@@ -235,18 +196,10 @@ DEFER R-SHOW-D   \ R-SHOW, below (793)
   RJ-SEP !  0 SWAP  DUP @ 0 ?DO
     I IF RJ-SEP @ ROT 1+ ROT THEN  DUP I R-AT  RJ-SEP @ >R R-ITEM>TEXT R> RJ-SEP !  ROT 1+ ROT   \ an item's own join kept from ours (793)
   LOOP DROP R-CONCAT ;
-: R-WORDS>TEXT ( l --- t )   \ @name in echo's words: each item as a command's argument is (R-ANY>TEXT), a blank between (807)
-  0 SWAP  DUP @ 0 ?DO
-    I IF S"  " R-TEXT ROT 1+ ROT THEN  DUP I R-AT R-ANY>TEXT ROT 1+ ROT
-  LOOP DROP R-CONCAT ;
-: R-RANGE ( a b --- l )   \ range(a, b): a up to, not with, b - Python's (770); empty when b <= a
-  R-NEW-LIST RL !  OVER MAX SWAP ?DO  I K-NUM R-BOX RL @ R-PUSH  LOOP  RL @ ;
+
+
 VARIABLE RG-S  VARIABLE RG-B
-: R-RANGE-STEP ( a b step --- l )   \ range(a, b, step), as Python's: up while below b, or down while above it
-  DUP 0= IF S" rill: range's step is 0" R-FAIL THEN
-  RG-S ! RG-B !  R-NEW-LIST RL !
-  BEGIN DUP RG-S @ 0> IF RG-B @ < ELSE RG-B @ > THEN WHILE  DUP K-NUM R-BOX RL @ R-PUSH  RG-S @ +  REPEAT
-  DROP RL @ ;
+
 CREATE RN-T 40 ALLOT
 : RN-UPPER ( a u --- a' u )   \ hex digits in capitals: the kernel's >NUMBER knows no others (782)
   40 MIN >R RN-T R@ MOVE  RN-T R@ 0 ?DO DUP I + C@ DUP [CHAR] a [CHAR] z 1+ WITHIN IF 32 - THEN OVER I + C! LOOP R> ;
@@ -254,7 +207,7 @@ CREATE RN-T 40 ALLOT
   R-T@ 0 0 2SWAP  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN
   DUP 2 > IF OVER C@ [CHAR] 0 = 2 PICK 1+ C@ 32 OR [CHAR] x = AND ELSE 0 THEN
   BASE @ >R  IF 2 /STRING RN-UPPER HEX ELSE DECIMAL THEN  >NUMBER  R> BASE !
-  NIP IF R-ERR> ." rill: not a number" R-ERR-NL -4004 THROW THEN  0<> OVER 0< OR IF R-OVF THEN  R> IF NEGATE THEN ;   \ past 64 bits (794)
+  NIP IF R-ERR> ." cm: not a number" R-ERR-NL -4004 THROW THEN  0<> OVER 0< OR IF R-OVF THEN  R> IF NEGATE THEN ;   \ past 64 bits (794)
 
 
 \ Commands, pipelines, output captured, ports redirected (stage 1b,
@@ -277,16 +230,11 @@ CREATE RN-T 40 ALLOT
   [CHAR] = SE-B @ SE-U @ + C!
   DUP >R SE-B @ SE-U @ 1+ + SWAP MOVE  0 SE-B @ SE-U @ 1+ R> + + C!
   SE-B @ SE-U @ SE-FIND DUP 0< IF
-    DROP SE-N @ SE-MAX = IF R-ERR> ." rill: setenv: more than 32 names" R-ERR-NL -4007 THROW THEN  SE-N @ 1 SE-N +!
+    DROP SE-N @ SE-MAX = IF R-ERR> ." cm: setenv: more than 32 names" R-ERR-NL -4007 THROW THEN  SE-N @ 1 SE-N +!
   ELSE DUP CELLS SE-A + @ FREE DROP THEN
   CELLS SE-A + SE-B @ SWAP ! ;
 VARIABLE RV-N   VARIABLE RV-V
-: R-ARGV ( t1 .. tn n --- argv )   \ a NUL-ended vector in the arena: "env", what setenv set, the words
-  DUP RV-N !  2 + SE-N @ + CELLS R-ALLOT RV-V !
-  0  RV-V @ RV-N @ SE-N @ + 1+ CELLS + !
-  RV-N @ 0 ?DO  R-CSTR  RV-V @ RV-N @ SE-N @ + I - CELLS + !  LOOP
-  SE-N @ 0 ?DO  I CELLS SE-A + @  RV-V @ I 1+ CELLS + !  LOOP
-  S" env" R-TEXT R-CSTR RV-V @ !  RV-V @ ;
+
 DEFER R-WHICH-D ( t --- t2 | 0 )   \ R-WHICH, defined once R-ENV and R-SPLIT are
 : R-EXECV ( argv --- )   \ (834) with no setenv names, the command itself, found on PATH: one exec, not env's two
   SE-N @ 0= IF  DUP CELL+ @ ?DUP IF DUP CSTRLEN R-TEXT R-WHICH-D ?DUP IF R-CSTR OVER CELL+ SWAP EXECVE DROP THEN THEN  THEN
@@ -315,7 +263,7 @@ VARIABLE RR-N
     RR-T I CELLS + @ -1 = IF  RR-M I CELLS + @  RR-F I CELLS + @  DUP2 DROP
     ELSE
       RR-T I CELLS + @ R-T@  RR-M I CELLS + @  OPEN-FILE IF
-        DROP R-ERR> ." rill: cannot open " RR-T I CELLS + @ R-TYPE R-NL  1 SYS-EXIT
+        DROP R-ERR> ." cm: cannot open " RR-T I CELLS + @ R-TYPE R-NL  1 SYS-EXIT
       THEN
       DUP RR-F I CELLS + @ DUP2 DROP  CLOSE-FILE DROP
     THEN
@@ -370,14 +318,9 @@ VARIABLE PL-DEPTH   VARIABLE PL-SAVED
   PL-IN @ -1 <> IF  PL-IN @ CLOSE-FILE DROP  THEN
   PL-OWN @ IF  PL-OUT @ CLOSE-FILE DROP  THEN
   PL-NEXT @ PL-PREV !  R-RD-RESET ;
-: PL-STAGE ( t1 .. tn n last? --- )   >R R-ARGV R> PL-STAGE-V ;
+
 : PL-STAGE-L ( argl last? --- )   >R R-ARGV-L R> PL-STAGE-V ;
-: R-READ-KEEP ( fd --- t )   \ to its end, one text, as it is (read(), 754)
-  >R  R-TOP @ ALIGNED DUP R-TOP !  DUP CELL+                 ( t p )
-  BEGIN
-    DUP 65536 + R-END @ U> IF R-FULL THEN
-    DUP 65536 R@ READ-SOME DUP 0>
-  WHILE + REPEAT  DROP R> DROP  OVER CELL+ -  OVER !  DUP @ CELL+ ALIGNED OVER + R-TOP ! ;
+
 : R-READ-ALL ( fd --- t )   \ to its end, one text; one trailing newline off
   >R  R-TOP @ ALIGNED DUP R-TOP !  DUP CELL+                 ( t p )
   BEGIN
@@ -397,20 +340,20 @@ VARIABLE PL-DEPTH   VARIABLE PL-SAVED
     ?DUP IF NIP THEN
   LOOP
   -1 PL-DEPTH +!  PL-DEPTH @ IF PL-RESTORE THEN ;            \ the pipeline put aside, back (795)
-: R-EXEC ( t1 .. tn n --- status )   0 PL-BEGIN  -1 PL-STAGE  PL-END ;
+
 VARIABLE R-STATUS
 \ Ending, and what the script is given (Iteration 744)
 CREATE R-NLB 10 C,
-: R-ERR-TYPE ( t --- )   R-T@ 2 WRITE DROP  R-NLB 1 2 WRITE DROP ;   \ to the err port, a line
+   \ to the err port, a line
 VARIABLE R-EXITED   \ `exit` ran: the prompt ends - an error's -4000 (a command failed, $x not set) does not (824)
 VARIABLE R-SIGGED   \ ended by INT or TERM, not by exit: at the prompt, the line ends and the prompt goes on (824)
 : R-EXIT ( n --- )   -1 R-EXITED !  R-STATUS !  -4000 THROW ;            \ exit n
-: R-SIG-EXIT ( sig --- )   -1 R-SIGGED !  128 + R-EXIT ;
+
 VARIABLE R-ON-EXIT-XT
 \ A script with on EXIT runs it when INT or TERM stops it too, and exits 128 + the signal, as the shell's
 \ trap would (786): from the block's registration INT and TERM are caught, and its safe points poll.
 : R-SIG-CATCH ( --- )   2 2 SIGNAL-ACTION DROP  15 2 SIGNAL-ACTION DROP ;
-: R-ON-EXIT ( xt --- )   R-ON-EXIT-XT !  R-SIG-CATCH ;                \ on EXIT { }: run when the script ends
+                \ on EXIT { }: run when the script ends
 : R-RUN-EXIT ( --- )   R-ON-EXIT-XT @ ?DUP IF 0 R-ON-EXIT-XT ! CATCH DROP THEN ;
 \ Jobs (Iteration 813, QUESTIONS.md A36): spawn((cmd)) starts a pipeline and does not wait - its stdin
 \ /dev/null unless redirected, as POSIX has it for & - and returns its last stage's pid; wait(job)
@@ -421,66 +364,34 @@ VARIABLE R-ON-EXIT-XT
 16 CONSTANT JB-MAX
 JB-MAX CELLS BUFFER: JB-KEY   JB-MAX CELLS BUFFER: JB-NP   JB-MAX PL-MAX * CELLS BUFFER: JB-PIDS   VARIABLE JB-N
 : JB-PID ( slot i --- addr )   SWAP PL-MAX * + CELLS JB-PIDS + ;
-: PL-NULL-IN ( --- )   \ spawn's begin: a slot free, and /dev/null the first stage's stdin
-  JB-N @ JB-MAX < 0= IF R-ERR> ." rill: spawn: 16 jobs not waited for already" R-ERR-NL -4004 THROW THEN
-  S" /dev/null" R/O OPEN-FILE THROW  DUP PL-PREV ! PL-FD+ ;
-: PL-SPAWN ( --- job )   \ the pipeline started, not waited for: its pids kept, its last returned
-  PL-NP @ 0 ?DO  PL-PIDS I CELLS + @  JB-N @ I JB-PID !  LOOP
-  PL-NP @  JB-N @ CELLS JB-NP + !
-  PL-PIDS PL-NP @ 1- CELLS + @  DUP JB-N @ CELLS JB-KEY + !  1 JB-N +!
-  R-SIG-CATCH
-  -1 PL-DEPTH +!  PL-DEPTH @ IF PL-RESTORE THEN ;
-: JB-FIND ( job --- slot | -1 )   JB-N @ 0 ?DO DUP I CELLS JB-KEY + @ = IF DROP I UNLOOP EXIT THEN LOOP DROP -1 ;
-: JB-DROP ( slot --- )   \ its place taken by the last job
-  -1 JB-N +!  JB-N @ OVER = IF DROP EXIT THEN
-  JB-N @ CELLS JB-KEY + @  OVER CELLS JB-KEY + !   JB-N @ CELLS JB-NP + @  OVER CELLS JB-NP + !
-  PL-MAX 0 DO  JB-N @ I JB-PID @  OVER I JB-PID !  LOOP  DROP ;
-: R-WAIT-JOB ( pid --- raw )   \ as R-WAIT; but INT or TERM while waiting for a job ends the script now:
-  \ caught without SA_RESTART while it waits (the engine's action 3), or waitpid resumes after the handler
-  \ and the wait goes on - with action 2 the check passed only because timeout signalled the job too
-  2 3 SIGNAL-ACTION DROP  15 3 SIGNAL-ACTION DROP
-  SIGNALS-PENDING ?DUP IF NIP R-SIG-CATCH R-SIG-EXIT THEN
-  DUP WAITPID IF  SIGNALS-PENDING ?DUP IF NIP NIP R-SIG-CATCH R-SIG-EXIT THEN  THEN
-  NIP R-SIG-CATCH  0 SIG-CNT ! ;
-: R-JOB-WAIT ( job --- status )   \ wait(job): its stages waited for; its status as PL-END makes it
-  JB-FIND DUP 0< IF DROP R-ERR> ." rill: wait: no such job" R-ERR-NL -4004 THROW THEN
-  0  OVER CELLS JB-NP + @ 0 ?DO
-    OVER I JB-PID @ R-WAIT-JOB R-DECODE
-    DUP 141 =  I 3 PICK CELLS JB-NP + @ 1- <  AND IF DROP 0 THEN      \ stopped by SIGPIPE before the last stage
-    ?DUP IF NIP THEN
-  LOOP  SWAP JB-DROP ;
+
+
+
+
+
+
 : R-JOBS-STOP ( --- )   \ the script ending: TERM to every stage of every job not waited for
   JB-N @ 0 ?DO  JB-NP I CELLS + @ 0 ?DO  J I JB-PID @ 15 KILL DROP  LOOP  LOOP  0 JB-N ! ;
 : R-ARG ( n --- t )   \ arg(n): the script's nth argument, or empty
   DUP 0< OVER SYS-ARGC < 0= OR IF DROP 0 0 R-TEXT EXIT THEN  SYS-ARG DUP CSTRLEN R-TEXT ;
-: R-SCRIPT ( --- t )   0 R-ARG ;
+
 : R-ARGS ( --- l )   R-NEW-LIST  SYS-ARGC 1 ?DO  I R-ARG K-TEXT R-BOX OVER R-PUSH  LOOP ;
 : R-ENV ( t --- t )   \ env(name): what setenv gave it (783), or the process's
   DUP R-T@ SE-FIND DUP 0< IF DROP R-CSTR GETENV ?DUP IF DUP CSTRLEN R-TEXT ELSE 0 0 R-TEXT THEN EXIT THEN
   CELLS SE-A + @  SWAP R-T@ NIP 1+ +  DUP CSTRLEN R-TEXT ;
-: R-DEFAULT ( t1 t2 --- t )   OVER @ IF DROP ELSE NIP THEN ;     \ the first unless it is empty
-: R-CHECK ( status --- )   \ failure stops the script, with the status
-  ?DUP IF  R-STATUS !  -4000 THROW  THEN ;
+     \ the first unless it is empty
+
 
 VARIABLE PX-XT
-: PX-RUN ( --- )   \ in the child: the def, its failure its status (745)
-  0 R-ON-EXIT-XT !  PX-XT @ CATCH ?DUP IF -4000 = IF R-STATUS @ ELSE 2 THEN SYS-EXIT THEN  0 SYS-EXIT ;
-: PL-STAGE-X ( xt last? --- )   \ a def as a stage: run in a child, as a program would be
-  >R  PL-PREV @ PL-IN !  -1 PL-NEXT !  0 PL-OWN !
-  R> IF  PL-CAPW @ PL-OUT !
-  ELSE  PIPE THROW  DUP PL-FD+ PL-OUT !  DUP PL-FD+ PL-NEXT !  -1 PL-OWN !  THEN
-  FORK DUP 0= IF  DROP  PX-XT !  PL-IN @ PL-OUT @ PL-CHILD  PX-RUN  THEN
-  PL-PIDS PL-NP @ CELLS + !  1 PL-NP +!  DROP
-  PL-IN @ -1 <> IF  PL-IN @ CLOSE-FILE DROP  THEN
-  PL-OWN @ IF  PL-OUT @ CLOSE-FILE DROP  THEN
-  PL-NEXT @ PL-PREV !  R-RD-RESET ;
+
+
 \ echo piped, redirected or captured (807): Rill's echo in a child, as a def is a stage - not /bin/echo,
 \ which took -n from a variable and printed a spread that the shell's own echo did not
 VARIABLE PE-L   \ the stage's words, a list, echo first
 : PE-RUN ( --- )   \ the child: the words after echo, a blank between, a newline - no options
   PE-L @ DUP R-LEN 1 ?DO  I 1 > IF BL EMIT THEN  DUP I R-AT R-ANY>TEXT R-TYPE  LOOP DROP R-NL ;
 VARIABLE PE-XT   ' PE-RUN PE-XT !XT          \ kept as an offset: the image is saved and reloaded
-: PL-ECHO ( argl last? --- )   SWAP PE-L !  PE-XT @XT SWAP PL-STAGE-X ;
+
 \ par for: each body in a child of its own, all waited for at the end (745)
 VARIABLE R-BRK   \ break, from a loop body made a def of its own by a continue
 VARIABLE R-RET   VARIABLE R-RETV   \ return, from such a body: R-RET set, R-RETV the value; each loop passes it on (779)
@@ -489,7 +400,7 @@ VARIABLE R-RET   VARIABLE R-RETV   \ return, from such a body: R-RET set, R-RETV
 \ tools/rillc.py made of a Rill script, evaluated; the image leaves with
 \ status 0.
 : R-SLURP ( c-addr u --- addr len )   \ a whole file, into the heap
-  R/O OPEN-FILE ABORT" rill: cannot open the program" >R
+  R/O OPEN-FILE ABORT" cm: cannot open the program" >R
   R@ FILE-SIZE THROW DROP  DUP ALLOCATE THROW      ( len buf )
   DUP ROT R@ READ-FILE THROW                        ( buf len' )
   R> CLOSE-FILE DROP ;
@@ -526,19 +437,19 @@ DEFER R-SUFFIX ( --- c-addr u )   \ a script's ending: .rill - rill2's image mak
 VARIABLE R-RUN-XT   ' R-RUN R-RUN-XT !XT
 \ A trap in a script (818): a stack's guard page reached - recursion past what the stacks hold - is
 \ Rill's error with its line, not the kernel's `relf: return stack overflow or data stack underflow`
-\ and then `rill: error -5` with none. The engine restarts the VM on fresh stacks inside the runaway
+\ and then `cm: error -5` with none. The engine restarts the VM on fresh stacks inside the runaway
 \ region, so the frames R-WHERE reads are still there. Every other trap stays TRAPPED's.
 : R-TRAP ( n --- )
   DUP -5 = OVER -3 = OR 0= IF TRAPPED EXIT THEN  DROP
-  R-ERR> ." rill: recursion too deep for the stacks" R-ERR-NL
+  R-ERR> ." cm: recursion too deep for the stacks" R-ERR-NL
   HANDLER @ DUP DICT-LIMIT U> SWAP R0 @ U< AND 0= IF 2 SYS-EXIT THEN  -4004 THROW ;
 VARIABLE R-TRAP-XT   ' R-TRAP R-TRAP-XT !XT
 \ A def with locals saves them on the engine's save stack (4096 cells, LSAVE_MAX): some 2,000 levels
-\ of its recursion fill it, and shadow.4's `shadow: save stack overflow` was followed by `rill: error -2`.
+\ of its recursion fill it, and shadow.4's `shadow: save stack overflow` was followed by `cm: error -2`.
 \ The engine calls the word at image offset 8 (shadow.4's LOCALS-FAILED); for Rill's image, this (818).
 : R-LOCALS-FAILED ( n --- )
-  1 = IF R-ERR> ." rill: recursion too deep for the stacks" R-ERR-NL -4004 THROW THEN
-  R-ERR> ." rill: an engine fault - the locals' save stack underflowed" R-ERR-NL -4004 THROW ;
+  1 = IF R-ERR> ." cm: recursion too deep for the stacks" R-ERR-NL -4004 THROW THEN
+  R-ERR> ." cm: an engine fault - the locals' save stack underflowed" R-ERR-NL -4004 THROW ;
 ' R-LOCALS-FAILED START @ -   START @ 8 + !
 : R-BOOT ( --- )
   ALLOC-BUFFERS  R-INIT  R-ARENA-INIT
@@ -549,45 +460,28 @@ VARIABLE R-TRAP-XT   ' R-TRAP R-TRAP-XT !XT
     R-OUT-BACK  R-RUN-EXIT  R-JOBS-STOP               \ on EXIT runs however the script ends - to stdout (821); then its jobs stop (813)
     DUP -4000 = IF  DROP R-STATUS @ SYS-EXIT  THEN    \ a command failed, fail, exit: its status
     DUP -4100 -4000 WITHIN IF  DROP 2 SYS-EXIT  THEN    \ Rill's own errors: their message said already, with the line (781)
-    R-ERR> ." rill: error " . R-NL  2 SYS-EXIT
+    R-ERR> ." cm: error " . R-NL  2 SYS-EXIT
   THEN  R-OUT-BACK  R-RUN-EXIT  R-JOBS-STOP  R-ON-EXIT-XT @ IF R-SIGNAL ?DUP IF 128 + SYS-EXIT THEN THEN  0 SYS-EXIT ;   \ a signal at the very end: 128 + it (786)
 
 \ ---- The library for the Python-born scripts (Iteration 754) ----------------
 \ Texts, files, records sorted and sliced, and decimals: fixed point, six
 \ places (733's decision), a number scaled by a million - a library over */,
 \ the engine unchanged.
-: R-READ ( path --- t )   \ read(path): the file's whole text
-  DUP R-T@ R/O OPEN-FILE IF DROP R-ERR> ." rill: cannot read " R-TYPE R-ERR-NL -4006 THROW THEN
-  NIP DUP >R R-READ-KEEP R> CLOSE-FILE DROP ;
-: R-WRITE ( path t --- )   \ write(path, text): the file made, or made again, holding the text
-  SWAP DUP R-T@ W/O OPEN-FILE IF DROP R-ERR> ." rill: cannot write " R-TYPE R-ERR-NL -4006 THROW THEN
-  NIP SWAP R-T@ 2 PICK WRITE-FILE DROP CLOSE-FILE DROP ;
-: R-STARTS ( t prefix --- f )   \ < takes tu: three cells left, not four - a text shorter than the prefix
-  \ dropped a cell too many, and the pilot's 2,402 lines ran the stack under (755)
-  R-T@ ROT R-T@ ( pa pu ta tu ) 2 PICK < IF 2DROP DROP 0 EXIT THEN  OVER COMPARE 0= ;
-: R-ENDS ( t suffix --- f )
-  R-T@ ROT R-T@ 2 PICK OVER > IF 2DROP 2DROP 0 EXIT THEN    ( sa su ta tu )
-  2 PICK - + OVER COMPARE 0= ;
+
+
+
+
 VARIABLE RC-LO  VARIABLE RC-HI  VARIABLE RC-D
-: R-TRIM ( t --- t2 )   \ blanks, tabs and line ends off both ends
-  R-T@  BEGIN DUP IF OVER C@ 33 < ELSE 0 THEN WHILE 1 /STRING REPEAT
-  BEGIN DUP IF 2DUP + 1- C@ 33 < ELSE 0 THEN WHILE 1- REPEAT  R-TEXT ;
+
 : R-CLAMP ( n len --- n' )   OVER 0< IF + 0 MAX ELSE MIN THEN ;     \ negative from the end, as Python's
 : R-TSLICE ( t a b --- t2 )   \ slice(text, a, b): characters a up to (not with) b
   >R >R R-T@ R> R>  2 PICK R-CLAMP  SWAP 2 PICK R-CLAMP SWAP  2DUP > IF DROP DUP THEN
   >R >R DROP R> R>  OVER - >R + R>  R-TEXT ;
 VARIABLE RS-NEW
-: R-RSLICE ( r a b --- r2 )   \ slice(record, a, b): its entries a up to (not with) b
-  R-NEW-RECORD RS-NEW !  2 PICK R-KEYS R-LEN R-CLAMP >R  OVER R-KEYS R-LEN R-CLAMP R>
-  2DUP < IF SWAP ?DO  DUP R-VALS I R-AT  OVER R-KEYS I R-AT R-ANY>TEXT  RS-NEW @ R-PUT  LOOP ELSE 2DROP THEN  DROP  RS-NEW @ ;
-: R-AT-OR ( r key default --- box )   \ at(record, key, default): the field, or the default
-  >R SWAP 2DUP R-HAS IF R> DROP R-GET ELSE 2DROP R> THEN ;
-: R-AT-OR-L ( l i default --- box )   \ at(list, i, default): the item, or the default - i negative from the end (782)
-  >R  DUP 0< IF OVER R-LEN + THEN
-  DUP 0< OVER 3 PICK R-LEN < 0= OR IF 2DROP R> EXIT THEN
-  R-AT R> DROP ;
-: R-AT-OR-ANY ( cbox kbox default --- box )   \ at() on an item: a list's item or a record's field (782)
-  ROT R-UNBOX K-REC = IF ROT R-ANY>TEXT ROT R-AT-OR ELSE ROT R-ANY>NUM ROT R-AT-OR-L THEN ;
+
+
+
+
 40 BUFFER: DT-BUF   VARIABLE DT#
 : DT+ ( c-addr u --- )   DT-BUF DT# @ + SWAP DUP DT# +! MOVE ;
 : R-DEC>TEXT ( d --- t )   \ a decimal as text: its digits, trailing zeros after the point dropped, one kept
@@ -604,7 +498,7 @@ VARIABLE RS-NEW
   OVER @ OVER @ 2DUP <> IF
     2DUP RC-NUMISH? SWAP RC-NUMISH? AND IF 2DROP RC-DEC SWAP RC-DEC SWAP 2DUP = IF 2DROP 0 ELSE < IF -1 ELSE 1 THEN THEN EXIT THEN   \ 1 and 1.5 by value (798)
     > IF 2DROP 1 ELSE 2DROP -1 THEN EXIT THEN
-  DUP K-REC = IF R-ERR> ." rill: records have no order - sort-by(list, field) puts them in a field's order" R-ERR-NL -4001 THROW THEN   \ 798
+  DUP K-REC = IF R-ERR> ." cm: records have no order - sort-by(list, field) puts them in a field's order" R-ERR-NL -4001 THROW THEN   \ 798
   DROP
   DUP K-TEXT = IF DROP CELL+ @ R-T@ ROT CELL+ @ R-T@ 2SWAP COMPARE EXIT THEN
   K-LIST = IF  CELL+ @ SWAP CELL+ @ SWAP
@@ -629,25 +523,20 @@ VARIABLE SP-L  VARIABLE SP-A  VARIABLE SP-U
     OVER SP-U @ SP-A @ SP-U @ COMPARE 0= IF DROP R> - EXIT THEN  1 /STRING
   REPEAT 2DROP R> DROP -1 ;
 : R-SPLIT ( t sep --- l )   \ split(text, sep): the pieces between seps, empty ones kept - Python's
-  R-T@ DUP 0= IF S" rill: split by an empty text" R-FAIL THEN SP-U ! SP-A !  R-NEW-LIST SP-L !  R-T@
+  R-T@ DUP 0= IF S" cm: split by an empty text" R-FAIL THEN SP-U ! SP-A !  R-NEW-LIST SP-L !  R-T@
   BEGIN 2DUP SP-FIND DUP 0< 0= WHILE
     >R OVER R@ R-TEXT K-TEXT R-BOX SP-L @ R-PUSH  R> SP-U @ + /STRING
   REPEAT DROP  R-TEXT K-TEXT R-BOX SP-L @ R-PUSH  SP-L @ ;
-: R-ASSIGN-ANY ( vbox kbox cbox --- )   \ x[k] = v, x an item: a record's field or a list's item
-  R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-PUT ELSE SWAP R-ANY>NUM R-SET THEN ;
-: R-BOOL>TEXT ( f --- t )   IF S" true" ELSE S" false" THEN R-TEXT ;   \ a bool as text (759)
+
+   \ a bool as text (759)
 
 \ ---- What the third pilot needs (Iteration 760) ----------------------------
-: R-FIND-T ( t s --- n )   \ find(text, part): where it first stands, in bytes, or -1 (798)
-  R-T@ SP-U ! SP-A !  R-T@ SP-FIND ;
+
 : R-CONTAINS ( t s --- f )   \ contains(text, part)
   R-T@ SP-U ! SP-A !  R-T@ SP-FIND 0< 0= ;
 VARIABLE RP-NEW
-: R-IN-ANY ( box cbox --- f )   \ in, the container an item: a record's keys, a list's items, a text's parts (798)
-  R-UNBOX DUP K-REC = IF DROP SWAP R-ANY>TEXT SWAP R-HAS EXIT THEN
-  K-TEXT = IF SWAP R-ANY>TEXT R-CONTAINS EXIT THEN  R-IN ;
-: R-REPLACE ( t old new --- t2 )   \ replace(text, old, new): every old made new
-  RP-NEW !  R-SPLIT  RP-NEW @ R-JOIN ;
+
+
 \ Numbers read from text (811): one reader for decimal() and from-json - a sign, digits, a fraction,
 \ an exponent (-?D*(.D*)?([eE][+-]?D+)?, a digit somewhere). With neither fraction nor exponent a
 \ number, checked; with either a decimal of six places, truncated, checked. decimal() read the digits
@@ -677,14 +566,10 @@ VARIABLE NT-INT-XT  ' NT-INT NT-INT-XT !XT   VARIABLE NT-FRAC-XT  ' NT-FRAC NT-F
   NT-E @ 6 +  DUP 0< IF NEGATE NT-M @ SWAP 0 ?DO 10 / LOOP ELSE NT-M @ SWAP 0 ?DO 10 R-MUL LOOP THEN
   R> IF NEGATE THEN K-DEC -1 ;
 : R-TEXT>DEC ( t --- d )   \ decimal(text): "1.021" -> 1021000, "-0.5" -> -500000, "7" -> 7000000, "1e3" -> 1000000000
-  R-T@ R-NUMTEXT 0= IF R-ERR> ." rill: not a decimal" R-ERR-NL -4004 THROW THEN  K-NUM = IF R-N>D THEN ;
+  R-T@ R-NUMTEXT 0= IF R-ERR> ." cm: not a decimal" R-ERR-NL -4004 THROW THEN  K-NUM = IF R-N>D THEN ;
 VARIABLE LM-K
-: R-LMIN ( l --- box )   \ min(list): its least item, as Python's min
-  DUP R-LEN 0= IF S" rill: min of an empty list" R-FAIL THEN
-  DUP 0 R-AT SWAP DUP R-LEN 1 ?DO DUP I R-AT 2 PICK OVER SWAP R-CMP 0< IF ROT DROP SWAP ELSE DROP THEN LOOP DROP ;
-: R-LMAX ( l --- box )   \ max(list): its greatest item
-  DUP R-LEN 0= IF S" rill: max of an empty list" R-FAIL THEN
-  DUP 0 R-AT SWAP DUP R-LEN 1 ?DO DUP I R-AT 2 PICK OVER R-CMP 0< IF ROT DROP SWAP ELSE DROP THEN LOOP DROP ;
+
+
 : R-WHICH ( t --- t2 | 0 )   \ a command's file: itself if it has a /; else the first on PATH that opens (834)
   DUP R-T@ [CHAR] / SCAN NIP IF EXIT THEN
   S" PATH" R-TEXT R-ENV  S" :" R-TEXT R-SPLIT
@@ -692,23 +577,18 @@ VARIABLE LM-K
     DUP R-T@ R/O OPEN-FILE 0= IF CLOSE-FILE DROP NIP NIP UNLOOP EXIT THEN  DROP DROP
   LOOP  2DROP 0 ;
 ' R-WHICH IS R-WHICH-D
-: R-CD ( t --- )   \ cd DIR
-  DUP R-CSTR CHDIR IF R-ERR> ." rill: cd: cannot change to " R-TYPE R-ERR-NL 1 R-STATUS ! -4000 THROW THEN DROP ;
+
 VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
-: R-CWD-PUSH ( --- )
-  CWD-STACK @ 0= IF R-NEW-LIST CWD-STACK ! THEN
-  4096 R-ALLOT DUP 4096 GETCWD DROP R-TEXT K-TEXT R-BOX CWD-STACK @ R-PUSH ;
-: R-CWD-POP ( --- )   CWD-STACK @ DUP R-LEN 1- R-AT R-ANY>TEXT R-CD  -1 CWD-STACK @ +! ;
+
+
 : R-ANY>DEC ( box --- d )   \ an item as a decimal: a decimal, a number, or a text that reads as one
   R-UNBOX DUP K-DEC = IF DROP EXIT THEN  DUP K-NUM = IF DROP 1000000 * EXIT THEN
-  K-TEXT = IF R-TEXT>DEC EXIT THEN  R-ERR> ." rill: not a decimal" R-ERR-NL 1 R-STATUS ! -4000 THROW ;
+  K-TEXT = IF R-TEXT>DEC EXIT THEN  R-ERR> ." cm: not a decimal" R-ERR-NL 1 R-STATUS ! -4000 THROW ;
 1 63 LSHIFT CONSTANT R-NONE   \ a number of the script's that may be read before it is set holds this until it is (785)
-: R-UNSET ( c-addr u --- )   \ a variable read where it may not be set, and it is not (772) - Python's NameError
-  R-ERR> ." rill: $" TYPE ."  is not set" R-ERR-NL  1 R-STATUS !  -4000 THROW ;
-: R-ITEM-ANY ( box n --- box )   >R R-UNBOX K-LIST <> IF R-ERR> ." rill: an index on something not a list" R-ERR-NL -4002 THROW THEN R> R-AT ;   \ $x[i], x an item: checked (801)
-: R-FIELD-ANY ( t box --- box )   R-UNBOX K-REC <> IF R-ERR> ." rill: a field of something not a record" R-ERR-NL -4002 THROW THEN R-GET ;   \ $x[f], x an item: no key boxed (801)
-: R-INDEX-ANY ( kbox cbox --- box )   \ x[k] read through an item: a record's field or a list's item (774)
-  R-UNBOX K-REC = IF SWAP R-ANY>TEXT SWAP R-GET ELSE SWAP R-ANY>NUM R-AT THEN ;
+
+   \ $x[i], x an item: checked (801)
+   \ $x[f], x an item: no key boxed (801)
+
 
 \ ---- Paths (Iteration 782) ------------------------------------------------
 
@@ -760,18 +640,16 @@ VARIABLE GC-C  VARIABLE GC-NEG  VARIABLE GC-HIT  VARIABLE GC-K0
 
 : R-ANY-CMP ( box1 box2 --- n )   \ two items in order: texts by their bytes, numbers and decimals by value; a text and a number cannot be (786)
   OVER R-UNBOX NIP K-TEXT =  OVER R-UNBOX NIP K-TEXT =  2DUP AND IF 2DROP R-ANY>TEXT >R R-ANY>TEXT R> R-TCMP EXIT THEN
-  OR IF R-ERR> ." rill: a text and a number cannot be put in order" R-ERR-NL -4001 THROW THEN
+  OR IF R-ERR> ." cm: a text and a number cannot be put in order" R-ERR-NL -4001 THROW THEN
   R-ANY>DEC >R R-ANY>DEC R>  2DUP < IF 2DROP -1 ELSE > IF 1 ELSE 0 THEN THEN ;
 
-: R-CAP-JOIN ( t1 t2 --- t )   \ $(a ?? b): the two captures as one - a line break between when both said something, as the shell keeps it (787)
-  OVER R-T@ NIP 0= IF NIP EXIT THEN  DUP R-T@ NIP 0= IF DROP EXIT THEN
-  S"  " R-TEXT DUP R-T@ DROP 10 SWAP C!  SWAP 3 R-CONCAT ;
+
 
 : R-NUM-OR-DEC ( box --- v dec? )   DUP R-UNBOX NIP K-DEC = IF R-UNBOX DROP -1 ELSE R-ANY>NUM 0 THEN ;
-: R-CMP-AN ( box n --- v1 v2 )   >R R-NUM-OR-DEC IF R> R-N>D ELSE R> THEN ;      \ an item against a number, on one scale
-: R-CMP-NA ( n box --- v1 v2 )   R-NUM-OR-DEC IF SWAP R-N>D SWAP THEN ;
-: R-ANY-LEN ( box --- n )   R-UNBOX K-REC = IF R-KEYS THEN @ ;   \ len() of an item: a record's fields counted (799)
-: R-ANY-ABS ( box --- box )   R-NUM-OR-DEC IF ABS K-DEC ELSE ABS K-NUM THEN R-BOX ;   \ abs() of an item (799)
+      \ an item against a number, on one scale
+
+   \ len() of an item: a record's fields counted (799)
+   \ abs() of an item (799)
 VARIABLE AR-OP
 : AR-DEC ( v dec? --- d )   0= IF R-N>D THEN ;
 : R-ARITH ( v1 dec1 v2 dec2 op --- box )   \ op 0 + 1 - 2 * 3 / 4 %: a decimal if either is one, else a number
@@ -781,48 +659,23 @@ VARIABLE AR-OP
   ELSE DROP NIP
     AR-OP @ CASE 0 OF R-ADD ENDOF 1 OF R-MINUS ENDOF 2 OF R-MUL ENDOF 3 OF R-DIV ENDOF >R R-MODC R> ENDCASE K-NUM R-BOX
   THEN ;
-: R-ARITH-AN ( box n op --- box )   >R >R R-NUM-OR-DEC R> 0 R> R-ARITH ;
-: R-ARITH-NA ( n box op --- box )   >R R-NUM-OR-DEC ROT 0 2SWAP R> R-ARITH ;
+
+
 : R-ARITH-AA ( box box op --- box )   >R >R R-NUM-OR-DEC R> R-NUM-OR-DEC R> R-ARITH ;
-: R-DEL-L ( l i --- )   \ the item at i (0 to n-1) out
-  >R  DUP R-ITEMS R@ 1+ CELLS +  OVER R-ITEMS R@ CELLS +  2 PICK @ R@ - 1- CELLS MOVE  R> DROP  -1 SWAP +! ;
-: R-AS-LIST ( box --- l )   R-UNBOX K-LIST <> IF R-ERR> ." rill: a spread needs a list" R-ERR-NL -4002 THROW THEN ;   \ @name of an item (799)
-: R-POP-L ( l i --- box )   \ pop(list, i): the item at i, out; negative from the end (799)
-  DUP 0< IF OVER @ + THEN
-  DUP 0< OVER 3 PICK @ < 0= OR IF R-ERR> ." rill: pop: no item " . ." in a list of " @ R-.N R-ERR-NL -4002 THROW THEN
-  2DUP R-AT >R R-DEL-L R> ;
-: R-DEL-R ( r key --- )   \ its field out
-  2DUP SWAP R-FIND DUP 0< IF DROP NIP R-ERR> ." rill: no field " R-T@ TYPE R-ERR-NL -4002 THROW THEN
-  NIP  OVER R-KEYS OVER R-DEL-L  OVER R-VALS SWAP R-DEL-L
-\ [gene rechash]
-  DUP RH-TABLE IF DUP RH-CAP RH-BUILD ELSE DROP THEN      \ the table's slots counted the old places: made again
-\ [/gene]
-\ [gene !rechash]
-  DROP
-\ [/gene]
-  ;
-: R-POP-R ( r key --- box )   2DUP 0 R-AT-OR >R R-DEL-R R> ;   \ pop(record, key): its field's value, out (799)
-: R-POP-ANY ( box kbox --- box )   \ pop() on an item: a list's item or a record's field (799)
-  SWAP R-UNBOX DUP K-REC = IF DROP SWAP R-ANY>TEXT R-POP-R EXIT THEN
-  K-LIST <> IF R-ERR> ." rill: pop needs a list or a record" R-ERR-NL -4002 THROW THEN  SWAP R-ANY>NUM R-POP-L ;
-: R-FIND-L ( l box --- n )   \ find(list, x): x's first index, or -1 (798)
-  SWAP DUP @ 0 ?DO DUP I R-AT 2 PICK R-BOX= IF 2DROP I UNLOOP EXIT THEN LOOP 2DROP -1 ;
-: R-FIND-ANY ( box xbox --- n )   SWAP R-UNBOX K-LIST = IF SWAP R-FIND-L ELSE SWAP R-ANY>TEXT R-FIND-T THEN ;
+
+   \ @name of an item (799)
+
+
+   \ pop(record, key): its field's value, out (799)
+
+
+
 VARIABLE SBL-F  VARIABLE SBL-D
-: SBL-KEY ( box --- box )   R-UNBOX DROP SBL-F @ SWAP R-GET ;
-: SBL-CMP ( b1 b2 --- n )   SBL-KEY SWAP SBL-KEY SWAP R-CMP  SBL-D @ IF NEGATE THEN ;
-: R-SORT-BY-L ( l field order --- l2 )   \ sort-by(list, field, asc|desc): its records by that field, stable (798)
-  S" desc" R-TEXT R-T= SBL-D !  SBL-F !
-  R-NEW-LIST SRT !  DUP R-LEN 0 ?DO DUP I R-AT SRT @ R-PUSH LOOP DROP
-  SRT @ R-LEN 1 MAX 1 ?DO
-    SRT @ I R-AT  I
-    BEGIN DUP 0> IF OVER SRT @ 2 PICK 1- R-AT SBL-CMP 0< ELSE 0 THEN WHILE
-      SRT @ OVER 1- R-AT SRT @ 2 PICK R-SET 1-
-    REPEAT  SRT @ SWAP R-SET
-  LOOP SRT @ ;
-: R-ANY-NEG ( box --- box )   R-NUM-OR-DEC IF NEGATE K-DEC ELSE NEGATE K-NUM THEN R-BOX ;   \ - item: its kind kept (796)
-: R-SUM ( l --- box )   \ sum(list): a decimal among them, a decimal (794: they were taken as whole numbers)
-  0 K-NUM R-BOX SWAP  DUP R-LEN 0 ?DO DUP I R-AT ROT SWAP 0 R-ARITH-AA SWAP LOOP DROP ;
+
+
+
+   \ - item: its kind kept (796)
+
 
 \ ---- Showing a value (Iteration 793): a list or a record inside another, and any record, as Rill writes them -
 \ texts quoted, lists [a b], records {k: v, ...}. A list on its own stays its items with a blank between.
@@ -901,12 +754,12 @@ DEFER R-JSON-D
 \ string a text (\uXXXX as UTF-8, a surrogate pair one character), true and false bools, null an
 \ empty text, a number as decimal() reads one (R-NUMTEXT). Nesting past 200 deep is an error.
 VARIABLE JP  VARIABLE JE  VARIABLE JS  VARIABLE JD   \ the place, the end, the start, the depth
-: J-FAIL ( c-addr u --- )   R-ERR> ." rill: from-json: " TYPE ."  at byte " JP @ JS @ - R-.N R-ERR-NL -4004 THROW ;
+: J-FAIL ( c-addr u --- )   R-ERR> ." cm: from-json: " TYPE ."  at byte " JP @ JS @ - R-.N R-ERR-NL -4004 THROW ;
 : J-END? ( --- f )   JP @ JE @ U< 0= ;
 : J-C ( --- c )   J-END? IF 0 ELSE JP @ C@ THEN ;
 : J-WS ( --- )   BEGIN J-C DUP 32 = OVER 9 = OR OVER 10 = OR SWAP 13 = OR WHILE 1 JP +! REPEAT ;
 : J-EXPECT ( c --- )   J-WS J-C OVER = IF DROP 1 JP +! EXIT THEN
-  R-ERR> ." rill: from-json: " EMIT ."  expected at byte " JP @ JS @ - R-.N R-ERR-NL -4004 THROW ;
+  R-ERR> ." cm: from-json: " EMIT ."  expected at byte " JP @ JS @ - R-.N R-ERR-NL -4004 THROW ;
 : J-WORD ( c-addr u --- )   \ true, false, null: exactly
   JE @ JP @ - OVER < IF 2DROP S" an unknown word" J-FAIL THEN
   TUCK JP @ OVER COMPARE IF DROP S" an unknown word" J-FAIL THEN  JP +! ;
@@ -970,9 +823,7 @@ DEFER J-VALUE-D
     DUP [CHAR] - = OVER NT-D? OR 0= IF S" a value expected" J-FAIL THEN  J-NUMBER SWAP
   ENDCASE ;
 ' J-VALUE IS J-VALUE-D
-: R-FROM-JSON ( t --- box )   \ from-json(t)
-  R-T@ OVER + JE !  DUP JS ! JP !  0 JD !
-  J-VALUE  J-WS J-END? 0= IF S" text after the value" J-FAIL THEN ;
+
 
 \ ---- glob (Iteration 786) -------------------------------------------------
 \ glob(pattern): the paths it matches, sorted - * ? [...] in its last part, the directories before
@@ -1011,12 +862,9 @@ VARIABLE GB-DIR  VARIABLE GB-COMP  VARIABLE GB-OUT  VARIABLE GB-P
 \ f rounds half away from zero on Rill's exact decimals (Python rounds the
 \ binary float's value: the two differ only on an exact tie).
 VARIABLE FM-B  VARIABLE FM-N  VARIABLE FM-CAP  VARIABLE FM-C
-: FM-ROOM ( u --- )   \ room for u more bytes
-  FM-N @ + DUP FM-CAP @ > 0= IF DROP EXIT THEN
-  2* 256 MAX DUP FM-CAP !
-  FM-B @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW FM-B ! ;
-: FM-ADD ( a u --- )   DUP FM-ROOM  TUCK FM-B @ FM-N @ + SWAP MOVE  FM-N +! ;
-: FM-CH ( c --- )   FM-C C!  FM-C 1 FM-ADD ;
+
+
+
 
 \ ---- The collector (Iteration 776) ---------------------------------------
 \ Rill's values live in the arena, which only grew. At a safe point - between two statements of
@@ -1027,12 +875,11 @@ VARIABLE FM-B  VARIABLE FM-N  VARIABLE FM-CAP  VARIABLE FM-C
 \ record or an item, and every top-level loop's source, with its kind (R-ROOT); a literal text
 \ made once (gene littext) is kept outside the arena (R-FIX), as the regex cache's patterns are.
 9 CONSTANT R-ITEM                                     \ an item variable's kind: compile.4's K-ANY
-: R-FIX ( t --- t' )   \ a text copied out of the arena, for good
-  R-T@ DUP CELL+ ALLOCATE THROW >R  DUP R@ !  R@ CELL+ SWAP MOVE  R> ;
+
 512 CONSTANT G-MAXROOTS
 G-MAXROOTS CELLS BUFFER: G-RV   G-MAXROOTS CELLS BUFFER: G-RK   VARIABLE G-RN
 : R-ROOT ( addr kind --- )
-  G-RN @ G-MAXROOTS < 0= IF S" rill: too many variables to collect" R-FAIL THEN
+  G-RN @ G-MAXROOTS < 0= IF S" cm: too many variables to collect" R-FAIL THEN
   G-RK G-RN @ CELLS + !  G-RV G-RN @ CELLS + !  1 G-RN +! ;
 VARIABLE G-OLD  VARIABLE G-END  VARIABLE G-TOP  VARIABLE G-BITS  VARIABLE G-RUNS
 : G-IN? ( a --- f )   DUP G-OLD @ U< 0= SWAP G-END @ U< AND ;
@@ -1082,5 +929,4 @@ DEFER G-MORE ( --- )   \ roots beyond the registered variables - a runtime may a
   G-STRESS @ IF R-TOP @ 65536 + R-GC-AT ! THEN  1 G-RUNS +! ;     \ under stress: again after 64 KB more
 : R-GC? ( --- )   R-TOP @ R-GC-AT @ U> IF R-GC THEN ;   \ a safe point: the compilers put one before each top-level statement
 \ SIGNALS-PENDING scans every flag (~27 ns): looked at every 1024th safe point, and at the first after each command
-: R-GC?S ( --- )   \ a script with on EXIT: a signal caught, then exit 128 + it (786)
-  R-GC?  -1 SIG-CNT +!  SIG-CNT @ 0< IF 1023 SIG-CNT !  R-SIGNAL ?DUP IF R-SIG-EXIT THEN THEN ;
+
