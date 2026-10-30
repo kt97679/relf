@@ -1,8 +1,9 @@
 #!/bin/sh
 # tests/cm/run - the command model's suite (871: the language's own; Rill's and Rill 2's suites retired with
 # them, tests/rill/run's command-model checks moved here). Its image built (tools/build-cm-image.sh); in it,
-# the runtime's own tests (tests/cm/*.4, driven from Forth), the scripts (tests/cm/scripts/*.cm, each with
-# its output and status) and the prompt's sessions (tests/cm/prompt/*.in, piped). Besides: the Forth lint,
+# the runtime's own tests (tests/cm/*.4, driven from Forth - Forth's CR, its \r taken out), the scripts
+# (tests/cm/scripts/*.cm, each with its output and status, as written: a \r in it a failure, 883)
+# and the prompt's sessions (tests/cm/prompt/*.in, piped). Besides: the Forth lint,
 # the syntax features' table, and no word of the runtime unreached (tools/cm-reach.py). RILL_GC_STRESS=1 runs it all with a collection at every safe point.
 cd "$(dirname "$0")/../.." || exit 2
 python3 tools/rill-forth-lint.py > /dev/null || { python3 tools/rill-forth-lint.py; echo 'FAIL rill-forth-lint'; exit 1; }   # 742
@@ -19,12 +20,12 @@ if sh tools/build-cm-image.sh ./relf64 forth/kernel64.img /tmp/cm.$$.img > /dev/
         else fail=$((fail + 1)); echo "FAIL $t"; diff "${t%.4}.expected" /tmp/cm-out.$$ | head -5; fi
     done
     for t in tests/cm/scripts/*.cm; do                                  # the scripts (858-)
-        { timeout 60 ./relf64 /tmp/cm.$$.img "$t" 2>&1; echo "status $?"; } | tr -d '\r' > /tmp/cm-out.$$
+        { timeout 60 ./relf64 /tmp/cm.$$.img "$t" 2>&1; echo "status $?"; } > /tmp/cm-out.$$   # no \r stripped (883)
         if cmp -s /tmp/cm-out.$$ "${t%.cm}.expected"; then pass=$((pass + 1))
         else fail=$((fail + 1)); echo "FAIL $t"; diff "${t%.cm}.expected" /tmp/cm-out.$$ | head -5; fi
     done
     for t in tests/cm/prompt/*.in; do                                   # the prompt (869): a session's lines, piped
-        { timeout 60 ./relf64 /tmp/cm.$$.img < "$t" 2>&1; echo "status $?"; } | tr -d '\r' > /tmp/cm-out.$$
+        { timeout 60 ./relf64 /tmp/cm.$$.img < "$t" 2>&1; echo "status $?"; } > /tmp/cm-out.$$
         if cmp -s /tmp/cm-out.$$ "${t%.in}.expected"; then pass=$((pass + 1))
         else fail=$((fail + 1)); echo "FAIL $t"; diff "${t%.in}.expected" /tmp/cm-out.$$ | head -5; fi
     done

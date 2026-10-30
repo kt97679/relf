@@ -906,6 +906,7 @@ do not trust the absence of a line below.
 - 880 — globs with wildcards in any part of a path
 - 881 — from a whole script: set's keys any words, globs with $s, a capture of nothing no longer crashes
 - 882 — four more whole scripts: echo writes LF, not CR LF; a function after a | reads its input on stdin
+- 883 — the suite keeps carriage returns: a \r coming back fails
 
 ### Not tied to an iteration
 
