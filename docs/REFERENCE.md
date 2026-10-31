@@ -23,7 +23,7 @@ word's first character says what it is - as Forth reads its input:
 | `[` | a list `[a b c]`, or a map `[k: v  j: w]`, `[:]` empty | the matching `]` |
 | `{` | a block `{ cmds }`, `{|a b| cmds }` | the matching `}` |
 | `#` | a comment | the line's end |
-| anything else | plain text - a number if it reads as a whole one, `true` and `false` booleans; with `*` or `?` it globs | a blank, `;`, or a closer |
+| anything else | plain text - a number if written as a whole one is (`42`, `-7`; `01` and `-0` stay texts), `true` and `false` booleans; with `*` or `?` it globs | a blank, `;`, or a closer |
 
 A word ends where its form does: nothing may be glued after a quote, a `]`, a `}` or a `$value` but
 index keys (below), and
@@ -49,7 +49,8 @@ after a `\` that is a word of its own at a line's end:
     echo $(kind hello) $(kind 42) $(kind 1.5) $(kind true) $(kind [a]) $(kind [k: v]) $(kind { })
     # text number text bool list map block
 
-Numbers are whole, 64-bit; wherever one is wanted - `$(( ))`, an index, `range`, `slice`, `exit` - a
+Numbers are whole, 64-bit - -9223372036854775808 to 9223372036854775807, past which arithmetic is an
+error; wherever one is wanted - `$(( ))`, an index, `range`, `slice`, `exit` - a
 text that reads as one does, as `$(f)` gives a def's number back. Lists and maps are held by reference: two variables can hold one list.
 `$l[-1]` is a list's last item. An index may follow any value written in one word - a list or map, a
 text, a capture - as it follows a variable; `@(cmd)[k]` is the k-th of cmd's values, spread if a list:

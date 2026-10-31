@@ -1,0 +1,13 @@
+# a whole script (915), as one would write it
+# keep the newest three backups, cleaning up a scratch file however the script ends
+var dir /tmp/cm-ws7-backups
+rm -rf $dir
+mkdir -p $dir
+for d 01 02 03 04 05 { touch "$dir/backup-2026-10-$d.tar" }
+var scratch "$dir/.lock"
+touch $scratch
+trap { rm -f $scratch } EXIT
+var all [@(glob "$dir/backup-*.tar")]
+var n $(count $all)
+for old @(slice $all 0 -3) { rm $old; echo "removed $(slice $old -21)" }
+echo kept: @(glob "$dir/backup-*.tar" | each {|p| put $(slice $p -21) })

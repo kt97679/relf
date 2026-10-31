@@ -1,0 +1,8 @@
+# a whole script (915), as one would write it
+# a stream through functions: numbers made, filtered, squared, summed
+def numbers {|n| for i @(range $n) { put $i } }
+def evens { each {|x| if $(( $x % 2 == 0 )) { put $x } } }
+def squares { each {|x| put $(( $x * $x )) } }
+def total { var t 0; each {|x| set t $(( $t + $x )) }; put $t }
+echo sum of even squares below 10: $(numbers 10 | evens | squares | total)
+numbers 5 | squares | each {|v| echo "square: $v" }

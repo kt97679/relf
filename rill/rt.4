@@ -113,7 +113,7 @@ DEFER R-LINE. ( n --- )   \ "line n" - the command model's says the file, for a 
 : R-.N ( n --- )   DUP ABS 0 <# #S ROT SIGN #> TYPE ;   \ a number, no blank after: before " (line n)" (799)
 \ ---- Checked arithmetic (Iteration 794): past 64 bits - a decimal past 9223372036854.775807 - or a division by zero
 \ is an error naming the line, not a wrapped number or the engine's trap. 1+ and 1- stay plain: counting cannot get there.
-: R-OVF ( --- )   R-ERR> ." cm: a number too big for 64 bits (a decimal: past 9223372036854.775807)" R-ERR-NL -4008 THROW ;
+: R-OVF ( --- )   R-ERR> ." cm: a number past 64 bits - whole numbers are -9223372036854775808 to 9223372036854775807" R-ERR-NL -4008 THROW ;
 : R-ZDIV ( --- )   R-ERR> ." cm: division by zero" R-ERR-NL -4008 THROW ;
 : R-ADD ( a b --- c )   2DUP + >R  R@ XOR SWAP R@ XOR AND 0< IF R> DROP R-OVF THEN R> ;
 : R-MINUS ( a b --- c )   2DUP - >R  OVER XOR  SWAP R@ XOR  AND 0< IF R> DROP R-OVF THEN R> ;

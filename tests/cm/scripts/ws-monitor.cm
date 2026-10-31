@@ -1,0 +1,19 @@
+# a whole script (915), as one would write it
+# start workers, collect each status, print a padded table
+def pad {|text width| var s "$text"; while $(( $(count $s) < $width )) { set s "$s " }; put $s }
+var jobs [:]
+for name alpha beta gamma {
+    case $name {
+        beta { sh -c 'sleep 0.05; exit 2' & }
+        * { sh -c 'sleep 0.05' & }
+    }
+    set jobs[$name] $job
+}
+echo "$(pad NAME 8)STATUS"
+for name @(keys $jobs) {
+    wait $jobs[$name]
+    var s $status
+    var word ok
+    if $(( $s != 0 )) { set word "failed ($s)" }
+    echo "$(pad $name 8)$word"
+}

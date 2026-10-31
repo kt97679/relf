@@ -1,0 +1,20 @@
+# a whole script (915), as one would write it
+# indented key: value lines into nested maps
+var text 'server:
+  host: example.org
+  port: 8080
+log:
+  level: debug'
+var conf [:]
+var section ''
+for line @(split $text "\n") {
+    var parts [@(split $line ': ')]
+    if match $line '  *' {
+        set conf[$section][$(slice $parts[0] 2)] $parts[1]
+    } else {
+        set section $(slice $parts[0] 0 -1)
+        set conf[$section] [:]
+    }
+}
+echo $conf
+echo "port: $conf[server][port], level: $(upper $conf[log][level])"

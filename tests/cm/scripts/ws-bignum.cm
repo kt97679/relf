@@ -1,0 +1,10 @@
+# a whole script (915), as one would write it
+# numbers near the edge: factorials until they overflow
+var f 1
+var i 1
+while true {
+    set i $(( $i + 1 ))
+    set f $(( $f * $i ))
+    if $(( $i == 20 )) { echo "20! = $f" }
+    if $(( $i == 21 )) { echo never }
+}

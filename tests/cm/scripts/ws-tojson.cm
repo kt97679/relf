@@ -1,0 +1,15 @@
+# a whole script (915), as one would write it
+# a map as JSON, its texts escaped
+def esc {|t| put $(join '\"' @(split $(join '\\' @(split $t '\')) '"')) }
+def json {|m|
+    var parts []
+    for k @(keys $m) {
+        var v $m[$k]
+        case $(kind $v) {
+            number bool { append parts "\"$(esc $k)\": $v" }
+            * { append parts "\"$(esc $k)\": \"$(esc $v)\"" }
+        }
+    }
+    put "{$(join ', ' @parts)}"
+}
+echo $(json [name: 'Ada "the first"'  path: 'C:\temp'  age: 36  ok: true])

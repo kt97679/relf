@@ -1,0 +1,7 @@
+fetching
+compiling
+bundling assets
+linking
+testing
+ran: fetch compile assets build test
+status 0

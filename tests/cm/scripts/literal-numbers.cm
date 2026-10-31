@@ -1,0 +1,5 @@
+# a plain word is a number only as a number is written (915): 01, 007, -0 and twenty digits stay texts - 01 had
+# become 1 (a backup named -01 lost its zero), twenty digits had wrapped; $(( )) reads them as numbers still
+echo 01 007 -0 0 -5 42 $(kind 01) $(kind 42) $(( 01 + 1 )) $(( "007" * 2 ))
+var l [01 02]
+echo $l $l[0] 99999999999999999999 $(kind 99999999999999999999)

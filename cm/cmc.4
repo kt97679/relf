@@ -146,6 +146,8 @@ VARIABLE BARE                                      \ the word read so far: plain
 : NUM? ( c-addr u --- n f )   \ the text -?[0-9]+: its value and true
   OVER C@ [CHAR] - = >R  R@ IF 1 /STRING THEN  R> ROT ROT
   DUP 0= IF DROP 2DROP 0 0 EXIT THEN
+  DUP 18 > IF DROP 2DROP 0 0 EXIT THEN          \ a number as written (915): 01, -0 and 20 digits stay texts -
+  OVER C@ [CHAR] 0 = OVER 1 > 3 PICK OR AND IF DROP 2DROP 0 0 EXIT THEN   \ 01 had become 1, 20 digits wrapped
   0 SWAP 0 DO  OVER I + C@ DUP DIG? 0= IF DROP 2DROP DROP 0 0 UNLOOP EXIT THEN  [CHAR] 0 - SWAP 10 * +  LOOP
   NIP SWAP IF NEGATE THEN -1 ;
 : LITERAL? ( tx --- )   \ a plain word alone: a number, true or false

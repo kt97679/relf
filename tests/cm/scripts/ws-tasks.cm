@@ -1,0 +1,15 @@
+# a whole script (915), as one would write it
+# a task runner: tasks with dependencies, each run once, in order
+var deps [build: [compile assets]  compile: [fetch]  assets: [fetch]  fetch: []  test: [build]]
+var cmds [fetch: 'echo fetching'  compile: 'echo compiling'  assets: 'echo bundling assets'  build: 'echo linking'  test: 'echo testing']
+var done [:]
+def run-task {|name|
+    if has $done $name { return 0 }
+    if ! has $deps $name { echo "no task $name" >&2; return 1 }
+    for d @deps[$name] { run-task $d || return 1 }
+    var words [@(split $cmds[$name] ' ')]
+    $words[0] @(slice $words 1)
+    set done[$name] true
+}
+run-task test
+echo ran: @(keys $done)
