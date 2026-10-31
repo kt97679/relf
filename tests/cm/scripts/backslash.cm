@@ -1,0 +1,13 @@
+# \ at a line's end, a word of its own: the command goes on to the next line (906) - in a list too; a comment
+# may follow it; inside quotes, or inside a word, \ is the text it is
+echo one two \
+     three \
+     four
+printf '%s\n' a \
+    b   # a comment after it
+echo next \   # a comment after the \
+  line
+var l [x \
+ y]
+echo $l
+echo 'a \ in quotes' "and \\ here" back\slash

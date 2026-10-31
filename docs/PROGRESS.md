@@ -929,6 +929,7 @@ do not trust the absence of a line below.
 - 903 — eight more whole scripts: $status in else, a pipeline's function stage redirected; four questions for the owner
 - 904 — else and elif may start the next line after an if's } (a newline before them does not end the command)
 - 905 — del name[k] (lists and maps, in place); & sets $job, wait $job
+- 906 — \ at a line's end, a word of its own, continues the command; glued or mid-line, an error
 
 ### Not tied to an iteration
 

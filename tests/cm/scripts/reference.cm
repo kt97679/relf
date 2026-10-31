@@ -3,6 +3,8 @@
 # -- words and values
 echo plain 'single quoted' "double quoted" 42 -7 1.5 true [a b] [k: v] { }
 echo $(kind hello) $(kind 42) $(kind 1.5) $(kind true) $(kind [a]) $(kind [k: v]) $(kind { })
+printf '%s\n' a \
+    b
 # -- variables
 var name ada
 var l [3 1 2]

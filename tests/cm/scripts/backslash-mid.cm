@@ -1,0 +1,2 @@
+# a \ word in the middle of a line is an error when read (906): it continues a line, at its end
+echo a \ b

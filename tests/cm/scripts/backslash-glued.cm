@@ -1,0 +1,3 @@
+# a \ glued to a line's last word - sh's join - is an error when read (906): a blank before it
+echo a\
+echo b

@@ -36,6 +36,12 @@ Operators are words of their own, with blanks round them: `|` `&&` `||` `&` `>` 
 `&>` `2>&1` `>&2`. Glued to a word, as sh writes `2>/dev/null` or `a|b`, they are an error when the
 script is read. A substituted value is never split into words and never globbed.
 
+A newline ends a command, except after `|`, `&&` or `||`, before `else` or `elif`, inside brackets, and
+after a `\` that is a word of its own at a line's end:
+
+    printf '%s\n' a \
+        b
+
 ## Values
 
     echo $(kind hello) $(kind 42) $(kind 1.5) $(kind true) $(kind [a]) $(kind [k: v]) $(kind { })
@@ -186,7 +192,7 @@ def that uses `return` - past it, `recursion too deep for the stacks`.
 
 - Values are never split or globbed: `"$x"` and `$x` are the same word. Quote to join: `"$dir/file"`.
 - `${x}` only inside `"..."`; `$x` everywhere else. No `$1`: `$args[0]`.
-- Operators need blanks round them: `2> /dev/null`, `a | b`.
+- Operators need blanks round them: `2> /dev/null`, `a | b`; so does a line's closing `\`.
 - `[` is a list, not `test`: `test -f x`, or `$(( ))` for numbers.
 - `if has $m $k`, `if match $t '*.txt'`: statuses, as `test` gives.
 - `$(cmd)` is text - the same as sh's; `@(cmd)` takes a function's values.

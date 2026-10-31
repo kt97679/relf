@@ -168,6 +168,8 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
     GET DUP [CHAR] * = OVER [CHAR] ? = OR IF -1 GLOBW ! THEN T,   \ \ too (867): quotes are the one way to escape
   REPEAT DROP
   TXS @ TXP @ OVER - GLUED? IF S" an operator glued to a word - | > < & and 2> are words of their own, blanks round them" P-ERR THEN
+  TXS @ TXP @ OVER - DUP 1 > IF  + 1- C@ [CHAR] \ =  CUR 10 = CUR 13 = OR AND
+    IF S" a \ that continues the line is a word of its own - a blank before it" P-ERR THEN  ELSE 2DROP THEN   \ (906)
   T)
   DUP NDP @ = IF S" a word was expected" P-ERR THEN
   BARE @ IF DUP N+ NDP @ = IF DUP LITERAL? THEN THEN
@@ -184,9 +186,18 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
   DUP MAP-KEY? 0= IF 2DROP EXIT THEN  N-MP ROT !
   BEGIN DUP @ WHILE  DUP MAP-KEY? 0= IF MAP-ERR THEN  -1 OVER N+ 2 CELLS + +!  NSKIP
     DUP @ 0= IF MAP-ERR THEN  NSKIP  REPEAT DROP ;
+: BS-WORD? ( w --- f )   DUP IF S" \" BARE= THEN ;     \ the word \ - the line goes on (906)
+: BS-AT-END ( --- )   \ after a \ word only blanks or a comment before the line's end: the next line its command's too
+  IN-POS @ BEGIN DUP IN-LEN @ < WHILE
+    IN-TEXT @ OVER + C@ DUP BL = SWAP 9 = OR 0= IF
+      IN-TEXT @ OVER + C@ DUP 10 = OVER 13 = OR SWAP [CHAR] # = OR IF DROP EXIT THEN
+      DROP S" a \ word goes on to the next line - at a line's end; the text \ is '\'" P-ERR THEN
+    1+ REPEAT
+  DROP S" a \ at the end with no line after it" P-ERR ;
 : LIST-P ( --- )   \ [ ... ]: a N-LS of its words - or a map
   NDP @  0 0 N-LS N,
-  BEGIN -1 SKIP-WS CUR [CHAR] ] <> WHILE CUR 0= IF S" ] missing" P-ERR THEN [CHAR] ] WORD-P REPEAT
+  BEGIN -1 SKIP-WS CUR [CHAR] ] <> WHILE CUR 0= IF S" ] missing" P-ERR THEN
+    NDP @ [CHAR] ] WORD-P  DUP BS-WORD? IF BS-AT-END NDP ! ELSE DROP THEN REPEAT   \ a \ at a line's end: as a command's (906)
   GET DROP N)  MAP? ;
 : BLOCK-P ( --- )   \ { |a b| ... }: a N-BK - its parameters' names as leaves, then its commands
   NDP @ 0 0 N-BK N,  0 SKIP-WS
@@ -270,10 +281,12 @@ VARIABLE CUR-CMD                                   \ the command being read, at 
       DROP ?DUP IF N) TOP-END THEN  CUR 0= IF SF-SP @ IF SF-POP THEN THEN  0 0 SKIP-WS CUR  REPEAT
     DUP 0= IF DROP  2 PICK IF S" a closing bracket is missing" P-ERR THEN  IF N) THEN 2DROP R> CUR-CMD ! EXIT THEN
     DUP 4 PICK = IF DROP GET DROP  IF N) THEN 2DROP R> CUR-CMD ! EXIT THEN
-    DUP 10 = 2 PICK 0<> AND IF OVER GOES-ON? 2 PICK ELSE-ON? OR ELSE 0 THEN
+    DUP 10 = 2 PICK BS-WORD? AND IF DROP GET DROP NDP ! CUR-CMD @      \ \ at the line's end: dropped, the line goes on
+    ELSE DUP 10 = 2 PICK 0<> AND IF OVER GOES-ON? 2 PICK ELSE-ON? OR ELSE 0 THEN
     IF DROP GET DROP                                       \ after |, && or ||, or before else or elif: the line goes on
     ELSE DUP 10 = SWAP [CHAR] ; = OR IF GET DROP  IF N) OVER 0= IF TOP-END THEN THEN 0
-    ELSE DUP 0= IF  2 PICK 0= IF NDP @ TOP-CMD ! THEN  NDP @ CUR-CMD !  IN-LINE @ 0 N-CMD N,  THEN SET-FIRST? >R  NDP @ OVER R> IF SET-TARGET-P ELSE WORD-P THEN THEN THEN
+    ELSE DUP 0= IF  2 PICK 0= IF NDP @ TOP-CMD ! THEN  NDP @ CUR-CMD !  IN-LINE @ 0 N-CMD N,  THEN SET-FIRST? >R  NDP @ OVER R> IF SET-TARGET-P ELSE WORD-P THEN
+      DUP BS-WORD? IF BS-AT-END THEN  THEN THEN THEN
   AGAIN ;
 ' CMDS' IS CMDS
 
