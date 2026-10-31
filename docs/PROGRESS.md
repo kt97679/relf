@@ -923,6 +923,7 @@ do not trust the absence of a line below.
 - 897 — var and set give their value's capture's status; | & < > as word breaks proposed (2>/dev/null)
 - 898 — $( ) of a number faster: printed and read back without >NUMBER or # (calls 650 to 280 ms; 890: 87)
 - 899 — a word's first character says what it is; operators words of their own, glued forms errors; "${k}d"; glob
+- 900 — docs/REFERENCE.md, every example run by the suite (tools/reference-check.py); the README names the command model
 
 ### Not tied to an iteration
 
@@ -943,4 +944,5 @@ do not trust the absence of a line below.
 | `docs/progress/0500-0599.md` | 500-599 | closed |
 | `docs/progress/0600-0699.md` | 600-699 | closed |
 | `docs/progress/0700-0799.md` | 700-799 | closed |
-| `docs/progress/0800-0899.md` | 800- | **current** |
+| `docs/progress/0800-0899.md` | 800-899 | closed |
+| `docs/progress/0900-0999.md` | 900- | **current** |

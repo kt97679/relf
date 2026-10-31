@@ -10,7 +10,7 @@ asm:shell 1
 asm:shell-image reproduces
 bundle:pullable 1
 cm:failed 0
-cm:passed 94
+cm:passed 96
 core:4byte 1
 core:8byte 1
 core:okmarkers 2136
@@ -96,6 +96,7 @@ progress:0400-0499 4095444074 179213
 progress:0500-0599 3386922752 197811
 progress:0600-0699 1657887899 171074
 progress:0700-0799 2451783456 113215
+progress:0800-0899 2941197627 128028
 rebuild:kernel32-shell.img reproduces
 rebuild:kernel64-shell.img reproduces
 shell:4byte 1

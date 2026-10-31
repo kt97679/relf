@@ -1,0 +1,71 @@
+# the reference's examples, run (900): docs/REFERENCE.md shows each with what it prints here -
+# tools/reference-check.py, in tests/cm/run, fails if an example line there is not one here
+# -- words and values
+echo plain 'single quoted' "double quoted" 42 -7 1.5 true [a b] [k: v] { }
+echo $(kind hello) $(kind 42) $(kind 1.5) $(kind true) $(kind [a]) $(kind [k: v]) $(kind { })
+# -- variables
+var name ada
+var l [3 1 2]
+var m [name: ada  born: 1815]
+set name grace
+set m[born] 1906
+append l 4 5
+echo $name $l $l[0] $l[-1] $m[born] $(count $l) $(count $m) $(count $name)
+# -- texts
+var k 3
+echo "name: $name, first: $l[0], sum: $(( $l[0] + $l[1] )), line ${k}d" 'no $subst here'
+echo "tab:\tend" "quote: \" backslash: \\"
+# -- arithmetic and comparison
+echo $(( 7 / 2 )) $(( -7 % 2 )) $(( 2 * (3 + 4) )) $(( 3 > 2 )) $(( "abc" == "abc" && !(1 > 2) ))
+# -- control
+for i @(range 4) { if $(( $i == 1 )) { continue } elif $(( $i == 3 )) { break } else { echo i $i } }
+var n 0
+while $(( $n < 3 )) { set n $(( $n + 1 )) }
+echo n $n
+# -- functions
+def greet {|who| echo hello $who }
+def sq {|x| put $(( $x * $x )) }
+def pair { put a b }
+greet world
+echo $(sq 7) [@(pair)] $(count [@(pair)])
+var both [@(pair)]
+var one @(sq 3)
+echo $both $one $(kind $one)
+def find {|x| for v @l { if $(( $v == $x )) { return 0 } }; return 1 }
+if find 4 { echo 4 is in l }
+find 9 || echo 9 is not
+# -- blocks
+var twice {|f x| $f $($f $x) }
+echo $($twice { |v| put $(( $v * 2 )) } 5)
+def counter {|start| var c $start; put [inc: { set c $(( $c + 1 )); put $c }] }
+var ctr @(counter 10)
+$ctr[inc]; $ctr[inc]
+echo counter at $($ctr[inc])
+# -- library
+echo $(join - @(split a,b,,c ,)) $(join ", " x y z)
+for key @(keys [b: 2  a: 1]) { echo key $key }
+echo $(merge [a: 1  b: 2] [b: 3])
+if has [a: 1] a { echo has a }
+if match file.txt '*.txt' { echo matches }
+put x y | each {|v| echo each $v }
+echo $(range 3) @(range 3)
+# -- programs, pipes and redirections
+printf 'b\na\n' | sort
+echo $(printf 'x\ny\n' | wc -l) @(printf 'p\nq\n')
+pair | tr a-z A-Z
+printf 'one\ntwo\n' | each {|line| echo got $line }
+ls /no/such 2> /dev/null || echo status $status
+echo saved > /tmp/cm-ref.txt; echo more >> /tmp/cm-ref.txt; cat < /tmp/cm-ref.txt
+greet file > /tmp/cm-ref.txt
+cat /tmp/cm-ref.txt
+sleep 0 & 
+wait
+echo waited, status $status
+var out $(ls /no/such 2>&1)
+echo var status $status
+# -- the environment and arguments
+set env[CM_REF] hello
+sh -c 'echo program sees $CM_REF'
+echo args $args $(count $args)
+echo $(glob "/tmp/cm-ref.*")
+rm /tmp/cm-ref.txt

@@ -12,6 +12,8 @@ if python3 tools/syntax-space.py 1000 > /tmp/cm-out.$$ 2>&1; then pass=$((pass +
 else fail=$((fail + 1)); echo "FAIL tools/syntax-space.py"; grep -v '^genomes\|^a uniform\|has .* values' /tmp/cm-out.$$ | head -5; fi
 if python3 tools/cm-reach.py > /tmp/cm-out.$$ 2>&1; then pass=$((pass + 1))      # no runtime word unreached (873)
 else fail=$((fail + 1)); echo "FAIL tools/cm-reach.py"; cat /tmp/cm-out.$$; fi
+if python3 tools/reference-check.py > /tmp/cm-out.$$ 2>&1; then pass=$((pass + 1))   # the reference's examples, each run (900)
+else fail=$((fail + 1)); echo "FAIL tools/reference-check.py"; cat /tmp/cm-out.$$; fi
 if sh tools/build-cm-image.sh ./relf64 forth/kernel64.img /tmp/cm.$$.img > /dev/null 2>&1; then
     for t in tests/cm/*.4; do                                           # the runtime, driven from Forth (855-857)
         printf 'S" %s" INCLUDED\n' "$t" > /tmp/cm-run.$$.4

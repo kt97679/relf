@@ -1,0 +1,46 @@
+plain single quoted double quoted 42 -7 1.5 true [a b] [k: v] <block>
+text number text bool list map block
+grace [3 1 2 4 5] 3 5 1906 5 2 5
+name: grace, first: 3, sum: 4, line 3d no $subst here
+tab:	end quote: " backslash: \
+3 1 14 true true
+i 0
+i 2
+n 3
+hello world
+49 [a b] 2
+[a b] 9 number
+4 is in l
+9 is not
+20
+11
+12
+counter at 13
+a-b--c x, y, z
+key b
+key a
+[a: 1  b: 3]
+has a
+matches
+each x
+each y
+0
+1
+2 0 1 2
+a
+b
+2 p q
+A
+B
+got one
+got two
+status 2
+saved
+more
+hello file
+waited, status 0
+var status 2
+program sees hello
+args [] 0
+/tmp/cm-ref.txt
+status 0
