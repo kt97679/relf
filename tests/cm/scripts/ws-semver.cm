@@ -1,0 +1,25 @@
+# a whole script (914), as one would write it
+# compare and sort version numbers
+def newer {|a b|
+    var x [@(split $a .)]
+    var y [@(split $b .)]
+    for i @(range 3) {
+        if $(( $x[$i] > $y[$i] )) { return 0 }
+        if $(( $x[$i] < $y[$i] )) { return 1 }
+    }
+    return 1
+}
+var versions [1.10.0 1.2.3 2.0.0 1.2.10 0.9.9]
+var sorted []
+for v @versions {
+    var out []
+    var placed false
+    for s @sorted {
+        if ! $placed && newer $s $v { append out $v; set placed true }
+        append out $s
+    }
+    if ! $placed { append out $v }
+    set sorted $out
+}
+echo oldest first: @sorted
+echo "newest: $sorted[-1], its major:" [@(split $sorted[-1] .)][0]

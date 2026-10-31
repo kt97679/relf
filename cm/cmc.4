@@ -111,12 +111,17 @@ VARIABLE IN-QU                                     \ reading a "...": ${name} al
     GET DROP CUR NAME0? 0= IF S" ${ wants a name" P-ERR THEN  VAR-P  GET [CHAR] } <> IF S" } missing after ${name" P-ERR THEN EXIT THEN
   CUR NAME0? IF VAR-P EXIT THEN
   S" $" N-TX N, ;
+: IX? ( --- )   \ [key]... after a value written in one word - a list or map, a text, a capture, a spread's capture -
+  \ a N-IX of its keys, after the value (913): as $name[key] is a variable's, so [a b c][1] and $(cmd)[0]
+  CUR [CHAR] [ <> IF EXIT THEN  0 0 N-IX N,
+  BEGIN CUR [CHAR] [ = WHILE  GET DROP 0 SKIP-WS [CHAR] ] WORD-P 0 SKIP-WS
+    GET [CHAR] ] <> IF S" ] missing after a key" P-ERR THEN  REPEAT  N) ;
 : QUOTED-P ( --- )   \ "...": a N-QU of texts - \n, \t and \ before any other character in them - and $s
   0 0 N-QU N,  T0
   BEGIN CUR DUP [CHAR] " <> WHILE
     DUP 0= IF S" a closing quote is missing" P-ERR THEN
     DUP [CHAR] \ = IF DROP GET DROP GET  DUP [CHAR] n = IF DROP 10 THEN  DUP [CHAR] t = IF DROP 9 THEN  T,
-    ELSE [CHAR] $ = IF GET DROP T) -1 IN-QU ! DOLLAR-P 0 IN-QU ! T0 ELSE GET T, THEN THEN
+    ELSE [CHAR] $ = IF GET DROP T) -1 IN-QU ! DOLLAR-P 0 IN-QU ! IX? T0 ELSE GET T, THEN THEN   \ $(cmd)[k] indexed, as in a word
   REPEAT DROP GET DROP T) N) ;
 : SQUOTE-P ( --- )   \ after a ': the text to the next ', a leaf - '' too, an empty text
   T0 BEGIN CUR [CHAR] ' <> WHILE CUR 0= IF S" ' missing" P-ERR THEN GET T, REPEAT  GET DROP  TXS @ TXP @ OVER - N-TX N, T0 ;
@@ -208,11 +213,6 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
       CUR NAME0? 0= IF S" a block's parameters are names between | |" P-ERR THEN
       NAME-P N-TX N,  1 OVER CELL+ +!  REPEAT  GET DROP THEN
   DROP [CHAR] } 0 CMDS N) ;
-: IX? ( --- )   \ [key]... after a value written in one word - a list or map, a text, a capture, a spread's capture -
-  \ a N-IX of its keys, after the value (913): as $name[key] is a variable's, so [a b c][1] and $(cmd)[0]
-  CUR [CHAR] [ <> IF EXIT THEN  0 0 N-IX N,
-  BEGIN CUR [CHAR] [ = WHILE  GET DROP 0 SKIP-WS [CHAR] ] WORD-P 0 SKIP-WS
-    GET [CHAR] ] <> IF S" ] missing after a key" P-ERR THEN  REPEAT  N) ;
 : WORD-ENDS ( closer --- )   \ after a word's form - ] } " ' a $name or $( ): its end, nothing glued (899)
   CUR SWAP WORD-END? 0= IF S" nothing right after a ] } quote or $value - a blank first; a double-quoted text joins texts" P-ERR THEN ;
 : WORD-P' ( closer --- )   \ one word: a N-WRD - what it is said by its first character (899)
@@ -405,7 +405,16 @@ VARIABLE CC-N
   DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
   2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match read kind source glob del slice case trap upper lower" IN-LIST?
   >R DEF-FIND R> OR 0= ;
-: TO-ANDOR ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" &&" BARE= OVER S" ||" BARE= OR IF NIP EXIT THEN NSKIP REPEAT DROP ;
+: CHAIN-ANDOR ( from to --- w )   \ in if's or while's command: && and || in a condition are the condition's (914)
+  SWAP -1 >R
+  BEGIN 2DUP <> WHILE
+    DUP N+ @ N-BK = IF R> DROP 0 >R ELSE
+    DUP S" elif" BARE= IF R> DROP -1 >R ELSE
+    R@ 0= IF DUP S" &&" BARE= OVER S" ||" BARE= OR IF NIP R> DROP EXIT THEN THEN THEN THEN
+    NSKIP REPEAT DROP R> DROP ;
+: TO-ANDOR ( from to --- w )   \ the first && or || between commands - if a && b { } had been if a, then b { } (914)
+  OVER S" if" BARE= 2 PICK S" while" BARE= OR IF CHAIN-ANDOR EXIT THEN
+  SWAP BEGIN 2DUP <> WHILE DUP S" &&" BARE= OVER S" ||" BARE= OR IF NIP EXIT THEN NSKIP REPEAT DROP ;
 : TO-PIPE ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" |" BARE= IF NIP EXIT THEN NSKIP REPEAT DROP ;
 : TO-BLOCK ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP N+ @ N-BK = IF NIP EXIT THEN NSKIP REPEAT DROP ;
 : LAST-W ( from to --- w )   >R BEGIN DUP NSKIP R@ <> WHILE NSKIP REPEAT R> DROP ;
@@ -416,9 +425,11 @@ VARIABLE CC-N
 \ ---- values
 DEFER PIECE ( p --- c-addr u )   DEFER BODY-CODE ( cmd --- c-addr u )   DEFER CMD-RANGE ( from to --- c-addr u )
 DEFER PIPELINE ( from to c-addr u --- c-addr2 u2 )
-: PIECES ( p --- c-addr u )   \ pieces to their END: the first's value and D-STR, each next's and JOIN
-  DUP PIECE S" D-STR" ++ TOP$ ROT NSKIP BEGIN DUP @ WHILE DUP >R PIECE S" JOIN" ++ SEQ+ R> NSKIP REPEAT DROP ;
 DEFER IX-CODE ( c-addr u ix --- c-addr2 u2 )   \ a value's keys, each CM-AT (913): below, once WORD-CODE is
+: PIECE-IX ( p --- c-addr u p' )   \ a piece's code - indexed, when keys follow it (914: in "...", $(cmd)[k] too)
+  DUP >R PIECE R> NSKIP  DUP @ N-IX = IF DUP >R IX-CODE R> NSKIP THEN ;
+: PIECES ( p --- c-addr u )   \ pieces to their END: the first's value and D-STR, each next's and JOIN
+  PIECE-IX >R S" D-STR" ++ TOP$ R>  BEGIN DUP @ WHILE  PIECE-IX >R S" JOIN" ++ SEQ+ R>  REPEAT DROP ;
 : WORD-CODE ( w --- c-addr u )   \ its value - indexed, when keys follow it (913)
   N+ DUP NSKIP DUP @ N-IX = IF >R PIECE R> IX-CODE EXIT THEN DROP  DUP NSKIP @ IF PIECES ELSE PIECE THEN ;
 : IX-CODE' ( c-addr u ix --- c-addr2 u2 )   N+ BEGIN DUP @ WHILE DUP >R WORD-CODE ++ S" CM-AT" ++ R> NSKIP REPEAT DROP ;
@@ -529,6 +540,7 @@ VARIABLE CAPS  VARIABLE CAPS#  VARIABLE CAPS-CAP   \ the names some block refers
 : OK$ ( c-addr u --- c-addr2 u2 )   S" 0 STATUS !" ++ ;   \ a builtin done: status 0, as every command sets one (869)
 : FLAG ( from to --- c-addr u )   \ a condition: ! ..., a value alone, or a command's status (859)
   2DUP = IF S" a condition was expected" G-ERR THEN
+  2DUP TO-ANDOR OVER <> IF CMD-RANGE S" STATUS @ 0=" ++ EXIT THEN     \ a && b, ! a || b: the chain's status (914)
   OVER S" !" BARE= IF SWAP NSKIP SWAP RECURSE S" 0=" ++ EXIT THEN
   OVER NSKIP OVER = 2 PICK N+ @ N-TX <> AND IF DROP WORD-CODE S" D-COND" ++ EXIT THEN     \ true or false only (876)
   CMD-RANGE S" STATUS @ 0=" ++ ;
@@ -763,11 +775,14 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
   2SWAP S" R-RD-RESET" 2SWAP ++ S" [']" ++ 2SWAP ++ S" RD-RUN" ++ ;
 ' RD-SINGLE' IS RD-SINGLE
 : ERR-ANDOR ( --- )   S" && and || stand between commands" G-ERR ;
+: NEG-SEGMENT ( from to --- c-addr u )   \ ! cmd: its status turned, as sh's ! (914) - had run a program named !
+  OVER S" !" BARE= IF  SWAP NSKIP SWAP  2DUP = IF S" ! wants a command" G-ERR THEN
+    SEGMENT S" STATUS @ 0= 1 AND STATUS !" ++ EXIT THEN  SEGMENT ;
 : CMD-RANGE' ( from to --- c-addr u )   \ a && b || c, as sh chains them (859)
-  TUCK OVER SWAP TO-ANDOR TUCK  2DUP = IF ERR-ANDOR THEN  SEGMENT
+  TUCK OVER SWAP TO-ANDOR TUCK  2DUP = IF ERR-ANDOR THEN  NEG-SEGMENT
   BEGIN 3 PICK 3 PICK <> WHILE
     2 PICK S" &&" BARE= IF S" STATUS @ 0= IF" ELSE S" STATUS @ IF" THEN ++
-    ROT NSKIP DUP 4 PICK TO-ANDOR 2DUP = IF ERR-ANDOR THEN  DUP >R SEGMENT ++ S" THEN" ++ R> ROT ROT
+    ROT NSKIP DUP 4 PICK TO-ANDOR 2DUP = IF ERR-ANDOR THEN  DUP >R NEG-SEGMENT ++ S" THEN" ++ R> ROT ROT
   REPEAT  2SWAP 2DROP ;
 ' CMD-RANGE' IS CMD-RANGE
 

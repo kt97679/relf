@@ -251,8 +251,14 @@ the account of what each gained and cost.
    they went). The image: tools/build-cm-image.sh, kernel64-cm.img - the kernel, the
    Forth libraries, Rill's runtime (rill/rt.4, kept: the command model is built on
    it), relfsh's line editor, cm/*.4; `bin/cm script.cm`, or the prompt with none.
-   Open (888's handoff, docs/progress/0800-0899.md; `source` done at 890, the read-time
-   check of $( ) at 893 - its design to revisit; the reference, docs/REFERENCE.md, at 900): a smaller front end (cm/cmc.4, the largest part of a 70 KB image); a call's cost.
+   The language for script writers: docs/REFERENCE.md (900), every example run by the suite.
+   Since 888, by the owner's choices: source (890); no size with a most but memory (891);
+   $( ) text and @( ) values (896); words read by their first character, operators words
+   of their own (899); del, wait $job, backslash continuation, case, trap, slice, upper
+   and lower, TAB completion, an index after any value (904-914). Open (docs/progress/
+   0900-0999.md, the last handoff): more whole scripts - each round has found something;
+   by the owner's word not now: $( ) of a def's number (`var x @(f)` the fast form), the
+   front end smaller (cm/cmc.4, about 20 KB of an 85 KB image), recursion's depth, heredocs.
    Checks: `sh tests/cm/run` - the runtime's tests, the scripts (whole ones among
    them), the prompt's sessions - and again with RILL_GC_STRESS=1; in make verify as cm:passed.
 

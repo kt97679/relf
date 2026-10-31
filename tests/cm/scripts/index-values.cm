@@ -1,5 +1,5 @@
 # an index after a value written in one word (913): a list or map literal, a text, a capture - as $name[key] is a
-# variable's; @(cmd)[k] the k-th of its values, spread if a list; inside quotes the text stays as written
+# variable's; @(cmd)[k] the k-th of its values, spread if a list; inside quotes too (914), \[ a bracket
 var line 'GET /index.html 200'
 var level [@(split $line ' ')][1]
 echo $level
@@ -10,4 +10,4 @@ echo @(split 'a,b,c' ,)[2] @(pairs)[1] [@(pairs)][0]
 var m [list: [p q r]]
 echo $m[list][1]
 for f [@(split $line ' ')][0] { echo one word: $f }
-echo "inside quotes: $(printf x)[0] stays as written"
+echo "inside quotes too: $(printf xyz)[1] - and \[ writes a bracket: $(printf x)\[0]"

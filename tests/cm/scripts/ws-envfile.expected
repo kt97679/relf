@@ -1,0 +1,4 @@
+mode=test level=3 off=unset
+after del: level=unset
+read back: [test] []
+status 0

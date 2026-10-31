@@ -102,7 +102,7 @@ says - or a value: a boolean, as `$(( ))` gives, or a block, run, its status say
 command, but not before them, as a line ending in `|`, `&&` or `||` goes on - and see the
 condition's status in `$status`. A condition that tests `$status` replaces it, as in sh: keep it first,
 `var s $status`, to use it in the branch.
-`&&`, `||` and `!` join commands by their status, as in sh.
+`&&`, `||` and `!` join commands by their status, as in sh - in a condition too: `if a && ! b { }`.
 
 `case` tests a value's text against patterns - `*`, `?`, `[...]`, as `match` does - an arm a line, or
 several on one; the first arm one of whose patterns matches runs; none, status 0. A plain word is the

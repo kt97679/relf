@@ -1,0 +1,17 @@
+# a whole script (914), as one would write it
+# a small table from a CSV: totals per region, the header in capitals
+var csv 'region,item,amount
+north,apples,12
+south,pears,7
+north,plums,5
+south,apples,3'
+var lines [@(split $csv "\n")]
+var header [@(split $lines[0] ,)]
+var totals [:]
+for line @(slice $lines 1) {
+    var f [@(split $line ,)]
+    if has $totals $f[0] { set totals[$f[0]] $(( $totals[$f[0]] + $f[2] )) } else { set totals[$f[0]] $f[2] }
+}
+echo "$(upper $header[0]) $(upper $header[2])"
+for r @(keys $totals) { echo "$r $totals[$r]" }
+echo "first item: $(slice $lines[1] 6 12), $(count [@(slice $lines 1)]) rows"

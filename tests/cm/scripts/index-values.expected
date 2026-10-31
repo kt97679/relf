@@ -4,5 +4,5 @@ hello h u s
 c 3 4 [1 2]
 q
 one word: GET
-inside quotes: x[0] stays as written
+inside quotes too: y - and [ writes a bracket: x[0]
 status 0

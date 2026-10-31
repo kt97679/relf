@@ -1,0 +1,9 @@
+cm-ws5-tree/
+  README
+  docs/
+    guide.md
+  src/
+    lib/
+      util.cm
+    main.cm
+status 0

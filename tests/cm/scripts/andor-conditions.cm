@@ -1,0 +1,14 @@
+# && and || inside if's and while's conditions belong to the condition, as sh's (914): if a && b { } had been
+# split as if a, then b { }; and ! is a command's, its status turned - it had run a program named !
+var p false
+var q true
+if ! $p { echo a }
+if $p && true { echo b } else { echo not-b }
+if ! $p && true { echo c }
+if ! has [x] y && true { echo d }
+if false || $q { echo e }
+if false { echo no } elif true && $q { echo f }
+if true { echo g } && echo h
+while ! $q && false { echo never }
+! true; echo status $status
+! false && echo x1

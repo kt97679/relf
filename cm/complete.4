@@ -243,8 +243,21 @@ VARIABLE CMP-XLCP                \ ... and how much of the first they share
 : CMP-COLLECT-FUNCS ( --- )   \ the defs made so far - at the prompt, the session's
   DEFS# @ 0 ?DO  DEFS @ I 4 * CELLS + DUP @ SWAP CELL+ @ CMP-ADD  LOOP ;
 
+256 BUFFER: CMP-VB                   \ $ and a variable's name, for CMP-ADD
+VARIABLE CMP-VAR?                    \ completing a $name (914)
+: CMP-VAR-ADD ( c-addr u --- )   DUP 254 > IF 2DROP EXIT THEN  [CHAR] $ CMP-VB C!  TUCK CMP-VB 1+ SWAP MOVE  CMP-VB SWAP 1+ CMP-ADD ;
+: CMP-COLLECT-VARS ( --- )   \ $ and the variables the script - the session - has made, and the language's own
+  S" env" CMP-VAR-ADD  S" args" CMP-VAR-ADD  S" status" CMP-VAR-ADD  S" job" CMP-VAR-ADD
+  MAIN-SC @ ?DUP 0= IF EXIT THEN  CELL+ @
+  BEGIN ?DUP WHILE  DUP CELL+ @ OVER 2 CELLS + @  OVER C@ [CHAR] % <> IF CMP-VAR-ADD ELSE 2DROP THEN  @  REPEAT ;
+: CMP-VAR-AT ( --- i+1 | 0 )   \ the word's last $ - in "..." too - with only a name's characters after it: where
+  CMP-W# @ BEGIN DUP WHILE  1-  CMP-W OVER + C@  DUP [CHAR] $ = IF DROP 1+ EXIT THEN   \ the $name begins, + 1
+    DUP [CHAR] _ = OVER [CHAR] 0 [CHAR] 9 1+ WITHIN OR SWAP 32 OR [CHAR] a [CHAR] z 1+ WITHIN OR 0= IF DROP 0 EXIT THEN
+  REPEAT ;
 : CMP-COLLECT ( --- )   \ the candidates, into CMP-BUF
-  0 CMP-N !  0 CMP-USED !  0 CMP-EXTRA !  65535 CMP-XLCP !
+  0 CMP-N !  0 CMP-USED !  0 CMP-EXTRA !  65535 CMP-XLCP !  0 CMP-VAR? !
+  CMP-VAR-AT ?DUP IF  1-  CMP-W# @ OVER - DUP CMP-PFX# !  >R CMP-W + CMP-PFX R> MOVE  0 CMP-PFX CMP-PFX# @ + C!
+    -1 CMP-VAR? !  0 CMP-CMD? !  CMP-COLLECT-VARS EXIT  THEN
   CMP-COMMAND? DUP CMP-CMD? !
   IF
     \ The shell's own names first - aliases and functions, which are
@@ -283,6 +296,7 @@ VARIABLE CMP-XLCP                \ ... and how much of the first they share
 : CMP-FINISH ( --- )   \ after a single candidate
   \ A directory gets `/` and any quote stays open, so TAB can carry on
   \ inside it; anything else closes the quote and gets a blank.
+  CMP-VAR? @ IF CMP-Q @ 0= IF 32 ED-INSERT THEN EXIT THEN        \ a $name: inside "..." the text goes on
   CMP-CMD? @ 0= IF 0 CMP-NTH CMP-IS-DIR? IF 47 ED-INSERT EXIT THEN THEN
   CMP-Q @ ?DUP IF ED-INSERT THEN
   32 ED-INSERT ;

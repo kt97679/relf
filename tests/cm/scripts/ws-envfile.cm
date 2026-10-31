@@ -1,0 +1,15 @@
+# a whole script (914), as one would write it
+# load KEY=VALUE settings into the environment, run a program with them, then take one away
+var settings 'APP_MODE=test
+APP_LEVEL=3
+# APP_OFF=1'
+for line @(split $settings "\n") {
+    case $line {
+        '#*' { continue }
+        *=* { var kv [@(split $line =)]; set env[$kv[0]] $kv[1] }
+    }
+}
+sh -c 'echo "mode=$APP_MODE level=$APP_LEVEL off=${APP_OFF:-unset}"'
+del env[APP_LEVEL]
+sh -c 'echo "after del: level=${APP_LEVEL:-unset}"'
+echo "read back: [$env[APP_MODE]] [$env[APP_LEVEL]]"
