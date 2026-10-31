@@ -1,0 +1,21 @@
+# a whole script (912), as one would write it
+# count log lines by level, then print the errors
+var log '2026-10-31 INFO started
+2026-10-31 WARN disk at 80%
+2026-10-31 ERROR cannot open db
+2026-10-31 INFO retrying
+2026-10-31 ERROR gave up'
+var counts [:]
+var errors []
+for line @(split $log "\n") {
+    var f [@(split $line ' ')]
+    var level $f[1]
+    case $level {
+        INFO WARN { }
+        ERROR { append errors "$(slice $line 17)" }
+        * { echo "odd line: $line" }
+    }
+    if has $counts $level { set counts[$level] $(( $counts[$level] + 1 )) } else { set counts[$level] 1 }
+}
+for l @(keys $counts) { echo "$l: $counts[$l]" }
+for e @errors { echo "error -> $e" }

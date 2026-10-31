@@ -1,0 +1,9 @@
+# a whole script (912), as one would write it
+# a temporary directory cleaned up however the script ends
+var work /tmp/cm-ws4-work
+mkdir -p $work
+trap { rm -rf $work; echo "cleaned up $work" } EXIT INT TERM
+for i @(range 3) { echo "part $i" > "$work/part-$i.txt" }
+var parts [@(glob "$work/part-*.txt")]
+echo $(count $parts) parts, the last: $(slice $parts[-1] -10)
+cat @parts | wc -l

@@ -48,7 +48,8 @@ after a `\` that is a word of its own at a line's end:
     echo $(kind hello) $(kind 42) $(kind 1.5) $(kind true) $(kind [a]) $(kind [k: v]) $(kind { })
     # text number text bool list map block
 
-Numbers are whole, 64-bit. Lists and maps are held by reference: two variables can hold one list.
+Numbers are whole, 64-bit; wherever one is wanted - `$(( ))`, an index, `range`, `slice`, `exit` - a
+text that reads as one does, as `$(f)` gives a def's number back. Lists and maps are held by reference: two variables can hold one list.
 `$l[-1]` is a list's last item. `echo`, a value nobody takes, and a value inside `"..."` or given to `join` all
 use one printed form - a list as `[a b]`, a map as `[k: v]`, a block as `<block>`.
 

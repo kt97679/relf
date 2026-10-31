@@ -935,6 +935,7 @@ do not trust the absence of a line below.
 - 909 — [...] by character; defs load 3.5 times faster (a word list of their own, a hash for DEF-FIND); slice; the prompt's sourced files kept
 - 910 — case; trap { } EXIT INT TERM HUP; a caught signal ends a busy loop too
 - 911 — TAB at the prompt: the language's completion (cm/complete.4), checked through a pseudo-terminal
+- 912 — five more whole scripts; a number wanted takes a text that reads as one (range, index, exit...)
 
 ### Not tied to an iteration
 

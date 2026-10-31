@@ -1,0 +1,2 @@
+order: build test package publish
+status 0

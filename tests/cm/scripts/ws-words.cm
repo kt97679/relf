@@ -1,0 +1,8 @@
+# a whole script (912), as one would write it
+# text utilities with slice: reverse, palindromes, capitalise
+def reverse {|t| var r ''; var n $(count $t); for i @(range $n) { set r "$r$(slice $t $(( $n - 1 - $i )) $(( $n - $i )))" }; put $r }
+def palindrome {|t| var r $(reverse $t); test $r = $t }
+def capitalise {|t| put "$(slice $t 0 1 | tr a-z A-Z)$(slice $t 1)" }
+echo $(reverse 'héllo wörld')
+for w level noon rotor shell { if palindrome $w { echo "$w is a palindrome" } else { echo "$w is not" } }
+echo $(capitalise forth) $(capitalise émile)

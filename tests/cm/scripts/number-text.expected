@@ -1,0 +1,11 @@
+kind text
+range: 0 1 2
+index: d
+slice: b c
+return: 3
+wait: 4
+i 0
+i 1
+i 2
+i 3
+status 3

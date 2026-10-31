@@ -1,0 +1,15 @@
+# a number wanted takes a text that reads as one (912): $( ) gives a def's number back as text since 896, and range,
+# an index, slice, return, wait and exit had said "a whole number was wanted"
+var n $(echo 3)
+echo kind $(kind $n)
+echo range: @(range $n)
+var l [a b c d]
+echo index: $l[$n]
+echo slice: @(slice $l 1 $n)
+def two { return $n }
+two; echo return: $status
+sh -c 'exit 4' &
+var j $(put $job)
+wait $j; echo wait: $status
+for i @(range $(count $l)) { echo i $i }
+exit $n

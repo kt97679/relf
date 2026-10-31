@@ -13,7 +13,7 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
 : D-ITEM ( box --- item )   \ a number boxed, tagged - if it fits: past 62 bits it stays boxed (837)
   DUP IF DUP @ K-NUM = IF DUP CELL+ @ DUP 2* 2/ = IF CELL+ @ 2* 1+ THEN THEN THEN ;
 : N>ITEM-D ( n --- item )   DUP 2* 2/ OVER = IF 2* 1+ ELSE K-NUM R-BOX THEN ;   \ tagged if it fits, else boxed
-: D>N ( item --- n )   DUP 1 AND IF 2/ EXIT THEN
+: D>N0 ( item --- n )   DUP 1 AND IF 2/ EXIT THEN
   DUP D-KIND K-NUM <> IF S" cm: a whole number was wanted" D-ERR THEN CELL+ @ ;
 : D-TEXT ( item --- t )   ?DUP IF D-BOXED R-ANY>TEXT ELSE S" none" R-TEXT THEN ;
 : D-STR ( item --- text )   DUP D-KIND K-TEXT = IF EXIT THEN  D-TEXT K-TEXT R-BOX ;
@@ -33,6 +33,8 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
 : D-NUMERIC ( item --- item' )   \ "41" in $(( )): 41, as the shell's
   DUP D-KIND K-TEXT <> IF EXIT THEN  DUP D-TEXT R-T@ TXT>INT? IF NIP N>ITEM-D EXIT THEN
   DUP NUMERIC? IF D-TEXT R-NUMBER N>ITEM-D THEN ;   \ past 18 digits: R-NUMBER's, which says when it is past 64 bits
+: D>N ( item --- n )   DUP 1 AND IF 2/ EXIT THEN  D-NUMERIC D>N0 ;   \ a whole number - or a text that reads as one,
+  \ as $( ) gives a def's number back (912): range $(count $l), $l[$i], exit $n, as $(( )) took them already
 : D-NOT-NUM ( text --- )   \ the text named (887): "a text that reads as none" said not which
   R-ERR> ." cm: $(( )) takes numbers, not the text " D-TEXT R-T@ TYPE R-ERR-NL -4004 THROW ;
 : D-ARITH ( a b op --- c )   >R D-NUMERIC SWAP D-NUMERIC SWAP

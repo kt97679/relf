@@ -1,0 +1,14 @@
+# a whole script (912), as one would write it
+# a work queue: take from the front, add follow-up work at the back
+var queue [build test]
+var done []
+while $(( $(count $queue) > 0 )) {
+    var job $queue[0]
+    del queue[0]
+    append done $job
+    case $job {
+        build { append queue package }
+        package { append queue publish }
+    }
+}
+echo order: @done
