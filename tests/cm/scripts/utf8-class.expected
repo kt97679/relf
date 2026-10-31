@@ -1,0 +1,9 @@
+class-ok
+neg-ok
+cyr-range-ok
+z-not-in-range
+mixed-ok
+ascii-ok
+bracket-ok
+literal-ok
+status 0

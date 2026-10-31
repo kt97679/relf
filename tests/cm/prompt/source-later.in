@@ -1,0 +1,6 @@
+source tests/cm/scripts/lib/boom.cm
+echo next line
+boom
+source tests/cm/scripts/lib/boom.cm
+echo reloaded: sourcing again at the prompt makes its defs again
+boom

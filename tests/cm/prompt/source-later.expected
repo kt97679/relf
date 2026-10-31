@@ -1,0 +1,5 @@
+next line
+cm: index 5 past a list of 1 (tests/cm/scripts/lib/boom.cm line 4)
+reloaded: sourcing again at the prompt makes its defs again
+cm: index 5 past a list of 1 (tests/cm/scripts/lib/boom.cm line 4)
+status 0

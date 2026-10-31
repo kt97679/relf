@@ -107,6 +107,18 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
 : GLOB-OF ( args --- )   \ glob pattern...: each path a pattern matches, sorted, put - none, none put (899): a pattern
   \ made with values, as "$dir/*.cm", since a plain word has no $ in it - and a plain word with * or ? globs still
   DUP #ARGS 0 ?DO  DUP I ARGN D-TEXT R-GLOB  DUP R-LEN 0 ?DO  DUP R-ITEMS I CELLS + @ PUT  LOOP DROP  LOOP DROP ;   \ its items boxed already
+: SLICE-IDX ( i len --- i' )   SWAP OVER  OVER 0< IF + ELSE DROP THEN  0 MAX MIN ;   \ negative from the end, held to 0..len
+: SLICE-AB ( args n --- a b )   \ slice's start and end, held to 0..n and the end not before the start
+  OVER 1 ARGN D-NUMERIC D>N OVER SLICE-IDX >R  OVER #ARGS 3 = IF SWAP 2 ARGN D-NUMERIC D>N SWAP SLICE-IDX ELSE NIP THEN
+  R> SWAP 2DUP > IF DROP DUP THEN ;
+: SLICE-OF ( args --- )   \ slice v start [end]: a list's items from start up to end, not it, put one by one - [@(slice ..)]
+  \ a new list - or a text's characters, one text; negative from the end, held to the length; no end, to the end (909)
+  DUP #ARGS DUP 2 < SWAP 3 > OR IF DROP S" cm: slice takes a list or a text, a start, and an end or none" R-FAIL THEN
+  DUP 0 ARGN  DUP D-KIND K-TEXT = IF
+    D-TEXT SWAP OVER R-T@ U-COUNT SLICE-AB                          ( t a b )
+    >R >R  DUP R-T@ R> U-START  OVER R-T@ R> U-START  R-TSLICE K-TEXT R-BOX PUT EXIT  THEN
+  D-LIST SWAP OVER R-LEN SLICE-AB                                   ( l a b )
+  SWAP ?DO  DUP I R-AT PUT  LOOP DROP ;          \ a list's items put one by one, as split's and keys' are (888)
 : KIND-OF ( args --- )   \ kind value: text, number, bool, list, map or block (886)
   DUP #ARGS 1 <> IF S" cm: kind takes one value" R-FAIL THEN  0 ARGN D-KIND
   DUP K-NUM = IF DROP S" number" ELSE DUP K-TEXT = IF DROP S" text" ELSE DUP K-BOOL = IF DROP S" bool" ELSE
@@ -190,3 +202,11 @@ DEFER RUN-NAMED ( args text --- )   \ the program a text names: below, once PSTA
     R> 1+ OVER MIN  TUCK - >R + R>                                      ( list c-addr' u' )
   REPEAT 2DROP ;
 : PIPE-LINES ( --- list )   PIPE-TEXT CELL+ @ R-T@  ARGL ROT ROT LINES+ ;   \ @( ): a program's lines, each a text
+
+\ ---- the words a script's Forth defines (909): a word list of their own, 256 threads - the kernel's has 32,
+\ and its hash is a name's length and first two characters, so thousands of defs' words went down a few
+\ threads each and loading 4,000 defs took 3.8 s. FORTH first in the search order, these second.
+: WORDLIST-N ( n --- wid )   >R  ALIGN WORDLISTS @ ,  HERE DUP START @ - WORDLISTS !  R@ ,  HERE R> CELLS DUP ALLOT 0 FILL ;
+VARIABLE CM-WID-O   256 WORDLIST-N START @ - CM-WID-O !     \ an offset: the image is saved and reloaded
+: CM-WID ( --- wid )   CM-WID-O @ START @ + ;
+: CM-WORDS ( --- )   CM-WID CURRENT !  2 #ORDER !  FORTH-WORDLIST CONTEXT !  CM-WID CONTEXT CELL+ ! ;

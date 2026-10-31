@@ -27,6 +27,7 @@ VARIABLE IN-LINE  VARIABLE LN                      \ the line read; the line of 
 VARIABLE SF-T  VARIABLE SF-S  VARIABLE SF-CAP   \ in the heap, grown as files come (891; 31 at most before): the files, each
                    \ [base][lines][name][length][text][the line sourcing it]; the readers below, each [text][length][position][line][file]
 VARIABLE SF-N  VARIABLE SF-NEXT                    \ how many; the next line free
+VARIABLE SF-BASE  VARIABLE SF-LINE0      \ at the prompt the files read on earlier lines are kept, for their lines (909)
 : SF ( i --- addr )   6 * CELLS SF-T @ + ;
 : SF$ ( i --- c-addr u )   SF 2 CELLS + DUP @ SWAP CELL+ @ ;
 : SF-AT ( n --- i )   \ the sourced file whose lines hold n; 0, the script's
@@ -245,15 +246,16 @@ VARIABLE SF-SEEN  VARIABLE SF-MORE  VARIABLE TOP-CMD   \ sourced text so far, si
   R-ERR> ." cm: " >R TYPE
   R@ IF ."  is sourced already, at " R> SF 5 CELLS + @ SF-LINE. ELSE R> DROP ."  is the script itself" THEN
   ."  (" LN @ SF-LINE. ." )" R-NL -4100 THROW ;
+: HEAP$ ( c-addr u --- c-addr2 u )   DUP >R DUP ALLOCATE THROW DUP >R SWAP MOVE R> R> ;   \ a name kept past this compile
 : SF-PUSH ( c-addr u --- )   \ the reader below kept; the file read from its start, its lines the next free
-  SF-N @ 0 ?DO  2DUP I SF$ COMPARE 0= IF I SF-AGAIN THEN  LOOP
+  SF-N @ SF-LINE0 @ ?DO  2DUP I SF$ COMPARE 0= IF I SF-AGAIN THEN  LOOP   \ at the prompt, this line's: again is a reload
   SF-ROOM
   2DUP SF-READ 0= IF S" source cannot open" 2SWAP ++ G-ERR THEN      ( name len text tlen )
   DUP SF-SEEN +!  SF-SEEN @ SF-MORE @ > IF  SF-SEEN @ SF-MORE !  DROP FREE DROP 2DROP -4106 THROW  THEN
   SF-SP @ 5 * CELLS SF-STACK +  IN-TEXT @ OVER !  IN-LEN @ OVER CELL+ !  IN-POS @ OVER 2 CELLS + !
     IN-LINE @ OVER 3 CELLS + !  SF-CUR @ SWAP 4 CELLS + !  1 SF-SP +!
   SF-N @ SF >R  SF-NEXT @ R@ !  2DUP LINES# DUP R@ CELL+ !  SF-NEXT +!  OVER R@ 4 CELLS + !  LN @ R@ 5 CELLS + !
-  IN-LEN ! IN-TEXT !  R@ 3 CELLS + ! R@ 2 CELLS + !  0 IN-POS !  R> @ 1+ IN-LINE !  SF-N @ SF-CUR !  1 SF-N +! ;
+  IN-LEN ! IN-TEXT !  HEAP$ R@ 3 CELLS + ! R@ 2 CELLS + !  0 IN-POS !  R> @ 1+ IN-LINE !  SF-N @ SF-CUR !  1 SF-N +! ;
 : SF-POP ( --- )   -1 SF-SP +!  SF-SP @ 5 * CELLS SF-STACK +
   DUP @ IN-TEXT !  DUP CELL+ @ IN-LEN !  DUP 2 CELLS + @ IN-POS !  DUP 3 CELLS + @ IN-LINE !  4 CELLS + @ SF-CUR ! ;
 : SOURCE-ERR ( --- )   S" source takes one file name" G-ERR ;
@@ -332,13 +334,27 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
   S" no variable $" S| 2SWAP CAT S" - var makes one" ++ G-ERR ;
 VARIABLE DEFS  VARIABLE DEFS#  VARIABLE DEFS-CAP   \ the script's defs, in the heap, grown as they come (891; 64 at most
                                                    \ before): [name][length][parameters][plain] each
+VARIABLE DH  VARIABLE DH-CAP      \ the defs' hash table (909): each slot an index + 1, 0 empty - DEF-FIND had compared
+                                   \ every def's name, and 4,000 defs took a second to compile
+: NAME-H ( c-addr u --- h )   2166136261 ROT ROT OVER + SWAP ?DO  I C@ XOR 16777619 *  LOOP ;
+: DH-SLOT ( c-addr u --- addr )   \ the slot holding the name's index + 1, or the empty one it would take
+  2DUP NAME-H DH-CAP @ 1- AND
+  BEGIN  DUP CELLS DH @ + @ ?DUP WHILE
+    1- 4 * CELLS DEFS @ +  DUP @ SWAP CELL+ @  4 PICK 4 PICK COMPARE 0= IF  CELLS DH @ + NIP NIP EXIT  THEN
+    1+ DH-CAP @ 1- AND  REPEAT
+  CELLS DH @ + NIP NIP ;
+: DH-ADD ( i --- )   DUP 4 * CELLS DEFS @ + DUP @ SWAP CELL+ @ DH-SLOT  SWAP 1+ SWAP ! ;
+: DH-BUILD ( --- )   \ twice as many slots as defs at least, every def put back
+  DH-CAP @ 2* 64 MAX  BEGIN DUP DEFS# @ 2* < WHILE 2* REPEAT  DUP DH-CAP !
+  CELLS DH @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW DH !  DH @ DH-CAP @ CELLS ERASE
+  DEFS# @ 0 ?DO  I DH-ADD  LOOP ;
 : DEF-FIND ( c-addr u --- entry | 0 )
-  DEFS# @ 0 ?DO  2DUP DEFS @ I 4 * CELLS + DUP @ SWAP CELL+ @ COMPARE 0= IF 2DROP DEFS @ I 4 * CELLS + UNLOOP EXIT THEN  LOOP
-  2DROP 0 ;
+  DH @ 0= IF 2DROP 0 EXIT THEN  DH-SLOT @ ?DUP IF 1- 4 * CELLS DEFS @ + ELSE 0 THEN ;
 : DEF-ADD ( c-addr u n plain --- )   \ [name][length][parameters][no return in it: called plain (878)]
   >R >R 2DUP DEF-FIND ?DUP IF NIP NIP R> OVER 2 CELLS + !  R> SWAP 3 CELLS + ! EXIT THEN
   DEFS# @ DEFS-CAP @ = IF  DEFS-CAP @ 2* 16 MAX DUP DEFS-CAP !  4 * CELLS  DEFS @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW DEFS !  THEN
-  RH$ DEFS @ DEFS# @ 4 * CELLS +  TUCK CELL+ !  TUCK !  R> OVER 2 CELLS + !  R> SWAP 3 CELLS + !  1 DEFS# +! ;
+  RH$ DEFS @ DEFS# @ 4 * CELLS +  TUCK CELL+ !  TUCK !  R> OVER 2 CELLS + !  R> SWAP 3 CELLS + !  1 DEFS# +!
+  DEFS# @ 2* DH-CAP @ > IF DH-BUILD ELSE DEFS# @ 1- DH-ADD THEN ;
 : OUT+ ( c-addr u --- )   \ to the output, a blank after it
   DUP OUP @ + 1+ OUE @ > IF TOO-BIG THEN  OUP @ SWAP DUP >R MOVE  R> OUP +!  BL OUP @ C!  1 OUP +! ;
 : DEF-WORD ( c-addr u c-addr2 u2 --- )   2SWAP S" :" 2SWAP ++ 2SWAP ++ S" ;" ++ OUT+ ;   \ : name body ;
@@ -347,12 +363,15 @@ VARIABLE CC-N
 \ The names made, each a Forth word: the kernel files a word by its length and first two characters
 \ (HASH), so CM.B1, CM.B2 ... and CM.D.f1, CM.D.f2 ... went down one thread each, and every lookup
 \ walked all the others - 4,000 defs took 12 s to load (891). The second character varies now.
-: FRESH ( c-addr u --- c-addr2 u2 )   1 CC-N +!  S| CC-N @ 7 AND [CHAR] 0 + C+  S" ." CAT  CC-N @ #$ CAT ;   \ B1.1, C2.2 ... B0.8
+: FRESH ( c-addr u --- c-addr2 u2 )   1 CC-N +!  S| CC-N @ 63 AND [CHAR] 0 + C+  S" ." CAT  CC-N @ #$ CAT ;   \ B1.1, C2.2 ... - the count's
+  \ low six bits second: spread over CM-WID's 256 threads (909)
+: NAME-HC ( c-addr u --- c )   \ a character from the whole name, 0 to o: a def's word's second (909: its last had been)
+  0 ROT ROT OVER + SWAP ?DO  I C@ + DUP 2* 2* 2* 2* 2* +  LOOP  63 AND [CHAR] 0 + ;
 : DNAME ( c-addr u --- c-addr2 u2 )   \ a def's word: `bfib for fib - its last character second; a name too long
   \ for a Forth word (31 characters, with # or % after) its first 16, a ", and its place among the defs -
   \ error -2 before (891); " is in no bare word, so the two kinds never meet
-  DUP 27 < IF  S" `" S| 2OVER + 1- 1 CAT 2SWAP CAT EXIT THEN
-  2DUP DEF-FIND DEFS @ - 4 CELLS / >R  S" `" S| 2OVER + 1- 1 CAT 2SWAP DROP 16 CAT 34 C+ R> #$ CAT ;
+  DUP 27 < IF  S" `" S| 2OVER NAME-HC C+ 2SWAP CAT EXIT THEN
+  2DUP DEF-FIND DEFS @ - 4 CELLS / >R  S" `" S| 2OVER NAME-HC C+ 2SWAP DROP 16 CAT 34 C+ R> #$ CAT ;
 : PLAIN-C? ( c --- f )   DUP 32 127 WITHIN SWAP [CHAR] " <> AND ;   \ no " and nothing past printable ASCII: S" holds it
 : PLAIN? ( c-addr u --- f )   -1 ROT ROT 0 ?DO  DUP I + C@ PLAIN-C?  ROT AND SWAP  LOOP DROP ;
 : PLAIN# ( c-addr u --- n )   200 MIN DUP 0 ?DO  OVER I + C@ PLAIN-C? 0= IF DROP I LEAVE THEN  LOOP NIP ;   \ S" can hold so many
@@ -379,7 +398,7 @@ VARIABLE CC-N
   REPEAT 2DROP 2DROP 0 ;
 : PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program
   DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
-  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match read kind source glob del" IN-LIST?
+  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match read kind source glob del slice" IN-LIST?
   >R DEF-FIND R> OR 0= ;
 : TO-ANDOR ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" &&" BARE= OVER S" ||" BARE= OR IF NIP EXIT THEN NSKIP REPEAT DROP ;
 : TO-PIPE ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" |" BARE= IF NIP EXIT THEN NSKIP REPEAT DROP ;
@@ -608,7 +627,7 @@ VARIABLE CAPS  VARIABLE CAPS#  VARIABLE CAPS-CAP   \ the names some block refers
     ARGS-CODE S" PUTS" ++ OK$ EXIT THEN                     \ put one value: PUT it, no list made (866)
   S" echo" NAMED? IF 2DROP ARGS-CODE S" ECHO" ++ OK$ EXIT THEN
   2DUP S" cd exit wait match has" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT EXIT THEN      \ they set the status themselves (873)
-  2DUP S" count range merge each split join keys kind glob" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT OK$ EXIT THEN
+  2DUP S" count range merge each split join keys kind glob slice" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT OK$ EXIT THEN
   S" append" NAMED? IF 2DROP  2DUP = IF APPEND-ERR THEN  OVER N+ DUP @ N-VR = SWAP NSKIP @ 0= AND 0= IF APPEND-ERR THEN
     OVER WORD-CODE 2SWAP SWAP NSKIP SWAP ARGS-CODE ++ S" APPEND" ++ OK$ EXIT THEN      \ name[key] too (885)
   S" true" NAMED? IF 2DROP 2DROP S" 0 STATUS !" EXIT THEN
@@ -731,20 +750,26 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
   N+ DUP @ N-BK <> IF 2DROP 0 EXIT THEN  -1 ;
 255 CONSTANT SESSION-SLOTS
 : NAMES-NEW ( --- )   \ no names yet: a script's, or a session's start
-  0 CC-N !  0 DEFS# !  0 DEFS-SAID !  0 CAPS !  0 CAPS-CAP !
+  0 CC-N !  0 DEFS# !  0 DEFS-SAID !  0 CAPS !  0 CAPS-CAP !  DH @ IF DH @ DH-CAP @ CELLS ERASE THEN
   0 NEW-FRAME FR !  0 SC !  SCOPE(  S" %def" 0 0 VAR+ DROP  FR @ MAIN-FR !  SC @ MAIN-SC ! ;
 : SCRIPT$ ( --- c-addr u )   SESSION @ SYS-ARGC 1 < OR IF S" " ELSE 0 SYS-ARG DUP CSTRLEN THEN ;
-: SF-START ( c-addr u --- )   \ the script's, or a prompt line's: the files read before forgotten, their texts freed
+: SF-START ( c-addr u --- )   \ the script's, or a prompt line's: texts freed - their words are made; a script's files
+  \ forgotten, names too; at the prompt those of earlier lines kept, their line ranges past 2^20, never a line's own
   SF-T @ 0= IF  8 DUP SF-CAP !  DUP 6 * CELLS ALLOCATE THROW SF-T !  5 * CELLS ALLOCATE THROW SF-S !  THEN
-  SF-N @ 1 MAX 1 ?DO  I SF 4 CELLS + @ FREE DROP  LOOP  1 SF-N !  0 SF-SP !  0 SF-CUR !  0 SF-SEEN !  0 TOP-CMD !
-  LINES# DUP SF-NEXT !  0 SF CELL+ !  0 0 SF !  SCRIPT$ 0 SF 3 CELLS + !  0 SF 2 CELLS + !  0 0 SF 5 CELLS + ! ;
+  SF-N @ 1 MAX 1 ?DO  I SF 4 CELLS + DUP @ ?DUP IF FREE DROP THEN  0 SWAP !  LOOP
+  SESSION @ IF  SF-BASE @ 1 MAX  ELSE 1 THEN  >R                 \ from here on, made again
+  SF-N @ 1 MAX R@ MAX R@ ?DO  I SF 2 CELLS + @ FREE DROP  LOOP  R@ SF-N !
+  SESSION @ IF R> ELSE R> DROP 0 THEN SF-LINE0 !
+  0 SF-SP !  0 SF-CUR !  0 SF-SEEN !  0 TOP-CMD !
+  LINES#  SESSION @ IF SF-NEXT @ 1 20 LSHIFT MAX SF-NEXT ! ELSE DUP SF-NEXT ! THEN
+  0 SF CELL+ !  0 0 SF !  SCRIPT$ 0 SF 3 CELLS + !  0 SF 2 CELLS + !  0 0 SF 5 CELLS + ! ;
 : CM-COMPILE1 ( c-addr u --- c-addr2 u2 )   \ a script's text made Forth - the output, to EVALUATE
   DUP IN-LEN ! OVER IN-TEXT ! 0 IN-POS ! 1 IN-LINE !  2DUP SF-START  NIP SF-MORE @ +
   DUP 6 * 64 + 3 * CELLS ND0 NDP NDE AREA   DUP 2* 64 + TX0 TXP TXE AREA
   DUP 64 * 65536 + CH0 CHP CHE AREA   DUP 64 * 65536 + OU0 OUP OUE AREA
   SESSION @ RH0 @ 0<> AND IF DROP ELSE  16 * 4096 + CELLS  1 20 LSHIFT SESSION @ AND MAX  RH0 RHP RHE AREA  NAMES-NEW  THEN
   MAIN-FR @ FR !  MAIN-SC @ SC !  0 PL !  0 AP !     \ a session's line after an error: back at the top
-  ND0 @  0 0 CMDS N)
+  ND0 @  0 0 CMDS N)  S" CM-WORDS" OUT+            \ its words in a word list of their own (909)
   DUP BEGIN DUP @ WHILE  DUP DEF-LINE? IF DUP PLAIN-DEF? >R @A >R BARE$ R> R> DEF-ADD THEN  NSKIP REPEAT DROP   \ defs known before their first call
   DEFS# @ DEFS-SAID @ ?DO  DEFS @ I 4 * CELLS + DUP @ SWAP CELL+ @
     S" DEFER" 2OVER DNAME ++ S" VARIABLE" ++ 2OVER DNAME ++ S" #" CAT S" VARIABLE" ++ 2SWAP DNAME ++ S" %" CAT OUT+  LOOP
@@ -756,5 +781,5 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
   OU0 @ OUP @ OVER - ;
 VARIABLE CM1-XT   ' CM-COMPILE1 CM1-XT !XT       \ an offset, not ['] - the image is saved and reloaded (rill/rt.4)
 : CM-COMPILE ( c-addr u --- c-addr2 u2 )   \ again, sized for every file sourced, when one did not fit (890)
-  0 SF-MORE !  BEGIN 2DUP CM1-XT @XT CATCH  DUP -4106 = WHILE DROP 2DROP REPEAT  THROW 2SWAP 2DROP ;
+  0 SF-MORE !  SF-N @ 1 MAX SF-BASE !  BEGIN 2DUP CM1-XT @XT CATCH  DUP -4106 = WHILE DROP 2DROP REPEAT  THROW 2SWAP 2DROP ;
 : CM-SHOW ( c-addr u --- )   R-SLURP CM-COMPILE TYPE R-NL ;      \ the Forth made of a script: S" x.cm" CM-SHOW

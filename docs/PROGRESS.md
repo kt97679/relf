@@ -932,6 +932,7 @@ do not trust the absence of a line below.
 - 906 — \ at a line's end, a word of its own, continues the command; glued or mid-line, an error
 - 907 — a text value as a command runs its program; arity errors name the def; one error format; del env; setenv and the prompt's entry grow
 - 908 — five more whole scripts (config merge, wrap, a supervisor with wait $job, inventory with del, a template): all worked
+- 909 — [...] by character; defs load 3.5 times faster (a word list of their own, a hash for DEF-FIND); slice; the prompt's sourced files kept
 
 ### Not tied to an iteration
 

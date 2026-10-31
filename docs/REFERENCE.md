@@ -171,14 +171,15 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 | `count v` | a list's or map's items, a text's characters (UTF-8) |
 | `range n` | 0 to n-1, put one by one |
 | `split text sep`, `join sep values...` | a text's parts put; values joined into one text |
+| `slice v start [end]` | a list's items from start up to end, put one by one, or a text's characters as one text; negative from the end, held to the length |
 | `keys map`, `merge a b` | a map's keys put; a new map, b's entries over a's |
 | `has container v` | status 0 if a map has the key, a list the value, a text the text |
-| `match text pattern` | status 0 if the whole text matches a glob pattern |
+| `match text pattern` | status 0 if the whole text matches a glob pattern - `*`, `?` and `[...]` by character |
 | `each {|x| ..}` | the block, run with each value of the function's input |
 | `kind v` | text, number, bool, list, map or block |
 | `glob patterns...` | the paths each matches, sorted, put - none, none put |
 | `read name` | a line of stdin into name; status 1 at the end |
-| `source file` | another script read in where the line stands - at the top level, its path from this file's directory |
+| `source file` | another script read in where the line stands - at the top level, its path from this file's directory; at the prompt, sourcing again reloads |
 | `wait`, `wait $job` | wait for every job `&` started, the status the last ended with - or for that one job, its status |
 | `cd [dir]`, `exit [n]` | as sh's |
 | `true`, `false` | booleans: as a command, status 0 or 1 |

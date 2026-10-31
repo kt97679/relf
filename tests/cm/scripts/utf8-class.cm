@@ -1,0 +1,10 @@
+# [...] in match and glob takes characters, not bytes (909): é, a range of Cyrillic, a negated class -
+# they had compared one byte of a two-byte character
+match é '[éa]' && echo class-ok || echo class-fails
+match é '[!a]' && echo neg-ok || echo neg-fails
+match ж '[а-я]' && echo cyr-range-ok || echo cyr-range-fails
+match z '[а-я]' && echo bad || echo z-not-in-range
+match café 'caf[ée]' && echo mixed-ok
+match b '[a-c]' && echo ascii-ok
+match ']' '[]a]' && echo bracket-ok
+match '[' '[' && echo literal-ok
