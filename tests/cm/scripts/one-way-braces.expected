@@ -1,2 +1,2 @@
-cm: line 3: $name reads a variable - ${name} is not this language's: $k'd' puts text after one
+cm: line 4: ${name} is for a double-quoted text, where a name's letters follow it - $name here
 status 2

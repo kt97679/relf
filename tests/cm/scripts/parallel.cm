@@ -5,6 +5,6 @@ mkdir $dir
 for n 3 1 2 { sh -c "sleep 0.$n; echo $(( $n * $n )) > $dir/$n.out" & }
 wait
 var total 0
-for f $dir/*.out { set total $(( $total + $(cat $f) )) }
+for f @(glob "$dir/*.out") { set total $(( $total + $(cat $f) )) }
 echo total $total
 rm -rf $dir

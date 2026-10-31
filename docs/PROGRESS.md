@@ -922,6 +922,7 @@ do not trust the absence of a line below.
 - 896 — $( ) is text (everything printed, as sh's), @( ) is values, var x @(f) the one value; has a status; calls 7× slower, to optimize
 - 897 — var and set give their value's capture's status; | & < > as word breaks proposed (2>/dev/null)
 - 898 — $( ) of a number faster: printed and read back without >NUMBER or # (calls 650 to 280 ms; 890: 87)
+- 899 — a word's first character says what it is; operators words of their own, glued forms errors; "${k}d"; glob
 
 ### Not tied to an iteration
 

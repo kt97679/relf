@@ -101,6 +101,9 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
   BEGIN  DUP 4096 = IF S" cm: read: a line too long" R-FAIL THEN
     DUP GE-BUF + 1 0 READ 1 = WHILE  DUP GE-BUF + C@ 10 = IF GE-BUF SWAP R-TEXT K-TEXT R-BOX 0 STATUS ! EXIT THEN  1+
   REPEAT  DUP 0= 1 AND STATUS !  GE-BUF SWAP R-TEXT K-TEXT R-BOX ;
+: GLOB-OF ( args --- )   \ glob pattern...: each path a pattern matches, sorted, put - none, none put (899): a pattern
+  \ made with values, as "$dir/*.cm", since a plain word has no $ in it - and a plain word with * or ? globs still
+  DUP #ARGS 0 ?DO  DUP I ARGN D-TEXT R-GLOB  DUP R-LEN 0 ?DO  DUP R-ITEMS I CELLS + @ PUT  LOOP DROP  LOOP DROP ;   \ its items boxed already
 : KIND-OF ( args --- )   \ kind value: text, number, bool, list, map or block (886)
   DUP #ARGS 1 <> IF S" cm: kind takes one value" R-FAIL THEN  0 ARGN D-KIND
   DUP K-NUM = IF DROP S" number" ELSE DUP K-TEXT = IF DROP S" text" ELSE DUP K-BOOL = IF DROP S" bool" ELSE

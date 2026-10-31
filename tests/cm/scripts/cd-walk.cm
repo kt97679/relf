@@ -1,8 +1,8 @@
 # a whole script (887): cd into each directory and back, files counted by relative paths
 var top /tmp/cm-887-cd
 rm -rf $top
-mkdir -p $top/a $top/b
-touch $top/a/1 $top/a/2 $top/b/3
+mkdir -p "$top/a" "$top/b"
+touch "$top/a/1" "$top/a/2" "$top/b/3"
 cd $top
 for d * {
     cd $d

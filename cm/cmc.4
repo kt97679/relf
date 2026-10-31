@@ -101,10 +101,12 @@ DEFER CMDS ( close closer --- )   DEFER WORD-P ( closer --- )   DEFER ARITH-P ( 
   NAME-P N-VR N,
   BEGIN CUR [CHAR] [ = WHILE  GET DROP 0 SKIP-WS [CHAR] ] WORD-P 0 SKIP-WS
     GET [CHAR] ] <> IF S" ] missing after a key" P-ERR THEN  REPEAT  N) ;
+VARIABLE IN-QU                                     \ reading a "...": ${name} allowed (899)
 : DOLLAR-P ( --- )   \ after a $: (( )), ( ), a name - or the $ itself, a text (867: no ${name} - one way)
   CUR [CHAR] ( = IF  1 PK [CHAR] ( = IF GET GET 2DROP ARITH-P EXIT THEN
     GET DROP 0 0 N-CP N,  [CHAR] ) DUP CMDS  N) EXIT THEN
-  CUR [CHAR] { = IF S" $name reads a variable - ${name} is not this language's: $k'd' puts text after one" P-ERR THEN
+  CUR [CHAR] { = IF  IN-QU @ 0= IF S" ${name} is for a double-quoted text, where a name's letters follow it - $name here" P-ERR THEN
+    GET DROP CUR NAME0? 0= IF S" ${ wants a name" P-ERR THEN  VAR-P  GET [CHAR] } <> IF S" } missing after ${name" P-ERR THEN EXIT THEN
   CUR NAME0? IF VAR-P EXIT THEN
   S" $" N-TX N, ;
 : QUOTED-P ( --- )   \ "...": a N-QU of texts - \n, \t and \ before any other character in them - and $s
@@ -112,7 +114,7 @@ DEFER CMDS ( close closer --- )   DEFER WORD-P ( closer --- )   DEFER ARITH-P ( 
   BEGIN CUR DUP [CHAR] " <> WHILE
     DUP 0= IF S" a closing quote is missing" P-ERR THEN
     DUP [CHAR] \ = IF DROP GET DROP GET  DUP [CHAR] n = IF DROP 10 THEN  DUP [CHAR] t = IF DROP 9 THEN  T,
-    ELSE [CHAR] $ = IF GET DROP T) DOLLAR-P T0 ELSE GET T, THEN THEN
+    ELSE [CHAR] $ = IF GET DROP T) -1 IN-QU ! DOLLAR-P 0 IN-QU ! T0 ELSE GET T, THEN THEN
   REPEAT DROP GET DROP T) N) ;
 : SQUOTE-P ( --- )   \ after a ': the text to the next ', a leaf - '' too, an empty text
   T0 BEGIN CUR [CHAR] ' <> WHILE CUR 0= IF S" ' missing" P-ERR THEN GET T, REPEAT  GET DROP  TXS @ TXP @ OVER - N-TX N, T0 ;
@@ -144,15 +146,29 @@ VARIABLE BARE                                      \ the word read so far: plain
   DUP @A OVER @B 2DUP S" true" COMPARE 0= IF 2DROP -1 ELSE S" false" COMPARE IF DROP EXIT THEN 0 THEN
   OVER CELL+ ! N-BO SWAP ! ;
 VARIABLE GLOBW                                     \ an unquoted * or ? read in the word: a glob (872; with $s, 881)
-: PIECES-P ( closer --- )   \ a word's texts, '...', "..." and $...: up to a blank, a ; or the closer
+: OP= ( c-addr u c-addr2 u2 --- c-addr u f )   2OVER COMPARE 0= ;
+: OPERATOR? ( c-addr u --- f )   \ | || && & > >> < 2> 2>> &> 2>&1 >&2 1>&2
+  DUP 1 = IF DROP C@ S" |&><" ONE-OF? EXIT THEN
+  S" ||" OP= >R  S" &&" OP= >R  S" >>" OP= >R  S" 2>" OP= >R  S" &>" OP= >R  S" 2>>" OP= >R  S" >&2" OP= >R  S" 2>&1" OP= >R
+  S" 1>&2" OP=  R> OR R> OR R> OR R> OR R> OR R> OR R> OR R> OR  NIP NIP ;
+: GLUED? ( c-addr u --- f )   \ an operator glued to a word, as sh reads it: 2>/dev/null, >out, hi|tr, cmd& (899)
+  2DUP OPERATOR? IF 2DROP 0 EXIT THEN
+  OVER C@ S" |&<>" ONE-OF? IF 2DROP -1 EXIT THEN
+  2DUP BEGIN DUP WHILE OVER C@ DIG? WHILE 1 /STRING REPEAT THEN
+  DUP IF OVER C@ S" <>" ONE-OF? ELSE 0 THEN >R 2DROP R> IF 2DROP -1 EXIT THEN
+  2DUP 0 ?DO DUP I + C@ [CHAR] | = IF DROP 2DROP UNLOOP -1 EXIT THEN LOOP DROP
+  + 1- C@ [CHAR] & = ;
+: PIECES-P ( closer --- )   \ a plain word: text, up to a blank, a ; or the closer - nothing quoted, no $ in it (899:
+  \ a word's first character says what it is; texts and values are joined inside "...")
   GLOBW @ >R  0 GLOBW !  -1 BARE !  NDP @ SWAP T0
   BEGIN CUR OVER WORD-END? 0= WHILE
-    CUR [CHAR] " = IF GET DROP T) 0 BARE ! QUOTED-P T0 ELSE
-    CUR [CHAR] ' = IF GET DROP T) 0 BARE ! 0 0 N-QU N, SQUOTE-P N) ELSE     \ quoted: a N-QU, a glob's text kept apart
-    CUR [CHAR] $ = IF GET DROP T) 0 BARE ! DOLLAR-P T0 ELSE
+    CUR [CHAR] $ = CUR [CHAR] ' = OR CUR [CHAR] " = OR IF
+      CUR [CHAR] $ = IF S" a $ inside a plain word - a double-quoted text joins a value to text: $dir/file in quotes"
+      ELSE S" a quote inside a plain word - a word is one thing; a double-quoted text joins texts" THEN P-ERR THEN
     GET DUP [CHAR] * = OVER [CHAR] ? = OR IF -1 GLOBW ! THEN T,   \ \ too (867): quotes are the one way to escape
-    THEN THEN THEN
-  REPEAT DROP T)
+  REPEAT DROP
+  TXS @ TXP @ OVER - GLUED? IF S" an operator glued to a word - | > < & and 2> are words of their own, blanks round them" P-ERR THEN
+  T)
   DUP NDP @ = IF S" a word was expected" P-ERR THEN
   BARE @ IF DUP N+ NDP @ = IF DUP LITERAL? THEN THEN
   GLOBW @ IF 1 OVER 3 CELLS - CELL+ ! THEN  DROP  R> GLOBW ! ;
@@ -179,14 +195,19 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
       CUR NAME0? 0= IF S" a block's parameters are names between | |" P-ERR THEN
       NAME-P N-TX N,  1 OVER CELL+ +!  REPEAT  GET DROP THEN
   DROP [CHAR] } 0 CMDS N) ;
-: WORD-P' ( closer --- )   \ one word: a N-WRD of its pieces
+: WORD-ENDS ( closer --- )   \ after a word's form - ] } " ' a $name or $( ): its end, nothing glued (899)
+  CUR SWAP WORD-END? 0= IF S" nothing right after a ] } quote or $value - a blank first; a double-quoted text joins texts" P-ERR THEN ;
+: WORD-P' ( closer --- )   \ one word: a N-WRD - what it is said by its first character (899)
   0 0 N-WRD N,
-  CUR [CHAR] [ = IF DROP GET DROP LIST-P N) EXIT THEN
-  CUR [CHAR] { = IF DROP GET DROP BLOCK-P N) EXIT THEN
+  CUR [CHAR] [ = IF GET DROP LIST-P N) WORD-ENDS EXIT THEN
+  CUR [CHAR] { = IF GET DROP BLOCK-P N) WORD-ENDS EXIT THEN
   CUR [CHAR] ( = 1 PK [CHAR] ( = AND IF S" arithmetic is $(( ))" P-ERR THEN     \ one way (867)
-  CUR [CHAR] @ = IF DROP GET DROP 0 0 N-SP N,
+  CUR [CHAR] @ = IF GET DROP 0 0 N-SP N,
     CUR [CHAR] ( = IF GET DROP 0 0 N-CP N, [CHAR] ) DUP CMDS N)
-    ELSE CUR NAME0? 0= IF S" @ spreads a name or a ( ) - not this" P-ERR THEN VAR-P THEN  N) N) EXIT THEN
+    ELSE CUR NAME0? 0= IF S" @ spreads a name or a ( ) - not this" P-ERR THEN VAR-P THEN  N) N) WORD-ENDS EXIT THEN
+  CUR [CHAR] " = IF GET DROP QUOTED-P N) WORD-ENDS EXIT THEN
+  CUR [CHAR] ' = IF GET DROP 0 0 N-QU N, SQUOTE-P N) N) WORD-ENDS EXIT THEN
+  CUR [CHAR] $ = IF GET DROP DOLLAR-P N) WORD-ENDS EXIT THEN
   PIECES-P N) ;
 ' WORD-P' IS WORD-P
 : GOES-ON? ( w --- f )   DUP S" |" BARE= OVER S" &&" BARE= OR SWAP S" ||" BARE= OR ;
@@ -326,7 +347,7 @@ VARIABLE CC-N
   REPEAT 2DROP 2DROP 0 ;
 : PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program
   DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
-  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match read kind source" IN-LIST?
+  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match read kind source glob" IN-LIST?
   >R DEF-FIND R> OR 0= ;
 : TO-ANDOR ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" &&" BARE= OVER S" ||" BARE= OR IF NIP EXIT THEN NSKIP REPEAT DROP ;
 : TO-PIPE ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" |" BARE= IF NIP EXIT THEN NSKIP REPEAT DROP ;
@@ -548,7 +569,7 @@ VARIABLE CAPS  VARIABLE CAPS#  VARIABLE CAPS-CAP   \ the names some block refers
     ARGS-CODE S" PUTS" ++ OK$ EXIT THEN                     \ put one value: PUT it, no list made (866)
   S" echo" NAMED? IF 2DROP ARGS-CODE S" ECHO" ++ OK$ EXIT THEN
   2DUP S" cd exit wait match has" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT EXIT THEN      \ they set the status themselves (873)
-  2DUP S" count range merge each split join keys kind" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT OK$ EXIT THEN
+  2DUP S" count range merge each split join keys kind glob" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT OK$ EXIT THEN
   S" append" NAMED? IF 2DROP  2DUP = IF APPEND-ERR THEN  OVER N+ DUP @ N-VR = SWAP NSKIP @ 0= AND 0= IF APPEND-ERR THEN
     OVER WORD-CODE 2SWAP SWAP NSKIP SWAP ARGS-CODE ++ S" APPEND" ++ OK$ EXIT THEN      \ name[key] too (885)
   S" true" NAMED? IF 2DROP 2DROP S" 0 STATUS !" EXIT THEN

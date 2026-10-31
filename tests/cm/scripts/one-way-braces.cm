@@ -1,3 +1,4 @@
-# one way to read a variable (867): $name - ${name} is an error, not a $ and a text
+# one way to read a variable (867): $name - ${name} is an error here, not a $ and a text; inside a
+# double-quoted text it marks where a name ends, "${k}d" (899)
 var x 1
 echo ${x}

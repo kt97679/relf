@@ -5,7 +5,7 @@ rm -f $file
 touch $file
 def add {|item| echo $item >> $file }
 def list { var n 0; for line @(cat $file) { set n $(( $n + 1 )); echo "$n. $line" } }
-def done {|k| sed -i "$k"d $file }
+def done {|k| sed -i "${k}d" $file }
 add "buy milk"
 add "write report"
 add "call Ada"

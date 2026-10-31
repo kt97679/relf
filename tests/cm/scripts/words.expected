@@ -1,0 +1,5 @@
+ONE
+TWO
+ls failed, quietly
+line 3d $k [3 3x] 42 -7 *.not-a-glob
+status 0

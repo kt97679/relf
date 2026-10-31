@@ -1,0 +1,3 @@
+# a $ inside a plain word: an error when read (899) - "pre$x" joins them
+var x 1
+echo pre$x

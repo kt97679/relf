@@ -1,11 +1,13 @@
-# a glob with $s (881): its unquoted * and ? are wildcards, a value's and a quote's matched as they are
+# globs and values (881, 899): a plain word with * or ? globs, and has no $ in it; a pattern made with
+# values is glob's - glob "$dir/*.txt" - and a quoted text never globs
 rm -rf /tmp/cm-881
 mkdir -p /tmp/cm-881/d
 touch /tmp/cm-881/d/a.txt /tmp/cm-881/d/b.txt '/tmp/cm-881/d/*.txt'
 var dir /tmp/cm-881/d
-echo $dir/?.txt
-var star "*"
-echo $dir/$star.txt
-echo $dir/'*'.txt
-for f "$dir"/*.txt { echo each: $f }
+echo @(glob "$dir/?.txt")
+echo "$dir/?.txt"
+for f @(glob "$dir/*.txt") { echo each: $f }
+cd /tmp/cm-881/d
+echo *.txt
+echo [@(glob "*.none")] status $status
 rm -rf /tmp/cm-881

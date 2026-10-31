@@ -3,10 +3,10 @@
 var dir /tmp/cm-wordfreq
 rm -rf $dir
 mkdir $dir
-printf 'the cat and the dog\nThe end\n' > $dir/a.txt
-printf 'a dog, a cat; the bird\n' > $dir/b.txt
+printf 'the cat and the dog\nThe end\n' > "$dir/a.txt"
+printf 'a dog, a cat; the bird\n' > "$dir/b.txt"
 var counts [:]
-for f $dir/*.txt {
+for f @(glob "$dir/*.txt") {
     for w @(tr -cs 'A-Za-z' '\n' < $f | tr 'A-Z' 'a-z') {
         if has $counts $w { set counts[$w] $(( $counts[$w] + 1 )) } else { set counts[$w] 1 }
     }

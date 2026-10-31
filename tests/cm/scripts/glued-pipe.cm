@@ -1,0 +1,2 @@
+# sh's hi|tr glued: an error when read (899) - it had been one word, echoed
+echo hi|tr a-z A-Z

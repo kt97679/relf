@@ -2,12 +2,12 @@
 var dest /tmp/cm-882-bk
 rm -rf $dest
 mkdir -p $dest
-for n @(range 5) { touch $dest/backup-2026-10-0$n.tar.gz }
+for n @(range 5) { touch "$dest/backup-2026-10-0$n.tar.gz" }
 var all [@(ls $dest | sort)]
 var keep 3
 var n $(count $all)
 if $(( $n > $keep )) {
-    for i @(range $(( $n - $keep ))) { echo removing $all[$i]; rm $dest/$all[$i] }
+    for i @(range $(( $n - $keep ))) { echo removing $all[$i]; rm "$dest/$all[$i]" }
 }
 ls $dest
 rm -rf $dest

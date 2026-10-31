@@ -1,0 +1,3 @@
+# text glued after a $value: an error when read (899) - "$dir/file" joins them
+var dir /tmp
+echo $dir/file

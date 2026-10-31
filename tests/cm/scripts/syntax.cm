@@ -9,7 +9,7 @@ var m [k: v  n: 2]
 set m[n] $(( $m[n] * 10 ))
 echo "m[n] is $m[n], a+b is $(( $a + $b )), cost: \$5 {braces} (parens)"
 var w $(put world)
-echo "hello "$w"ly $(put there)"
-echo pre$(put fix)post $a$b
+echo "hello ${w}ly $(put there)"
+echo "pre$(put fix)post" "$a$b"
 var nested $(( $(( $a + 1 )) * 2 ))
 echo $nested

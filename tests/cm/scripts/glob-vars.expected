@@ -1,7 +1,8 @@
 /tmp/cm-881/d/*.txt /tmp/cm-881/d/a.txt /tmp/cm-881/d/b.txt
-/tmp/cm-881/d/*.txt
-/tmp/cm-881/d/*.txt
+/tmp/cm-881/d/?.txt
 each: /tmp/cm-881/d/*.txt
 each: /tmp/cm-881/d/a.txt
 each: /tmp/cm-881/d/b.txt
+*.txt a.txt b.txt
+[] status 0
 status 0

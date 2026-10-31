@@ -1,0 +1,13 @@
+# a command is words separated by blanks, and each word's first character says what it is (899): ' and "
+# texts, $ a value, @ a spread, [ a list or map, { a block, a digit a number, else plain text - one that
+# globs if it has * or ?. Operators are words of their own, as Forth's are; texts are joined in "..."
+var dir /tmp/cm-899
+rm -rf $dir
+mkdir -p "$dir/sub"
+echo one > "$dir/a.txt"
+echo two > "$dir/b.txt"
+cat @(glob "$dir/*.txt") | tr a-z A-Z
+ls /no/such/dir 2> /dev/null || echo ls failed, quietly
+var k 3
+echo "line ${k}d" '$k' [$k "${k}x"] 42 -7 '*.not-a-glob'
+rm -rf $dir

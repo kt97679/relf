@@ -10,7 +10,7 @@ echo $l
 var m [inner: [k: 1]]
 var key k
 set m[inner][$key] 2
-set m[inner][new$i] 3
+set m[inner]["new$i"] 3
 echo $m
 set env[CM_881] yes
 sh -c 'echo $CM_881'

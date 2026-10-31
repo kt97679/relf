@@ -41,7 +41,14 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
 
 1. A script is commands, separated by newlines or `;`. A command is words separated by blanks. The
    first word names what runs - a function, a builtin, or a program, looked up when it runs; the
-   rest are its arguments.
+   rest are its arguments. A word's first character says what it is (899), as Forth reads words:
+   `'` and `"` a text, `$` a value, `@` a spread, `[` a list or map, `{` a block, a digit a number,
+   anything else plain text, which globs if it has `*` or `?`. A word ends where its form does -
+   nothing glued after a quote, a `]`, a `}` or a `$value`, no `$` or quote inside plain text: texts
+   are joined in `"..."` (`"$dir/file"`, `"${k}d"` where a name's letters follow). Operators - `|`
+   `&&` `||` `&` `>` `>>` `<` `2>` `2>>` `&>` `2>&1` `>&2` - are words of their own, blanks round
+   them; glued to a word, as sh's `2>/dev/null` or `a|b`, they are an error when read. A pattern
+   made with values is `glob`'s: `@(glob "$dir/*.txt")`.
 2. A bare word is text. `$name` is a variable's value; `$name[key]` an element of it, any depth;
    (867: no `${name}` - `$name` the one way); `@name` and `@name[key]` spread a list into several arguments. `$(cmd)` is
    text: everything the commands print - a program's bytes, `echo`'s, and values nobody takes, in their

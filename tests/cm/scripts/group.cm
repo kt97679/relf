@@ -3,13 +3,13 @@
 var dir /tmp/cm-885-g
 rm -rf $dir
 mkdir $dir
-touch $dir/a.txt $dir/b.md $dir/c.txt $dir/d.cm $dir/e.md $dir/README
+touch "$dir/a.txt" "$dir/b.md" "$dir/c.txt" "$dir/d.cm" "$dir/e.md" "$dir/README"
 var groups [:]
-for f $dir/* {
+for f @(glob "$dir/*") {
     var name $(basename $f)
     var ext none
     if match $name '*.*' { set ext $(echo $name | sed 's/.*\.//') }
     if has $groups $ext { append groups[$ext] $name } else { set groups[$ext] [$name] }
 }
-for k @(keys $groups) { echo $k: $(join ", " @groups[$k]) }
+for k @(keys $groups) { echo "$k:" $(join ", " @groups[$k]) }
 rm -rf $dir

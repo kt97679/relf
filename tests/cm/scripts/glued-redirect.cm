@@ -1,0 +1,2 @@
+# sh's 2>/dev/null glued: an error when read, naming the rule (899) - it had been ls's argument
+ls /no/such/dir 2>/dev/null
