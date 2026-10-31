@@ -43,6 +43,7 @@ CREATE ENV-BOX 9 , 0 ,                             \ $env: the environment, as a
 : SCRIPT-ARGS ( --- item )   R-ARGS K-LIST R-BOX ;  \ $args: the script's arguments, each a text (870)
 : CM-AT ( c k --- item )   OVER ENV-BOX = IF NIP D-TEXT R-ENV K-TEXT R-BOX EXIT THEN
   OVER D-KIND K-LIST <> IF D-AT EXIT THEN  D>N SWAP D-LIST DUP R-LEN ROT SWAP D-IDX R-AT ;
+: CM-DEL ( c k --- )   OVER ENV-BOX = IF 2DROP S" cm: del env[...] is not here yet" R-FAIL THEN  D-DEL ;
 : CM-SET ( c k v --- )   2 PICK ENV-BOX = IF ROT DROP SWAP D-TEXT SWAP D-TEXT R-SETENV EXIT THEN   \ programs see it
   2 PICK D-KIND K-LIST <> IF D-SET EXIT THEN  ROT D-LIST ROT D>N OVER R-LEN D-IDX R-SET ;
 \ ---- the library (870): what values need and programs cannot do - split, join, keys; has, count, range,
@@ -111,10 +112,26 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
   DUP K-NUM = IF DROP S" number" ELSE DUP K-TEXT = IF DROP S" text" ELSE DUP K-BOOL = IF DROP S" bool" ELSE
   DUP K-LIST = IF DROP S" list" ELSE DUP K-REC = IF DROP S" map" ELSE DUP K-BLOCK = IF DROP S" block" ELSE
   DROP S" other" THEN THEN THEN THEN THEN THEN  TXT PUT ;
-: WAIT-OF ( args --- )   \ wait: every job & started waited for; the status the last ended with (874)
-  DROP  PAD 0 1 WRITE DROP                         \ what was said before it out first: a write flushes
-  0  JB-N @ 0 ?DO  DROP 0  JB-NP I CELLS + @ 0 ?DO  J I JB-PID @ R-WAIT R-DECODE ?DUP IF NIP THEN  LOOP  LOOP
-  0 JB-N !  STATUS ! ;
+VARIABLE JOB                                       \ $job: the last job & started - its last stage's pid (905)
+VARIABLE DONE  VARIABLE DONE#  VARIABLE DONE-CAP   \ jobs a plain wait reaped: [job][status] each, for a wait $job after
+: DONE+ ( job status --- )
+  DONE# @ DONE-CAP @ = IF  DONE-CAP @ 2* 8 MAX DUP DONE-CAP !  2* CELLS DONE @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW DONE !  THEN
+  DONE @ DONE# @ 2* CELLS + TUCK CELL+ ! !  1 DONE# +! ;
+: DONE? ( job --- status -1 | 0 )
+  DONE# @ 0 ?DO  DONE @ I 2* CELLS +  2DUP @ = IF NIP CELL+ @ -1 UNLOOP EXIT THEN DROP  LOOP DROP 0 ;
+: JOB-WAIT ( slot --- status )   \ a job's stages waited for: the rightmost failing stage's status, as a pipeline's
+  0  OVER CELLS JB-NP + @ 0 ?DO  OVER I JB-PID @ R-WAIT R-DECODE ?DUP IF NIP THEN  LOOP  NIP ;
+: JB-FIND ( job --- slot | -1 )   -1  JB-N @ 0 ?DO  OVER JB-KEY I CELLS + @ = IF DROP I LEAVE THEN  LOOP NIP ;
+: JB-DROP ( slot --- )   \ its row taken out, those after it moved up
+  >R  JB-KEY R@ 1+ CELLS +  JB-KEY R@ CELLS +  JB-N @ R@ - 1- CELLS MOVE
+  JB-NP R@ 1+ CELLS +  JB-NP R@ CELLS +  JB-N @ R@ - 1- CELLS MOVE
+  R@ 1+ 0 JB-PID  R@ 0 JB-PID  JB-N @ R> - 1- PL-MAX * CELLS MOVE  -1 JB-N +! ;
+: WAIT-OF ( args --- )   \ wait: every job & started waited for, the status the last ended with (874); wait $job:
+  PAD 0 1 WRITE DROP                               \ that one, its status - reaped by a plain wait before, kept (905)
+  DUP #ARGS 0= IF  DROP  0  JB-N @ 0 ?DO  DROP I JOB-WAIT  JB-KEY I CELLS + @ OVER DONE+  LOOP  0 JB-N !  STATUS ! EXIT  THEN
+  DUP #ARGS 1 > IF DROP S" cm: wait takes one job - $job - or none" R-FAIL THEN
+  0 ARGN D>N  DUP JB-FIND  DUP 0< IF DROP DONE? IF STATUS ! EXIT THEN S" cm: wait: no such job" R-FAIL THEN
+  NIP DUP JOB-WAIT SWAP JB-DROP STATUS ! ;
 : CD-OF ( args --- )   \ cd dir - with none, $env[HOME]: a failure said, status 1, the script going on (873)
   DUP #ARGS DUP 1 > IF S" cm: cd takes one directory" R-FAIL THEN
   IF 0 ARGN D-TEXT ELSE DROP S" HOME" R-TEXT R-ENV THEN

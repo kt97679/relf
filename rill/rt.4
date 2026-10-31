@@ -218,6 +218,13 @@ VARIABLE RH-R  VARIABLE RH-K
 : R-GET ( key r --- box )
   2DUP R-FIND DUP 0< IF DROP DROP R-ERR> ." cm: no field " R-TYPE R-ERR-NL -4003 THROW THEN  ROT DROP SWAP R-VALS SWAP R-AT ;
 : R-HAS ( key r --- f )   R-FIND 0< 0= ;
+: R-DEL ( l i --- )   \ the item at i taken out, those after it moved down: in place (905)
+  OVER @ OVER U> 0= IF R-INDEX THEN
+  >R DUP R-ITEMS R@ 1+ CELLS +  OVER R-ITEMS R@ CELLS +  2 PICK @ R> - 1- CELLS MOVE  -1 SWAP +! ;
+: R-REC-DEL ( key r --- )   \ a key and its value taken out; its table, if it has one, made again (905)
+  2DUP R-FIND DUP 0< IF DROP DROP R-ERR> ." cm: no field " R-TYPE R-ERR-NL -4003 THROW THEN
+  ROT DROP  2DUP SWAP R-KEYS SWAP R-DEL  OVER R-VALS SWAP R-DEL
+  DUP RH-TABLE IF DUP RH-CAP RH-BUILD ELSE DROP THEN ;
 \ texts and lists
 VARIABLE SW-END
 

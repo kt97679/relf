@@ -928,6 +928,7 @@ do not trust the absence of a line below.
 - 902 — the call's cost measured again: 5.5 times 890's on this host (3.2 on 898's); var x @(f) about a third of $(f)'s
 - 903 — eight more whole scripts: $status in else, a pipeline's function stage redirected; four questions for the owner
 - 904 — else and elif may start the next line after an if's } (a newline before them does not end the command)
+- 905 — del name[k] (lists and maps, in place); & sets $job, wait $job
 
 ### Not tied to an iteration
 

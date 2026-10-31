@@ -59,7 +59,8 @@ use one printed form - a list as `[a b]`, a map as `[k: v]`, a block as `<block>
 Scope is lexical. A def sees its parameters, its own variables, and the script's variables declared
 before it. A loop's variable is a new one each time round, so a block made in a loop keeps that time's
 value. `$env[HOME]` reads the environment and `set env[NAME] value` sets it for programs run after;
-`$args` is the script's arguments, a list; `$status` the last command's status. Reading a variable
+`$args` is the script's arguments, a list; `$status` the last command's status; `$job` the last job `&`
+started, for `wait $job` (sh's `$!`). Reading a variable
 that does not exist is an error.
 
 ## Arithmetic and comparison
@@ -144,8 +145,8 @@ its values' printed forms, a line each.
     sleep 0 &
     wait                                                      # every job started with &
 
-A pipeline's status is its rightmost failing stage's. `&` starts a pipeline of programs without waiting;
-`wait` waits for every one; at the script's end any left get TERM.
+A pipeline's status is its rightmost failing stage's. `&` starts a pipeline of programs without waiting
+and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the script's end any left get TERM.
 
 ## Builtins
 
@@ -153,6 +154,7 @@ A pipeline's status is its rightmost failing stage's. `&` starts a pipeline of p
 |---|---|
 | `var name value`, `set name value`, `set name[k] value` | make a variable, change one, change an element |
 | `append name values...` | add values to a list |
+| `del name[k]` | take an item out of a list - by index, negative from the end - or a key out of a map, in place |
 | `put values...` | write values |
 | `echo words...` | write the words' printed forms, a blank between, a newline after |
 | `if c {..} elif c {..} else {..}`, `while c {..}`, `for x values... {..}` | control |
@@ -168,7 +170,8 @@ A pipeline's status is its rightmost failing stage's. `&` starts a pipeline of p
 | `glob patterns...` | the paths each matches, sorted, put - none, none put |
 | `read name` | a line of stdin into name; status 1 at the end |
 | `source file` | another script read in where the line stands - at the top level, its path from this file's directory |
-| `cd [dir]`, `exit [n]`, `wait` | as sh's |
+| `wait`, `wait $job` | wait for every job `&` started, the status the last ended with - or for that one job, its status |
+| `cd [dir]`, `exit [n]` | as sh's |
 | `true`, `false` | booleans: as a command, status 0 or 1 |
 
 ## Errors

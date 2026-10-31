@@ -1,0 +1,8 @@
+[b d] 2
+[x: 1  z: 3] 2
+39 8 39
+k7 gone
+[inner: [2 3]]
+popped 3, left [1 2]
+cm: index 9 past a list of 2 (line 24)
+status 2

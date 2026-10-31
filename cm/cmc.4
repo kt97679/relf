@@ -212,7 +212,7 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
 ' WORD-P' IS WORD-P
 : GOES-ON? ( w --- f )   DUP S" |" BARE= OVER S" &&" BARE= OR SWAP S" ||" BARE= OR ;
 : SET-FIRST? ( last --- f )   \ the command's first word set or append: its target next (append's too, 885)
-  DUP 0= IF EXIT THEN  DUP 3 CELLS - @ N-CMD = SWAP DUP S" set" BARE= OVER S" append" BARE= OR SWAP S" read" BARE= OR AND ;
+  DUP 0= IF EXIT THEN  DUP 3 CELLS - @ N-CMD = SWAP DUP S" set" BARE= OVER S" append" BARE= OR OVER S" read" BARE= OR SWAP S" del" BARE= OR AND ;
 : SET-TARGET-P ( closer --- )   \ set's target, after the command's first word set: read as after a $ (881)
   CUR NAME0? 0= IF WORD-P EXIT THEN  >R 0 0 N-WRD N, VAR-P N)
   CUR R> WORD-END? 0= IF S" a name, or name[key], to set" P-ERR THEN ;
@@ -313,6 +313,7 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
   2DUP S" status" COMPARE 0= IF 2DROP S" STATUS @ D-NUM" EXIT THEN
   2DUP S" env" COMPARE 0= IF 2DROP S" ENV-BOX" EXIT THEN          \ $env[NAME] (870)
   2DUP S" args" COMPARE 0= IF 2DROP S" SCRIPT-ARGS" EXIT THEN     \ the script's arguments, a list (870)
+  2DUP S" job" COMPARE 0= IF 2DROP S" JOB @ D-NUM" EXIT THEN       \ the last job & started, for wait $job (905)
   S" no variable $" S| 2SWAP CAT S" - var makes one" ++ G-ERR ;
 VARIABLE DEFS  VARIABLE DEFS#  VARIABLE DEFS-CAP   \ the script's defs, in the heap, grown as they come (891; 64 at most
                                                    \ before): [name][length][parameters][plain] each
@@ -363,7 +364,7 @@ VARIABLE CC-N
   REPEAT 2DROP 2DROP 0 ;
 : PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program
   DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
-  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match read kind source glob" IN-LIST?
+  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match read kind source glob del" IN-LIST?
   >R DEF-FIND R> OR 0= ;
 : TO-ANDOR ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" &&" BARE= OVER S" ||" BARE= OR IF NIP EXIT THEN NSKIP REPEAT DROP ;
 : TO-PIPE ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" |" BARE= IF NIP EXIT THEN NSKIP REPEAT DROP ;
@@ -560,6 +561,12 @@ VARIABLE CAPS  VARIABLE CAPS#  VARIABLE CAPS-CAP   \ the names some block refers
   NIP NIP  DUP 5 CELLS + @ IF REF ++ S" UPV!" ++ EXIT THEN
   DUP 3 CELLS + @ FR @ = IF V-SLOT #++ S" LS!" ++ EXIT THEN
   DUP MAIN-V? IF V-SLOT #++ S" MLS!" ++ EXIT THEN  S" cm: an unboxed variable set from a block" G-ERR ;
+: DEL-CMD ( from to --- c-addr u )   \ del name[k]...: an item out of a list or a map, in place (905)
+  OVER NSKIP OVER <> IF S" del takes one name[key]" G-ERR THEN  DROP
+  TARGET DUP N+ @ 0= IF S" del takes a name[key] - an item of a list or a map" G-ERR THEN
+  DUP @A OVER @B READ$ ROT N+
+  BEGIN DUP NSKIP @ WHILE  DUP >R WORD-CODE ++ S" CM-AT" ++ R> NSKIP REPEAT
+  WORD-CODE ++ S" CM-DEL" ++ ;
 : SET-CMD ( from to --- c-addr u )   \ set name value, set name[key]... value - its target read as $'s are,
   BIND SWAP TARGET >R VALUE-CODE R> SET-TO ;           \ so a key any word: $k too (881)
 : READ-CMD ( from to --- c-addr u )   \ read name: a line of stdin into it - status 1 at the end (886)
@@ -581,6 +588,7 @@ VARIABLE CAPS  VARIABLE CAPS#  VARIABLE CAPS-CAP   \ the names some block refers
   S" var" NAMED? IF 2DROP 2DUP CAP-IN? >R VAR-CMD R> 0= IF OK$ THEN EXIT THEN   \ status: its value's capture's (897)
   S" set" NAMED? IF 2DROP 2DUP CAP-IN? >R SET-CMD R> 0= IF OK$ THEN EXIT THEN
   S" read" NAMED? IF 2DROP READ-CMD EXIT THEN                   \ READ-LINE sets the status (886)
+  S" del" NAMED? IF 2DROP DEL-CMD OK$ EXIT THEN
   S" put" NAMED? IF 2DROP  2DUP <> IF OVER NSKIP OVER = 2 PICK N+ @ N-SP <> AND IF DROP WORD-CODE S" PUT" ++ OK$ EXIT THEN THEN
     ARGS-CODE S" PUTS" ++ OK$ EXIT THEN                     \ put one value: PUT it, no list made (866)
   S" echo" NAMED? IF 2DROP ARGS-CODE S" ECHO" ++ OK$ EXIT THEN
@@ -648,7 +656,7 @@ DEFER RD-SINGLE ( from to --- c-addr u )   \ one command, redirected or not: bel
   PL-BG? IF S" 0 PL-BEGIN PL-NULL-IN" ELSE 7 PL@ 0= 2 PL@ OR IF S" 1 PL-BEGIN" ELSE S" 2 PL-BEGIN" THEN THEN PL+
   3 PL@ 2 = IF S" DUP R/O 0 RD-FILE" PL+ THEN
   BEGIN DUP 0 PL@ TO-PIPE TUCK DUP 6 PL@ = STAGE-CODE  DUP 6 PL@ <> WHILE NSKIP REPEAT DROP
-  7 PL@ IF PL-BG? IF S" PL-SPAWN DROP" ELSE 2 PL@ IF 1 PL@ 2 PL@ ELSE S" PIPE-END" THEN THEN ELSE S" PIPE-LINES" THEN
+  7 PL@ IF PL-BG? IF S" PL-SPAWN JOB !" ELSE 2 PL@ IF 1 PL@ 2 PL@ ELSE S" PIPE-END" THEN THEN ELSE S" PIPE-LINES" THEN
   2DUP PL+  S" PIPE-END" COMPARE  3 PL@ 2 = IF IF S" SWAP DEL-PATH" ELSE S" DEL-PATH" THEN PL+ ELSE DROP THEN
   7 PL@ 0= 1 AND 3 PL!  6 PL@ 7 PL@ 0= IF NSKIP THEN ;
 : FN-SEG ( cur --- cur' )   \ a function's stage - its redirections run round it, as a lone command's (903)

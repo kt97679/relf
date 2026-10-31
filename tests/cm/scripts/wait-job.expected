@@ -1,0 +1,5 @@
+b status 5
+a status 3
+all status 7
+c after a plain wait: 7
+status 0
