@@ -44,7 +44,8 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
    rest are its arguments. A word's first character says what it is (899), as Forth reads words:
    `'` and `"` a text, `$` a value, `@` a spread, `[` a list or map, `{` a block, a digit a number,
    anything else plain text, which globs if it has `*` or `?`. A word ends where its form does -
-   nothing glued after a quote, a `]`, a `}` or a `$value`, no `$` or quote inside plain text: texts
+   or after the index keys a value may take, `[a b][1]`, `$(cmd)[0]`, `@(cmd)[2]` (913) - nothing else
+   glued after a quote, a `]`, a `}` or a `$value`, no `$` or quote inside plain text: texts
    are joined in `"..."` (`"$dir/file"`, `"${k}d"` where a name's letters follow). Operators - `|`
    `&&` `||` `&` `>` `>>` `<` `2>` `2>>` `&>` `2>&1` `>&2` - are words of their own, blanks round
    them; glued to a word, as sh's `2>/dev/null` or `a|b`, they are an error when read. A pattern

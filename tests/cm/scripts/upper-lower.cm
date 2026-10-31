@@ -1,0 +1,5 @@
+# upper and lower by Unicode's simple case mapping (913, cm/case.4): tr had left é as it was; ß and İ, whose
+# mappings change the text's length, kept
+echo $(upper "héllo wörld ж σς ǆ ß") $(lower "ÉMILE ЖУК ΣΟΦΊΑ İ")
+echo $(upper "") $(upper abc123) $(lower ÀÉÎÕÜ)
+echo $(count $(upper émile)) $(upper émile)

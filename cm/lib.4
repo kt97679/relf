@@ -19,6 +19,7 @@ VARIABLE TB  VARIABLE TB#  VARIABLE TB-CAP
 : ARG@ ( list spread --- list )
   DUP D-KIND K-LIST <> IF S" cm: @ spreads a list - this is not one" R-FAIL THEN
   CELL+ @  DUP @ 0 ?DO  DUP R-ITEMS I CELLS + @  2 PICK CELL+ @ R-PUSH  LOOP DROP ;
+: ARG@1 ( list item --- list )   DUP D-KIND K-LIST = IF ARG@ ELSE ARG THEN ;   \ @(cmd)[k]: spread if a list, else one word (913)
 : #ARGS ( list --- n )   CELL+ @ @ ;
 : ARGN ( list i --- item )   SWAP CELL+ @ R-ITEMS SWAP CELLS + @ ;
 
@@ -225,3 +226,29 @@ VARIABLE TRAP-XT   ' TRAP-RUN TRAP-XT !XT
   DUP 0 ARGN DUP D-KIND K-BLOCK <> IF 2DROP S" cm: trap takes a block first" R-FAIL THEN  TRAP-BLK !
   DUP #ARGS 1 ?DO  DUP I ARGN D-TEXT R-T@ TRAP-SIG  LOOP DROP
   TRAP-XT @XT R-ON-EXIT-XT !  0 STATUS ! ;
+
+\ ---- upper text, lower text (913): each character mapped by Unicode's simple case mapping - cm/case.4, made
+\ by tools/gen-case.py: É from é, Ж from ж, Σ from σ and ς; a character with none, as it is; ß stays ß, as a
+\ simple mapping keeps a text's length in characters. A stray byte is itself, as count and slice have it
+VARIABLE C-CP  VARIABLE C-B
+: C-ENT ( i --- e )   CELLS C-B @ + @ ;
+: CASE-OF ( cp tbl --- cp' )   \ the range whose start is the last at or before cp: its delta, if cp is in it
+  SWAP C-CP !  DUP CELL+ C-B !  @  0 SWAP                                     ( lo hi )
+  BEGIN 2DUP < WHILE  2DUP + 2/  DUP C-ENT 2097151 AND C-CP @ > IF NIP ELSE 1+ ROT DROP SWAP THEN  REPEAT
+  DROP 1-  DUP 0< IF DROP C-CP @ EXIT THEN  C-ENT                               ( e )
+  DUP 2097151 AND  C-CP @ SWAP -                                              ( e off )
+  OVER 21 RSHIFT 2047 AND OVER < IF 2DROP C-CP @ EXIT THEN                    \ past its length
+  OVER 32 RSHIFT 1 AND IF DUP 1 AND IF 2DROP C-CP @ EXIT THEN THEN           \ every other point only
+  DROP 33 RSHIFT 524288 -  C-CP @ + ;
+: U-PUT ( cp --- )   \ its UTF-8 bytes, into the text being made (TXT-C)
+  DUP 128 < IF TXT-C EXIT THEN
+  DUP 2048 < IF DUP 6 RSHIFT 192 OR TXT-C 63 AND 128 OR TXT-C EXIT THEN
+  DUP 65536 < IF DUP 12 RSHIFT 224 OR TXT-C DUP 6 RSHIFT 63 AND 128 OR TXT-C 63 AND 128 OR TXT-C EXIT THEN
+  DUP 18 RSHIFT 240 OR TXT-C DUP 12 RSHIFT 63 AND 128 OR TXT-C DUP 6 RSHIFT 63 AND 128 OR TXT-C 63 AND 128 OR TXT-C ;
+VARIABLE CASE-T
+: CASE-MAP ( c-addr u tbl --- item )   \ the text, each character mapped
+  CASE-T !  TXT(
+  BEGIN DUP WHILE  2DUP U-CP >R  CASE-T @ CASE-OF U-PUT  R> /STRING  REPEAT 2DROP  )TXT ;
+: CASE-ARG ( args --- c-addr u )   DUP #ARGS 1 <> IF DROP S" cm: upper and lower take one text" R-FAIL THEN  0 ARGN D-TEXT R-T@ ;
+: UPPER-OF ( args --- )   CASE-ARG CASE-UP CASE-MAP PUT ;
+: LOWER-OF ( args --- )   CASE-ARG CASE-LO CASE-MAP PUT ;

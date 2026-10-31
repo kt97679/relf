@@ -3,6 +3,7 @@ text number text bool list map block
 a
 b
 grace [3 1 2 4 5] 3 5 1906 5 2 5
+c w h c
 name: grace, first: 3, sum: 4, line 3d no $subst here
 tab:	end quote: " backslash: \
 3 1 14 true true

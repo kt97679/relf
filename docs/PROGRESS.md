@@ -936,6 +936,7 @@ do not trust the absence of a line below.
 - 910 — case; trap { } EXIT INT TERM HUP; a caught signal ends a busy loop too
 - 911 — TAB at the prompt: the language's completion (cm/complete.4), checked through a pseudo-terminal
 - 912 — five more whole scripts; a number wanted takes a text that reads as one (range, index, exit...)
+- 913 — an index after any value in one word ([a b][1], $(cmd)[0], @(cmd)[2]); upper and lower by Unicode's case mapping
 
 ### Not tied to an iteration
 

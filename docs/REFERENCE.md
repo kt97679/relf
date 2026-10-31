@@ -25,7 +25,8 @@ word's first character says what it is - as Forth reads its input:
 | `#` | a comment | the line's end |
 | anything else | plain text - a number if it reads as a whole one, `true` and `false` booleans; with `*` or `?` it globs | a blank, `;`, or a closer |
 
-A word ends where its form does: nothing may be glued after a quote, a `]`, a `}` or a `$value`, and
+A word ends where its form does: nothing may be glued after a quote, a `]`, a `}` or a `$value` but
+index keys (below), and
 plain text holds no `$` and no quote. Texts and values are joined inside double quotes, where `${name}`
 marks where a name ends:
 
@@ -50,7 +51,12 @@ after a `\` that is a word of its own at a line's end:
 
 Numbers are whole, 64-bit; wherever one is wanted - `$(( ))`, an index, `range`, `slice`, `exit` - a
 text that reads as one does, as `$(f)` gives a def's number back. Lists and maps are held by reference: two variables can hold one list.
-`$l[-1]` is a list's last item. `echo`, a value nobody takes, and a value inside `"..."` or given to `join` all
+`$l[-1]` is a list's last item. An index may follow any value written in one word - a list or map, a
+text, a capture - as it follows a variable; `@(cmd)[k]` is the k-th of cmd's values, spread if a list:
+
+    echo [a b c][-1] [k: v  j: w][j] $(printf hello)[0] @(split 'a,b,c' ,)[2]
+
+`echo`, a value nobody takes, and a value inside `"..."` or given to `join` all
 use one printed form - a list as `[a b]`, a map as `[k: v]`, a block as `<block>`.
 
 ## Variables
@@ -185,6 +191,7 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 | `match text pattern` | status 0 if the whole text matches a glob pattern - `*`, `?` and `[...]` by character |
 | `each {|x| ..}` | the block, run with each value of the function's input |
 | `kind v` | text, number, bool, list, map or block |
+| `upper text`, `lower text` | the text in capitals or small letters, by Unicode's simple case mapping: é to É, ж to Ж |
 | `glob patterns...` | the paths each matches, sorted, put - none, none put |
 | `read name` | a line of stdin into name; status 1 at the end |
 | `source file` | another script read in where the line stands - at the top level, its path from this file's directory; at the prompt, sourcing again reloads |

@@ -13,6 +13,7 @@ set name grace
 set m[born] 1906
 append l 4 5
 echo $name $l $l[0] $l[-1] $m[born] $(count $l) $(count $m) $(count $name)
+echo [a b c][-1] [k: v  j: w][j] $(printf hello)[0] @(split 'a,b,c' ,)[2]
 # -- texts
 var k 3
 echo "name: $name, first: $l[0], sum: $(( $l[0] + $l[1] )), line ${k}d" 'no $subst here'

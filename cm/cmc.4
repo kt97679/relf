@@ -61,7 +61,7 @@ VARIABLE SF-BASE  VARIABLE SF-LINE0      \ at the prompt the files read on earli
 
 \ ---- the tree
 0 CONSTANT N-END   1 CONSTANT N-CMD  2 CONSTANT N-WRD  3 CONSTANT N-QU  4 CONSTANT N-VR  5 CONSTANT N-CP
-6 CONSTANT N-AR    7 CONSTANT N-LS   8 CONSTANT N-MP   9 CONSTANT N-BK  10 CONSTANT N-SP
+6 CONSTANT N-AR    7 CONSTANT N-LS   8 CONSTANT N-MP   9 CONSTANT N-BK  10 CONSTANT N-SP  11 CONSTANT N-IX
 16 CONSTANT N-TX  17 CONSTANT N-NM  18 CONSTANT N-BO  19 CONSTANT N-OP
 : N, ( a b kind --- )   NDP @ NDE @ = IF TOO-BIG THEN
   NDP @ !  NDP @ 2 CELLS + !  NDP @ CELL+ !  3 CELLS NDP +! ;
@@ -208,19 +208,24 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
       CUR NAME0? 0= IF S" a block's parameters are names between | |" P-ERR THEN
       NAME-P N-TX N,  1 OVER CELL+ +!  REPEAT  GET DROP THEN
   DROP [CHAR] } 0 CMDS N) ;
+: IX? ( --- )   \ [key]... after a value written in one word - a list or map, a text, a capture, a spread's capture -
+  \ a N-IX of its keys, after the value (913): as $name[key] is a variable's, so [a b c][1] and $(cmd)[0]
+  CUR [CHAR] [ <> IF EXIT THEN  0 0 N-IX N,
+  BEGIN CUR [CHAR] [ = WHILE  GET DROP 0 SKIP-WS [CHAR] ] WORD-P 0 SKIP-WS
+    GET [CHAR] ] <> IF S" ] missing after a key" P-ERR THEN  REPEAT  N) ;
 : WORD-ENDS ( closer --- )   \ after a word's form - ] } " ' a $name or $( ): its end, nothing glued (899)
   CUR SWAP WORD-END? 0= IF S" nothing right after a ] } quote or $value - a blank first; a double-quoted text joins texts" P-ERR THEN ;
 : WORD-P' ( closer --- )   \ one word: a N-WRD - what it is said by its first character (899)
   0 0 N-WRD N,
-  CUR [CHAR] [ = IF GET DROP LIST-P N) WORD-ENDS EXIT THEN
+  CUR [CHAR] [ = IF GET DROP LIST-P IX? N) WORD-ENDS EXIT THEN
   CUR [CHAR] { = IF GET DROP BLOCK-P N) WORD-ENDS EXIT THEN
   CUR [CHAR] ( = 1 PK [CHAR] ( = AND IF S" arithmetic is $(( ))" P-ERR THEN     \ one way (867)
   CUR [CHAR] @ = IF GET DROP 0 0 N-SP N,
-    CUR [CHAR] ( = IF GET DROP 0 0 N-CP N, [CHAR] ) DUP CMDS N)
+    CUR [CHAR] ( = IF GET DROP 0 0 N-CP N, [CHAR] ) DUP CMDS N) IX?
     ELSE CUR NAME0? 0= IF S" @ spreads a name or a ( ) - not this" P-ERR THEN VAR-P THEN  N) N) WORD-ENDS EXIT THEN
-  CUR [CHAR] " = IF GET DROP QUOTED-P N) WORD-ENDS EXIT THEN
-  CUR [CHAR] ' = IF GET DROP 0 0 N-QU N, SQUOTE-P N) N) WORD-ENDS EXIT THEN
-  CUR [CHAR] $ = IF GET DROP DOLLAR-P N) WORD-ENDS EXIT THEN
+  CUR [CHAR] " = IF GET DROP QUOTED-P IX? N) WORD-ENDS EXIT THEN
+  CUR [CHAR] ' = IF GET DROP 0 0 N-QU N, SQUOTE-P N) IX? N) WORD-ENDS EXIT THEN
+  CUR [CHAR] $ = IF GET DROP DOLLAR-P IX? N) WORD-ENDS EXIT THEN
   PIECES-P N) ;
 ' WORD-P' IS WORD-P
 : GOES-ON? ( w --- f )   DUP S" |" BARE= OVER S" &&" BARE= OR SWAP S" ||" BARE= OR ;
@@ -398,7 +403,7 @@ VARIABLE CC-N
   REPEAT 2DROP 2DROP 0 ;
 : PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program
   DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
-  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match read kind source glob del slice case trap" IN-LIST?
+  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match read kind source glob del slice case trap upper lower" IN-LIST?
   >R DEF-FIND R> OR 0= ;
 : TO-ANDOR ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" &&" BARE= OVER S" ||" BARE= OR IF NIP EXIT THEN NSKIP REPEAT DROP ;
 : TO-PIPE ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP S" |" BARE= IF NIP EXIT THEN NSKIP REPEAT DROP ;
@@ -413,7 +418,11 @@ DEFER PIECE ( p --- c-addr u )   DEFER BODY-CODE ( cmd --- c-addr u )   DEFER CM
 DEFER PIPELINE ( from to c-addr u --- c-addr2 u2 )
 : PIECES ( p --- c-addr u )   \ pieces to their END: the first's value and D-STR, each next's and JOIN
   DUP PIECE S" D-STR" ++ TOP$ ROT NSKIP BEGIN DUP @ WHILE DUP >R PIECE S" JOIN" ++ SEQ+ R> NSKIP REPEAT DROP ;
-: WORD-CODE ( w --- c-addr u )   N+ DUP NSKIP @ IF PIECES ELSE PIECE THEN ;
+DEFER IX-CODE ( c-addr u ix --- c-addr2 u2 )   \ a value's keys, each CM-AT (913): below, once WORD-CODE is
+: WORD-CODE ( w --- c-addr u )   \ its value - indexed, when keys follow it (913)
+  N+ DUP NSKIP DUP @ N-IX = IF >R PIECE R> IX-CODE EXIT THEN DROP  DUP NSKIP @ IF PIECES ELSE PIECE THEN ;
+: IX-CODE' ( c-addr u ix --- c-addr2 u2 )   N+ BEGIN DUP @ WHILE DUP >R WORD-CODE ++ S" CM-AT" ++ R> NSKIP REPEAT DROP ;
+' IX-CODE' IS IX-CODE
 : GPIECE ( p --- c-addr u )   DUP @ N-TX = IF PIECE ELSE PIECE S" GLOB-ESC" ++ THEN ;   \ a $'s, a quote's: no wildcards
 : GLOB-CODE ( w --- c-addr u )   \ a glob's pattern: its unquoted texts as they are, the rest escaped (881)
   N+ DUP GPIECE S" D-STR" ++ TOP$ ROT NSKIP BEGIN DUP @ WHILE DUP >R GPIECE S" JOIN" ++ SEQ+ R> NSKIP REPEAT DROP ;
@@ -428,7 +437,8 @@ DEFER PIPELINE ( from to c-addr u --- c-addr2 u2 )
 : SPREAD-CODE ( p --- c-addr u )   \ what @ spreads: a list
   DUP @ N-CP = IF DUP PROG-CAP? IF S" PIPE-LINES" PIPE-CAP EXIT THEN
     CAPTURE-WORD S" [']" 2SWAP ++ S" CAPTURE" ++ EXIT THEN  PIECE ;
-: ARG-CODE ( w --- c-addr u )   DUP N+ @ N-SP = IF N+ N+ SPREAD-CODE S" ARG@" ++ EXIT THEN
+: ARG-CODE ( w --- c-addr u )   DUP N+ @ N-SP = IF N+ N+ DUP NSKIP DUP @ N-IX = IF   \ @(cmd)[k]: its values' k-th,
+    >R SPREAD-CODE R> IX-CODE S" ARG@1" ++ EXIT THEN  DROP SPREAD-CODE S" ARG@" ++ EXIT THEN   \ spread if a list (913)
   DUP @A IF GLOB-CODE S" GLOB ARG@" ++ EXIT THEN  WORD-CODE S" ARG" ++ ;   \ a word with * or ?: its paths (872)
 : ARGS-CODE ( from to --- c-addr u )   \ ARGL, then each word's value ARG - a spread's list ARG@
   >R >R S" ARGL" TOP$  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R ARG-CODE SEQ+ REPEAT  R> R> 2DROP ;
@@ -646,7 +656,7 @@ VARIABLE ARM-1ST
     ARGS-CODE S" PUTS" ++ OK$ EXIT THEN                     \ put one value: PUT it, no list made (866)
   S" echo" NAMED? IF 2DROP ARGS-CODE S" ECHO" ++ OK$ EXIT THEN
   2DUP S" cd exit wait match has trap" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT EXIT THEN      \ they set the status themselves (873)
-  2DUP S" count range merge each split join keys kind glob slice" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT OK$ EXIT THEN
+  2DUP S" count range merge each split join keys kind glob slice upper lower" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER ++ S" -OF" CAT OK$ EXIT THEN
   S" append" NAMED? IF 2DROP  2DUP = IF APPEND-ERR THEN  OVER N+ DUP @ N-VR = SWAP NSKIP @ 0= AND 0= IF APPEND-ERR THEN
     OVER WORD-CODE 2SWAP SWAP NSKIP SWAP ARGS-CODE ++ S" APPEND" ++ OK$ EXIT THEN      \ name[key] too (885)
   S" true" NAMED? IF 2DROP 2DROP S" 0 STATUS !" EXIT THEN
