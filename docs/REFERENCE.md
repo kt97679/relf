@@ -124,6 +124,8 @@ A block is a value: called by putting it first, its parameters the words after.
         var out $(ls /no/such 2>&1)         # $status 2
 
 A function whose number of results varies is taken with `[@(f)]` - always a list - or `for x @(f)`.
+A number taken with `$(f)` is printed and read back as text; in a hot loop, `var x @(f)` keeps it a
+number and is about three times faster.
 
 ## Pipes, programs and redirections
 
