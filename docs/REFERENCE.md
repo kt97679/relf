@@ -3,6 +3,7 @@
 The language `bin/cm` runs: a shell whose commands pass values - texts, numbers, lists, maps, blocks -
 as well as bytes. This page is the language as it stands; docs/COMMAND-MODEL.md is how it came to be.
 Every example here is in `tests/cm/scripts/reference.cm`, which the suite runs, and prints what is shown.
+At the prompt TAB completes builtins, defs, programs and file names.
 
     bin/cm script.cm [args...]      run a script; $args holds the arguments
     bin/cm                          the prompt: a line at a time, variables and defs kept

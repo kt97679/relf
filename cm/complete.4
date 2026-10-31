@@ -1,0 +1,336 @@
+\ cm/complete.4 - TAB at the command model's prompt (911): relfsh's completion, shell/edit.4's section, made
+\ the language's. Its words are read as cm reads them: no backslash escapes outside quotes, a word ending at
+\ a blank, ; or an opening bracket; a name with a character cm reads specially is put in '...', the quote
+\ opened where the word starts; command names from cm's builtins, the script's defs and PATH. Loaded after
+\ cm/cmc.4 (its defs); ED-COMPLETE, edit-shim's DEFER, is set to it at the end.
+\
+\ Iteration 410. The word under the cursor is completed as a path:
+\ everything up to its last `/` names a directory (`.` if there is no
+\ slash), the rest is a prefix, and the directory's entries that begin
+\ with it are the candidates. One candidate is inserted whole, with `/`
+\ after a directory and a space after anything else. Several insert
+\ what they all share; when they share nothing more than was typed,
+\ TAB lists them and the line is redrawn under the list. No candidate
+\ rings the bell. Dot-files are offered only to a prefix that starts
+\ with a dot, as every shell does, and `.` and `..` never.
+\
+\ A completed name is typed into the line with its special characters
+\ escaped - a file called `my notes` comes back as `my\ notes` -
+\ because an unescaped completion would break the line it completed.
+\
+\ In command position - first on the line, after `;` `|` `&` `(`, or
+\ after a word like `then` or `do` - a word with no slash completes as
+\ a command instead: the builtins, and the executables on PATH
+\ (Iteration 414). A word that already holds escaped characters -
+\ `my\ n` - is unescaped before it is matched (Iteration 418). Not yet:
+\ a word inside quotes. Aliases and functions complete as commands too
+\ (Iteration 419).
+
+: CMP-STR= ( c-addr u c-addr2 u2 --- f )   COMPARE 0= ;
+: CMP-PATH$ ( --- c-addr | 0 )   S" PATH" R-TEXT R-ENV  DUP R-T@ NIP 0= IF DROP 0 ELSE R-CSTR THEN ;   \ $PATH, a C string
+VARIABLE CMP-START               \ where the word under the cursor begins
+VARIABLE CMP-Q                   \ the quote the cursor is inside: 0, ' or "
+VARIABLE CMP-SL                  \ where the name part begins in CMP-W
+VARIABLE CMP-HASSLASH            \ the word names a directory as well
+VARIABLE CMP-W#
+256 BUFFER: CMP-W                \ the word, its quoting removed
+VARIABLE CMP-N                   \ how many candidates
+VARIABLE CMP-USED                \ bytes used in CMP-BUF
+VARIABLE CMP-LCP                 \ how many leading bytes they all share
+VARIABLE CMP-K
+VARIABLE CMP-PN
+VARIABLE CMP-CMD?                \ completing a command name, not a path
+VARIABLE CMP-P0
+VARIABLE CMP-P1
+1024 BUFFER: CMP-BUF             \ the candidates, NUL-terminated, end to end
+256 BUFFER: CMP-DIR              \ the directory to read
+256 BUFFER: CMP-PATH             \ directory and candidate, for FILE-MODE
+64 CELLS BUFFER: CMP-IDX         \ the candidates, sorted, for the listing
+
+VARIABLE CMP-PFX#
+256 BUFFER: CMP-PFX              \ the name part as typed, backslashes removed
+
+: CMP-WORD-FROM ( i --- start )   \ back from i to a blank: cm has no escaped blank
+  BEGIN DUP 0> WHILE  DUP 1- ED-BUF + C@ DUP 32 = SWAP 9 = OR IF EXIT THEN  1-  REPEAT ;
+
+: CMP-PREV ( i --- j )   \ the last non-blank before i, or -1
+  BEGIN
+    1- DUP 0< IF EXIT THEN
+    DUP ED-BUF + C@ DUP 32 = SWAP 9 = OR 0=
+  UNTIL ;
+
+: CMP-W-ADD ( c --- )   CMP-W CMP-W# @ + C!  1 CMP-W# +! ;
+: CMP-AT ( i --- c )   ED-BUF + C@ ;
+
+: CMP-STEP-SQ ( i --- i' )   \ inside '...': only ' ends it
+  DUP CMP-AT 39 = IF 0 CMP-Q ! ELSE DUP CMP-AT CMP-W-ADD THEN 1+ ;
+
+: CMP-STEP-DQ ( i --- i' )   \ inside "...": \ escapes only " \ $ `
+  DUP CMP-AT 34 = IF 0 CMP-Q ! 1+ EXIT THEN
+  DUP CMP-AT 92 = IF
+    DUP 1+ ED-POS @ < IF
+      DUP 1+ CMP-AT DUP 34 = OVER 92 = OR OVER 36 = OR SWAP 96 = OR IF
+        1+ DUP CMP-AT CMP-W-ADD 1+ EXIT
+      THEN
+    THEN
+  THEN
+  DUP CMP-AT CMP-W-ADD 1+ ;
+
+: CMP-SEPARATOR? ( c --- flag )   \ ends a word: a blank, ;, or a bracket that opens a list, block or capture
+  DUP 32 = OVER 9 = OR  OVER 59 = OR  OVER 91 = OR  OVER 123 = OR  SWAP 40 = OR ;
+
+: CMP-STEP-UQ ( i --- i' )   \ outside quotes: a quote opens one; \ is itself
+  DUP CMP-AT CMP-SEPARATOR? IF 1+ DUP CMP-START !  0 CMP-W# ! EXIT THEN
+  DUP CMP-AT DUP 39 = SWAP 34 = OR IF DUP CMP-AT CMP-Q ! 1+ EXIT THEN
+  DUP CMP-AT CMP-W-ADD 1+ ;
+
+: CMP-SCAN ( --- )   \ CMP-START, CMP-Q, and the word with its quoting removed
+  \ Forward from the start of the line, following the quoting rules,
+  \ rather than back from the cursor to a blank: a blank inside quotes
+  \ or after a backslash does not end the word, and `;` `|` `&` `(` `)`
+  \ `<` `>` do even without a blank - so `"my n`, `my\ n` and `ls;zq`
+  \ are all seen as the shell would see them (Iteration 420).
+  0 CMP-START !  0 CMP-Q !  0 CMP-W# !
+  ED-POS @ 2 + ENSURE-BUFFER CMP-W
+  0 BEGIN DUP ED-POS @ < WHILE
+    CMP-Q @ 39 = IF CMP-STEP-SQ ELSE
+    CMP-Q @ 34 = IF CMP-STEP-DQ ELSE CMP-STEP-UQ THEN THEN
+  REPEAT
+  DROP ;
+
+: CMP-SPLIT ( --- )   \ the directory in CMP-DIR, the name part in CMP-PFX
+  CMP-SCAN
+  0 CMP-SL !  0 CMP-HASSLASH !
+  CMP-W# @ 0 ?DO CMP-W I + C@ 47 = IF I 1+ CMP-SL !  -1 CMP-HASSLASH ! THEN LOOP
+  CMP-HASSLASH @ IF
+    CMP-SL @ 2 + ENSURE-BUFFER CMP-DIR
+    CMP-W CMP-DIR CMP-SL @ MOVE  0 CMP-DIR CMP-SL @ + C!
+  ELSE
+    46 CMP-DIR C!  0 CMP-DIR 1+ C!
+  THEN
+  CMP-W# @ CMP-SL @ - CMP-PFX# !
+  CMP-PFX# @ 2 + ENSURE-BUFFER CMP-PFX
+  CMP-W CMP-SL @ +  CMP-PFX  CMP-PFX# @ MOVE
+  0 CMP-PFX CMP-PFX# @ + C! ;
+
+: CMP-PREFIX ( --- c-addr u )   CMP-PFX CMP-PFX# @ ;   \ unescaped
+
+: CMP-AFTER-KEYWORD? ( --- flag )   \ the word before is one a command follows: if elif while ! && || |
+  CMP-START @ CMP-PREV DUP 0< IF DROP 0 EXIT THEN  1+     ( end )
+  DUP CMP-WORD-FROM  TUCK -  SWAP ED-BUF +  SWAP          ( c-addr u )
+  2DUP S" if" CMP-STR= IF 2DROP -1 EXIT THEN  2DUP S" elif" CMP-STR= IF 2DROP -1 EXIT THEN
+  2DUP S" while" CMP-STR= IF 2DROP -1 EXIT THEN  2DUP S" &&" CMP-STR= IF 2DROP -1 EXIT THEN
+  2DUP S" ||" CMP-STR= IF 2DROP -1 EXIT THEN  2DUP S" |" CMP-STR= IF 2DROP -1 EXIT THEN
+  S" !" CMP-STR= ;
+
+: CMP-COMMAND? ( --- flag )   \ the word names a command: first on the line or in a block or capture, no slash
+  CMP-HASSLASH @ IF 0 EXIT THEN
+  CMP-START @ CMP-PREV DUP 0< IF DROP -1 EXIT THEN
+  ED-BUF + C@  DUP 59 = OVER 123 = OR SWAP 40 = OR IF -1 EXIT THEN
+  CMP-AFTER-KEYWORD? ;
+
+: CMP-MATCH? ( c-addr u --- flag )   \ a name that begins with the prefix
+  OVER C@ 46 = IF                             \ a dot-file, or . or ..
+    DUP 1 = IF 2DROP 0 EXIT THEN
+    DUP 2 = IF OVER 1+ C@ 46 = IF 2DROP 0 EXIT THEN THEN
+    CMP-PREFIX NIP 0= IF 2DROP 0 EXIT THEN
+    CMP-PREFIX DROP C@ 46 <> IF 2DROP 0 EXIT THEN
+  THEN
+  DUP CMP-PREFIX NIP < IF 2DROP 0 EXIT THEN
+  DROP CMP-PREFIX NIP  CMP-PREFIX COMPARE 0= ;
+
+: CMP-NTH ( i --- c-addr )   CMP-BUF SWAP 0 ?DO DUP CSTRLEN + 1+ LOOP ;
+
+VARIABLE CMP-EXTRA               \ candidates counted beyond the stored ones
+VARIABLE CMP-XLCP                \ ... and how much of the first they share
+
+\ Past this many, candidates are COUNTED rather than stored: nothing is
+\ listed past it (bash asks before listing more than 100), so the only
+\ things still needed are how many there are and what they all share.
+\ Counting skips the duplicate check and the execute-bit test - the
+\ two costs that grow with PATH - which on an ARMv7 board made TAB on
+\ an empty line slow enough to fail a pty check waiting 0.3 s for it
+\ (Iteration 416). Folding a name that is not executable, or is a
+\ duplicate, into the shared prefix can only make it shorter, so the
+\ insertion stays safe; the count says "about".
+100 CONSTANT CMP-STORE
+
+: CMP-HAVE? ( c-addr u --- flag )   \ already a candidate
+  \ One walk down the buffer. It called CMP-NTH for each candidate -
+  \ itself a walk - so every addition cost the square of the count and
+  \ collecting cost its cube: TAB on an empty command word, which
+  \ offers everything on PATH, did not finish (Iteration 414).
+  CMP-BUF  CMP-N @ 0 ?DO                       ( a u p )
+    2 PICK 2 PICK 2 PICK DUP CSTRLEN CMP-STR= IF DROP 2DROP -1 UNLOOP EXIT THEN   \ no R> in the loop: the lint's
+    DUP CSTRLEN + 1+
+  LOOP
+  DROP 2DROP 0 ;
+
+: CMP-SHARED ( a b --- n )   \ leading bytes two NUL-terminated names share
+  0 CMP-K !
+  BEGIN
+    OVER CMP-K @ + C@  OVER CMP-K @ + C@
+    OVER = SWAP 0<> AND
+  WHILE
+    1 CMP-K +!
+  REPEAT
+  2DROP CMP-K @ ;
+
+: CMP-ADD ( c-addr u --- )   \ a candidate, if it matches and is new
+  2DUP CMP-MATCH? 0= IF 2DROP EXIT THEN
+  CMP-N @ CMP-STORE < 0= IF                   \ counted, not stored
+    DROP CMP-BUF SWAP CMP-SHARED CMP-XLCP @ MIN CMP-XLCP !
+    1 CMP-EXTRA +!  EXIT
+  THEN
+  2DUP CMP-HAVE? IF 2DROP EXIT THEN
+  \ Grown before the address is taken: growing moves it.
+  DUP CMP-USED @ + 2 + ENSURE-BUFFER CMP-BUF
+  DUP >R  CMP-BUF CMP-USED @ + SWAP MOVE
+  0 CMP-BUF CMP-USED @ R@ + + C!
+  R> 1+ CMP-USED +!  1 CMP-N +! ;
+
+: CMP-BUILD-PATH ( name --- )   \ CMP-PATH: CMP-DIR/name, NUL-terminated
+  DUP CSTRLEN CMP-DIR CSTRLEN + 3 + ENSURE-BUFFER CMP-PATH
+  CMP-DIR CMP-PATH CMP-DIR CSTRLEN MOVE
+  CMP-DIR CSTRLEN CMP-PN !
+  CMP-PATH CMP-PN @ 1- + C@ 47 <> IF 47 CMP-PATH CMP-PN @ + C!  1 CMP-PN +! THEN
+  DUP CSTRLEN >R  CMP-PATH CMP-PN @ + R@ MOVE  R> CMP-PN +!
+  0 CMP-PATH CMP-PN @ + C! ;
+
+: CMP-IS-DIR? ( name --- flag )
+  CMP-BUILD-PATH  CMP-PATH -1 FILE-MODE 61440 AND 16384 = ;
+
+: CMP-IS-EXEC? ( name --- flag )   \ a regular file with an execute bit
+  CMP-BUILD-PATH  CMP-PATH -1 FILE-MODE
+  DUP 61440 AND 32768 =  SWAP 73 AND 0<>  AND ;
+
+: CMP-COLLECT-DIR ( --- )   \ CMP-DIR's matching entries
+  CMP-DIR OPEN-DIR ?DUP 0= IF EXIT THEN       ( dirp )
+  BEGIN DUP READ-DIR ?DUP WHILE               ( dirp name )
+    CMP-CMD? @ IF
+      DUP DUP CSTRLEN CMP-MATCH? IF
+        \ The execute-bit test only while candidates are still stored.
+        CMP-N @ CMP-STORE < IF
+          DUP CMP-IS-EXEC? IF DUP CSTRLEN CMP-ADD ELSE DROP THEN
+        ELSE DUP CSTRLEN CMP-ADD THEN
+      ELSE DROP THEN
+    ELSE
+      DUP CSTRLEN CMP-ADD
+    THEN
+  REPEAT
+  CLOSE-DIR ;
+
+: CMP-COLLECT-PATH ( --- )   \ every directory on PATH; empty means .
+  CMP-PATH$ ?DUP 0= IF EXIT THEN  CMP-P0 !
+  BEGIN
+    CMP-P0 @ BEGIN DUP C@ DUP 0<> SWAP 58 <> AND WHILE 1+ REPEAT  CMP-P1 !
+    CMP-P1 @ CMP-P0 @ - ?DUP IF CMP-P0 @ SWAP ELSE S" ." THEN     ( c-addr u )
+    DUP 2 + ENSURE-BUFFER CMP-DIR
+    DUP >R  CMP-DIR SWAP MOVE  0 CMP-DIR R> + C!
+    CMP-COLLECT-DIR
+    CMP-P1 @ C@ 0<>
+  WHILE
+    CMP-P1 @ 1+ CMP-P0 !
+  REPEAT ;
+
+: CMP-WORDS-ADD ( c-addr u --- )   \ each blank-separated word of the text, a candidate
+  OVER + SWAP DUP                                                  ( end start p )
+  BEGIN 2 PICK OVER > WHILE
+    DUP C@ BL = IF 2DUP OVER - ?DUP IF CMP-ADD ELSE DROP THEN 1+ NIP DUP ELSE 1+ THEN
+  REPEAT  OVER - ?DUP IF CMP-ADD ELSE DROP THEN DROP ;
+: CMP-COLLECT-BUILTINS ( --- )   \ the language's builtins
+  S" var set put echo append del if elif else for while case def break continue return count range merge each has split join keys kind glob slice match read cd exit wait trap source true false" CMP-WORDS-ADD ;
+: CMP-COLLECT-FUNCS ( --- )   \ the defs made so far - at the prompt, the session's
+  DEFS# @ 0 ?DO  DEFS @ I 4 * CELLS + DUP @ SWAP CELL+ @ CMP-ADD  LOOP ;
+
+: CMP-COLLECT ( --- )   \ the candidates, into CMP-BUF
+  0 CMP-N !  0 CMP-USED !  0 CMP-EXTRA !  65535 CMP-XLCP !
+  CMP-COMMAND? DUP CMP-CMD? !
+  IF
+    \ The shell's own names first - aliases and functions, which are
+    \ commands as much as anything on PATH (Iteration 419) - then the
+    \ builtins, then PATH. The duplicate check drops an overlap.
+    CMP-COLLECT-FUNCS
+    CMP-COLLECT-BUILTINS CMP-COLLECT-PATH
+  ELSE
+    CMP-COLLECT-DIR
+  THEN ;
+
+: CMP-COMMON ( --- )   \ CMP-LCP, over every candidate, in one walk
+  CMP-BUF DUP CSTRLEN CMP-LCP !
+  CMP-BUF DUP CSTRLEN + 1+                     ( first next )
+  CMP-N @ 1 ?DO
+    2DUP CMP-SHARED CMP-LCP @ MIN CMP-LCP !
+    DUP CSTRLEN + 1+
+  LOOP
+  2DROP
+  CMP-XLCP @ CMP-LCP @ MIN CMP-LCP ! ;        \ and the counted ones
+
+: CMP-SPECIAL? ( c --- flag )   \ a character cm reads specially in a plain word: the name goes in '...'
+  DUP 33 < OVER 34 = OR OVER 35 = OR OVER 36 = OR OVER 38 = OR OVER 39 = OR OVER 40 = OR OVER 41 = OR
+  OVER 42 = OR OVER 59 = OR OVER 60 = OR OVER 62 = OR OVER 63 = OR OVER 64 = OR OVER 91 = OR OVER 92 = OR
+  OVER 93 = OR OVER 123 = OR OVER 124 = OR SWAP 125 = OR ;
+: CMP-OPEN-Q ( --- )   \ a ' where the word starts - a word is one thing in cm, no quote glued into it
+  ED-POS @  CMP-START @ ED-POS !  39 ED-INSERT  1+ ED-POS !  39 CMP-Q ! ;
+: CMP-PUT ( c --- )   \ one character: in "..." \ before " \ and $; in '...' as it is; else, special, in '...'
+  CMP-Q @ 34 = IF DUP 34 = OVER 92 = OR OVER 36 = OR IF 92 ED-INSERT THEN ED-INSERT EXIT THEN
+  CMP-Q @ 0= IF DUP CMP-SPECIAL? IF CMP-OPEN-Q THEN THEN
+  ED-INSERT ;
+
+: CMP-INSERT ( c-addr u --- )   \ typed into the line, escaped as it must be
+  0 ?DO DUP I + C@ CMP-PUT LOOP DROP ;
+
+: CMP-FINISH ( --- )   \ after a single candidate
+  \ A directory gets `/` and any quote stays open, so TAB can carry on
+  \ inside it; anything else closes the quote and gets a blank.
+  CMP-CMD? @ 0= IF 0 CMP-NTH CMP-IS-DIR? IF 47 ED-INSERT EXIT THEN THEN
+  CMP-Q @ ?DUP IF ED-INSERT THEN
+  32 ED-INSERT ;
+
+: CMP-LESS? ( j --- flag )   \ entry j sorts before entry j-1
+  DUP CELLS CMP-IDX + @ DUP CSTRLEN
+  ROT 1- CELLS CMP-IDX + @ DUP CSTRLEN
+  COMPARE 0< ;
+
+: CMP-SWAP-IDX ( j --- )   \ entries j and j-1 change places
+  CELLS CMP-IDX +  DUP @  OVER 1 CELLS - @  2 PICK !  SWAP 1 CELLS - ! ;
+
+: CMP-SORT ( --- )   \ CMP-IDX: the candidates in byte order
+  CMP-N @ CELLS ENSURE-BUFFER CMP-IDX
+  CMP-BUF  CMP-N @ 0 ?DO DUP CMP-IDX I CELLS + !  DUP CSTRLEN + 1+ LOOP  DROP
+  CMP-N @ 1 ?DO
+    I BEGIN DUP 0> IF DUP CMP-LESS? ELSE 0 THEN WHILE
+      DUP CMP-SWAP-IDX 1-
+    REPEAT
+    DROP
+  LOOP ;
+
+: CMP-LIST ( --- )   \ the candidates, sorted, under the line
+  \ Sorted, as every shell lists them - they were in directory order,
+  \ which is no order at all - and capped: TAB on an empty command
+  \ word offers everything on PATH, which is thousands of names that
+  \ nobody reads (Iteration 414).
+  10 ED-CH
+  CMP-EXTRA @ IF
+    S" about " ED-OUT  CMP-N @ CMP-EXTRA @ + 0 <# #S #> ED-OUT
+    S"  candidates - type more to narrow them" ED-OUT 10 ED-CH  0 ED-COL ! EXIT
+  THEN
+  CMP-SORT
+  CMP-N @ 0 ?DO CMP-IDX I CELLS + @ DUP CSTRLEN ED-OUT S"   " ED-OUT LOOP
+  10 ED-CH  0 ED-COL ! ;                     \ the next prompt starts a line (574)
+
+: ED-COMPLETE' ( --- )   \ TAB
+  CMP-SPLIT CMP-COLLECT
+  CMP-N @ 0= IF 7 ED-CH EXIT THEN             \ nothing: the bell
+  CMP-COMMON
+  CMP-PREFIX NIP                              ( typed )
+  CMP-LCP @ OVER > IF                         \ more is shared than was typed
+    0 CMP-NTH OVER +  CMP-LCP @ ROT -  CMP-INSERT
+    CMP-N @ 1 = CMP-EXTRA @ 0= AND IF CMP-FINISH THEN
+    EXIT
+  THEN
+  DROP
+  CMP-N @ 1 = CMP-EXTRA @ 0= AND IF CMP-FINISH EXIT THEN   \ typed in full
+  CMP-LIST ;
+
+' ED-COMPLETE' IS ED-COMPLETE

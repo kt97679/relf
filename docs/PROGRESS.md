@@ -934,6 +934,7 @@ do not trust the absence of a line below.
 - 908 — five more whole scripts (config merge, wrap, a supervisor with wait $job, inventory with del, a template): all worked
 - 909 — [...] by character; defs load 3.5 times faster (a word list of their own, a hash for DEF-FIND); slice; the prompt's sourced files kept
 - 910 — case; trap { } EXIT INT TERM HUP; a caught signal ends a busy loop too
+- 911 — TAB at the prompt: the language's completion (cm/complete.4), checked through a pseudo-terminal
 
 ### Not tied to an iteration
 
