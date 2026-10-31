@@ -92,7 +92,8 @@ says - or a value: a boolean, as `$(( ))` gives, or a block, run, its status say
 
 `else` and `elif` follow the `}` before them, on its line or starting the next - a newline ends a
 command, but not before them, as a line ending in `|`, `&&` or `||` goes on - and see the
-condition's status in `$status`.
+condition's status in `$status`. A condition that tests `$status` replaces it, as in sh: keep it first,
+`var s $status`, to use it in the branch.
 `&&`, `||` and `!` join commands by their status, as in sh.
 
 ## Functions

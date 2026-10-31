@@ -1,0 +1,18 @@
+# a whole script (908), as one would write it
+# merge a user's config over defaults, both key=value files; print the result sorted by key
+printf '%s\n' 'color=blue' 'size=10' '# a comment' 'mode=fast' > /tmp/cm-ws3-defaults.conf
+printf '%s\n' 'size=12' 'name=ada' '' > /tmp/cm-ws3-user.conf
+def load {|file|
+    var conf [:]
+    for line @(cat $file) {
+        if match $line '#*' { continue }
+        if match $line '*=*' {
+            var kv [@(split $line =)]
+            set conf[$kv[0]] $kv[1]
+        }
+    }
+    put $conf
+}
+var merged @(merge @(load /tmp/cm-ws3-defaults.conf) @(load /tmp/cm-ws3-user.conf))
+for k @(keys $merged | sort) { echo "$k = $merged[$k]" }
+rm /tmp/cm-ws3-defaults.conf /tmp/cm-ws3-user.conf

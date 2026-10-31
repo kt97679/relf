@@ -1,0 +1,5 @@
+fast: ok
+slow: ok
+broken: failed with 4
+1 failed
+status 0

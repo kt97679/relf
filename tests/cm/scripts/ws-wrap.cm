@@ -1,0 +1,12 @@
+# a whole script (908), as one would write it
+# wrap a paragraph at a width
+def wrap {|text width|
+    var line ''
+    for w @(split $text ' ') {
+        if $(( $(count $line) == 0 )) { set line $w }
+        elif $(( $(count $line) + 1 + $(count $w) <= $width )) { set line "$line $w" }
+        else { echo $line; set line $w }
+    }
+    if $(( $(count $line) > 0 )) { echo $line }
+}
+wrap 'the quick brown fox jumps over the lazy dog and keeps on running far away' 20

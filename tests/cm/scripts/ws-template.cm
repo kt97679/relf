@@ -1,0 +1,8 @@
+# a whole script (908), as one would write it
+# fill {{name}} placeholders from a map
+def render {|text vars|
+    var out $text
+    for k @(keys $vars) { set out $(join $vars[$k] @(split $out "{{$k}}")) }
+    put $out
+}
+echo $(render 'Dear {{name}}, your order {{id}} ships {{when}}.' [name: Ada  id: 42  when: today])
