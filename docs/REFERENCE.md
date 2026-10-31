@@ -82,8 +82,8 @@ says - or a value: a boolean, as `$(( ))` gives, or a block, run, its status say
     var n 0
     while $(( $n < 3 )) { set n $(( $n + 1 )) }
 
-`else` and `elif` go on the line of the `}` before them. `&&`, `||` and `!` join commands by their
-status, as in sh.
+`else` and `elif` go on the line of the `}` before them, and see the condition's status in `$status`.
+`&&`, `||` and `!` join commands by their status, as in sh.
 
 ## Functions
 
@@ -137,7 +137,8 @@ its values' printed forms, a line each.
     pair | tr a-z A-Z                                         # A, B
     ls /no/such 2> /dev/null || echo status $status           # status 2
     echo saved > /tmp/cm-ref.txt; echo more >> /tmp/cm-ref.txt; cat < /tmp/cm-ref.txt
-    greet file > /tmp/cm-ref.txt                              # functions and builtins redirect too
+    greet file > /tmp/cm-ref.txt                              # functions and builtins redirect too,
+                                                              # alone or as a pipeline's stage
     sleep 0 &
     wait                                                      # every job started with &
 

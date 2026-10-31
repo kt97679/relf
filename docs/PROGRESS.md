@@ -926,6 +926,7 @@ do not trust the absence of a line below.
 - 900 — docs/REFERENCE.md, every example run by the suite (tools/reference-check.py); the README names the command model
 - 901 — the front end priced (19.2 KB; a table might save 1 KB - not done); five whole scripts: a block as a condition, one printed form in "..."
 - 902 — the call's cost measured again: 5.5 times 890's on this host (3.2 on 898's); var x @(f) about a third of $(f)'s
+- 903 — eight more whole scripts: $status in else, a pipeline's function stage redirected; four questions for the owner
 
 ### Not tied to an iteration
 

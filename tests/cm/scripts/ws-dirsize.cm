@@ -1,0 +1,18 @@
+# a whole script (903), as one would write it
+# the size of each directory under a root, summed from its files
+var root /tmp/cm-ws2-dirs
+rm -rf $root
+mkdir -p "$root/a/b" "$root/c"
+printf 1234567890 > "$root/a/f1"
+printf 12345 > "$root/a/b/f2"
+printf 123 > "$root/c/f3"
+def size {|dir|
+    var total 0
+    for f @(glob "$dir/*") {
+        if test -d $f { set total $(( $total + $(size $f) )) } else { set total $(( $total + $(wc -c < $f) )) }
+    }
+    put $total
+}
+for d @(glob "$root/*") { echo "$d: $(size $d)" }
+echo "all: $(size $root)"
+rm -rf $root

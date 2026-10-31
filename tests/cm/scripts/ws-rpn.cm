@@ -1,0 +1,26 @@
+# a whole script (903), as one would write it
+# an RPN calculator: tokens from stdin, a list as the stack
+var stack []
+def pop {
+    var n $(count $stack)
+    if $(( $n == 0 )) { echo stack empty >&2; exit 1 }
+    var top $stack[-1]
+    var rest []
+    for i @(range $(( $n - 1 ))) { append rest $stack[$i] }
+    set stack $rest
+    put $top
+}
+def calc {
+  var line ''
+  while read line {
+    for tok @(split $line ' ') {
+        if match $tok '[0-9]*' { append stack $tok } elif match $tok '[-+*/]' {
+            var b @(pop)
+            var a @(pop)
+            if match $tok '+' { append stack $(( $a + $b )) } elif match $tok '-' { append stack $(( $a - $b )) } elif match $tok '[*]' { append stack $(( $a * $b )) } else { append stack $(( $a / $b )) }
+        } else { echo "unknown token: $tok" >&2 }
+    }
+    echo "= $stack[-1]"
+  }
+}
+printf '3 4 +\n5 *\n2 -\n7 2 /\n1 x\n' | calc 2>&1

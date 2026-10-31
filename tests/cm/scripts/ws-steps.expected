@@ -1,0 +1,9 @@
+-> prepare
+   ok
+-> write
+   ok
+-> check
+   ok
+-> fail
+   failed (1)
+status 1

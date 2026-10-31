@@ -1,0 +1,4 @@
+/tmp/cm-ws2-dirs/a: 15
+/tmp/cm-ws2-dirs/c: 3
+all: 18
+status 0

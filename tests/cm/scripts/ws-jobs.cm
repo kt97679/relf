@@ -1,0 +1,8 @@
+# a whole script (903), as one would write it
+# jobs in parallel, each one's status collected
+var dir /tmp/cm-ws2-jobs
+rm -rf $dir
+mkdir -p $dir
+for n @(range 4) { sh -c "sleep 0.$n; exit $n" > "$dir/$n.out" & }
+wait
+echo last status $status

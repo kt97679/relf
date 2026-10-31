@@ -1,0 +1,8 @@
+# a whole script (903), as one would write it
+# a sequence of steps: stop at the first failure, say which, exit with its status
+def step {|name cmd| echo "-> $name"; if $cmd { echo "   ok" } else { var s $status; echo "   failed ($s)"; exit $s } }
+step prepare { mkdir -p /tmp/cm-ws2-steps }
+step write { echo data > /tmp/cm-ws2-steps/out }
+step check { grep -q data /tmp/cm-ws2-steps/out }
+step fail { grep -q nothing /tmp/cm-ws2-steps/out }
+step never { echo not reached }

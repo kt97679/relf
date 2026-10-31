@@ -28,7 +28,7 @@ VARIABLE TB  VARIABLE TB#  VARIABLE TB-CAP
 : APPEND ( list args --- )   SWAP D-LIST SWAP  DUP #ARGS 0 ?DO  DUP I ARGN  2 PICK R-PUSH  LOOP 2DROP ;
 : COUNT-OF ( args --- )   DUP #ARGS 1 <> IF S" cm: count takes one value" R-FAIL THEN  0 ARGN
   DUP D-KIND DUP K-LIST = IF DROP CELL+ @ @ ELSE DUP K-REC = IF DROP CELL+ @ @ @ ELSE
-  K-TEXT = IF CELL+ @ R-T@ U-COUNT ELSE S" cm: count of something with no count" R-FAIL THEN THEN THEN  D-NUM PUT ;
+  K-TEXT = IF CELL+ @ R-T@ U-COUNT ELSE S" cm: count takes a list, a map or a text - count of a number's digits is count of its text" R-FAIL THEN THEN THEN  D-NUM PUT ;
 : RANGE-OF ( args --- )   DUP #ARGS 1 <> IF S" cm: range takes one number" R-FAIL THEN
   0 ARGN D>N 0 ?DO I D-NUM PUT LOOP ;
 : MERGE-OF ( args --- )   \ merge $a $b: a new map, a's entries, b's over them - the top level copied
@@ -90,7 +90,8 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
   LOOP  CT-ON @ >R  RD-FD1? IF 0 CT-ON ! THEN          \ stdout redirected: to its file, not $( )'s text (896)
   RR-N @ >R  CATCH  R> RDK-BACK  R> CT-ON !  THROW ;
 : D-COND ( item --- f )   \ a value as if's or while's condition: true or false, nothing else (876) - the
-  DUP D-KIND K-BOOL = IF D-TRUE? EXIT THEN            \ shell's [ -f x ] is a list here, and was taken as true
+  DUP D-KIND K-BOOL = IF D-TRUE? DUP 0= 1 AND STATUS ! EXIT THEN   \ its status too, as a boolean command's (903);
+  \ the shell's [ -f x ] is a list here, and was taken as true
   DUP D-KIND K-BLOCK = IF ARGL SWAP BLK-CALL STATUS @ 0= EXIT THEN   \ a block: run, its status (901) - if $cmd { }
   D-KIND K-LIST = IF S" cm: a list is no condition - [ ] makes a list here; test -f x tests a file" R-FAIL THEN
   S" cm: a condition is a command, true or false - $(( )) makes one of a number" R-FAIL ;

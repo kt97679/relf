@@ -1,0 +1,11 @@
+# a whole script (903), as one would write it
+# a report using a sourced library of helpers
+source lib/strings.cm
+var items [[name: apples  qty: 3] [name: pears  qty: 12] [name: plums  qty: 140]]
+echo $(upper report)
+echo $(repeat = 20)
+for it @items { echo "$(pad-left $it[name] 8) $(pad-left $it[qty] 5)" }
+echo $(repeat - 20)
+var total 0
+for it @items { set total $(( $total + $it[qty] )) }
+echo "$(pad-left total 8) $(pad-left $total 5)"

@@ -1,0 +1,23 @@
+# a whole script (903), as one would write it
+# lines, words and characters of each file given, and a total
+printf 'hello world\nthe quick brown fox\n' > /tmp/cm-ws2-ts1.txt
+printf 'one\n' > /tmp/cm-ws2-ts2.txt
+var files [@args]
+if $(( $(count $files) == 0 )) { set files [/tmp/cm-ws2-ts1.txt /tmp/cm-ws2-ts2.txt] }
+var total [lines: 0  words: 0  chars: 0]
+for f @files {
+    var lines 0
+    var words 0
+    var chars 0
+    for line @(cat $f) {
+        set lines $(( $lines + 1 ))
+        set words $(( $words + $(count [@(split $line ' ')]) ))
+        set chars $(( $chars + $(count $line) + 1 ))
+    }
+    echo "$f: $lines $words $chars"
+    set total[lines] $(( $total[lines] + $lines ))
+    set total[words] $(( $total[words] + $words ))
+    set total[chars] $(( $total[chars] + $chars ))
+}
+echo "total: $total[lines] $total[words] $total[chars]"
+rm /tmp/cm-ws2-ts1.txt /tmp/cm-ws2-ts2.txt

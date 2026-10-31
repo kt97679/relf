@@ -1,0 +1,6 @@
+# in else and elif, $status is the condition's, as sh's (903) - it had been 0, set before the branch; a boolean condition sets it too
+if grep -q nothing /etc/hostname { echo yes } else { echo "else status $status" }
+var b { grep -q nothing /etc/hostname }
+if $b { echo yes } else { echo "block else status $status" }
+if false { } else { echo "false else status $status" }
+grep -q nothing /etc/hostname || echo "|| status $status"
