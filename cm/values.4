@@ -23,7 +23,16 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
 : NUMERIC? ( item --- f )   \ a text that reads as a whole number: -?[0-9]+
   DUP D-KIND K-TEXT <> IF DROP 0 EXIT THEN  D-TEXT R-T@  OVER C@ [CHAR] - = IF 1 /STRING THEN
   DUP 0= IF NIP EXIT THEN  -1 ROT ROT 0 ?DO  DUP I + C@ [CHAR] 0 [CHAR] 9 1+ WITHIN ROT AND SWAP  LOOP DROP ;
-: D-NUMERIC ( item --- item' )   DUP NUMERIC? IF D-TEXT R-NUMBER N>ITEM-D THEN ;   \ "41" in $(( )): 41, as the shell's
+: DIGITS# ( c-addr u --- n f )   \ its digits' value; f 0 if a character is no digit
+  0 ROT ROT OVER + SWAP ?DO  I C@ [CHAR] 0 - DUP 10 U< 0= IF 2DROP 0 0 UNLOOP EXIT THEN  SWAP DUP 2* 2* + 2* +  LOOP  -1 ;
+: TXT>INT? ( c-addr u --- n -1 | 0 )   \ -?[0-9]+, 18 digits at most, in one pass (898): $(f)'s numbers come back as
+  \ text since 896, and NUMERIC?, then >NUMBER through R-NUMBER, had been a third of calls.cm's dispatches
+  DUP 0= IF 2DROP 0 EXIT THEN  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN
+  DUP 0= OVER 18 > OR IF 2DROP R> DROP 0 EXIT THEN
+  DIGITS# R> SWAP IF IF NEGATE THEN -1 ELSE 2DROP 0 THEN ;   \ times 10 as 2* 2* + 2*: * is a colon word here
+: D-NUMERIC ( item --- item' )   \ "41" in $(( )): 41, as the shell's
+  DUP D-KIND K-TEXT <> IF EXIT THEN  DUP D-TEXT R-T@ TXT>INT? IF NIP N>ITEM-D EXIT THEN
+  DUP NUMERIC? IF D-TEXT R-NUMBER N>ITEM-D THEN ;   \ past 18 digits: R-NUMBER's, which says when it is past 64 bits
 : D-NOT-NUM ( text --- )   \ the text named (887): "a text that reads as none" said not which
   R-ERR> ." cm: $(( )) takes numbers, not the text " D-TEXT R-T@ TYPE R-ERR-NL -4004 THROW ;
 : D-ARITH ( a b op --- c )   >R D-NUMERIC SWAP D-NUMERIC SWAP
