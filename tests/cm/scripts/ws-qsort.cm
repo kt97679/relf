@@ -1,0 +1,12 @@
+# a whole script (916), as one would write it
+# quicksort over a list of numbers, recursively
+def qsort {|l|
+    if $(( $(count $l) <= 1 )) { put $l; return 0 }
+    var pivot $l[0]
+    var less []
+    var more []
+    for x @(slice $l 1) { if $(( $x < $pivot )) { append less $x } else { append more $x } }
+    put [@(qsort $less)[0] $pivot @(qsort $more)[0]]
+}
+var sorted @(qsort [33 4 15 8 42 16 23 4])
+echo $sorted

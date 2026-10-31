@@ -212,6 +212,9 @@ def that uses `return` - past it, `recursion too deep for the stacks`.
 ## For sh users
 
 - Values are never split or globbed: `"$x"` and `$x` are the same word. Quote to join: `"$dir/file"`.
+- sh's forms are errors that name this language's way, when the script is read: `x=5`, `$1`,
+  `for i in ...`, `name() { }`, `then`/`fi`/`do`/`done`, `export`, `local`, `unset`, backticks. A
+  program not found says `cm: name: no such program`.
 - `${x}` only inside `"..."`; `$x` everywhere else. No `$1`: `$args[0]`.
 - Operators need blanks round them: `2> /dev/null`, `a | b`; so does a line's closing `\`.
 - `[` is a list, not `test`: `test -f x`, or `$(( ))` for numbers.

@@ -1,0 +1,16 @@
+# a whole script (916), as one would write it
+# a menu answered from stdin: each choice handled, q quits
+def menu {
+    var choice ''
+    var items [:]
+    while read choice {
+        case $choice {
+            a { set items[apples] true; echo added apples }
+            p { set items[pears] true; echo added pears }
+            l { echo list: @(keys $items) }
+            q { echo bye; break }
+            * { echo "unknown choice: $choice" }
+        }
+    }
+}
+printf 'a\np\nx\nl\nq\na\n' | menu

@@ -1,0 +1,15 @@
+# a whole script (916), as one would write it
+# merge nested maps: b's values over a's, maps merged all the way down
+def deep {|a b|
+    var out [:]
+    for k @(keys $a) { set out[$k] $a[$k] }
+    for k @(keys $b) {
+        if has $out $k && match $(kind $out[$k]) map && match $(kind $b[$k]) map {
+            set out[$k] @(deep $out[$k] $b[$k])
+        } else { set out[$k] $b[$k] }
+    }
+    put $out
+}
+var base [db: [host: localhost  port: 5432]  debug: false]
+var mine [db: [port: 6543  user: ada]  debug: true]
+echo @(deep $base $mine)

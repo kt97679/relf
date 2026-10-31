@@ -939,6 +939,7 @@ do not trust the absence of a line below.
 - 913 — an index after any value in one word ([a b][1], $(cmd)[0], @(cmd)[2]); upper and lower by Unicode's case mapping
 - 914 — $(cmd)[k] in quotes; TAB completes $names; && || in if and while conditions, ! a command; four whole scripts
 - 915 — nine more whole scripts; a plain word a number only as written (01 stays 01); the overflow message
+- 916 — eleven more whole scripts; sh's habits (x=5, $1, for i in, export, fi...) errors naming the way here; no such program
 
 ### Not tied to an iteration
 

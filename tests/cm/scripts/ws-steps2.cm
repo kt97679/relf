@@ -1,0 +1,9 @@
+# a whole script (916), as one would write it
+# each step's failure handled where it happens
+var dir /tmp/cm-ws9-steps
+mkdir -p $dir || { echo cannot make $dir; exit 1 }
+echo data > "$dir/in.txt" && echo wrote in.txt
+cp "$dir/in.txt" "$dir/out.txt" && echo copied || echo copy failed
+cp "$dir/missing.txt" "$dir/x.txt" 2> /dev/null || echo "copy of missing failed, status $status"
+grep -q data "$dir/out.txt" && ! grep -q nothing "$dir/out.txt" && echo checks passed
+rm -rf $dir

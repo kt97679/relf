@@ -1,0 +1,8 @@
+# a whole script (916), as one would write it
+# read a file line by line, with a redirection on the loop
+printf 'one\ntwo\nthree\n' > /tmp/cm-ws8-lines.txt
+var n 0
+var line ''
+while read line { set n $(( $n + 1 )); echo "$n: $line" } < /tmp/cm-ws8-lines.txt
+echo "$n lines"
+rm /tmp/cm-ws8-lines.txt

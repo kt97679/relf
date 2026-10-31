@@ -1,0 +1,8 @@
+# a whole script (916), as one would write it
+# days between dates, by epoch seconds from date
+def epoch {|day| put $(date -u -d $day +%s) }
+var start 2026-01-01
+for d 2026-01-31 2026-03-01 2026-12-25 {
+    var days $(( ($(epoch $d) - $(epoch $start)) / 86400 ))
+    echo "$start to $d: $days days, a $(date -u -d $d +%A)"
+}

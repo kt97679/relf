@@ -1,0 +1,13 @@
+# a whole script (916), as one would write it
+# independent counters, each a map of blocks sharing its own state
+def counter {|name|
+    var n 0
+    put [inc: { set n $(( $n + 1 )) }  get: { put "$name=$n" }  reset: { set n 0 }]
+}
+var a @(counter apples)
+var b @(counter pears)
+$a[inc]; $a[inc]; $b[inc]
+echo $($a[get]) $($b[get])
+$a[reset]
+$b[inc]
+echo $($a[get]) $($b[get])

@@ -110,6 +110,7 @@ VARIABLE IN-QU                                     \ reading a "...": ${name} al
   CUR [CHAR] { = IF  IN-QU @ 0= IF S" ${name} is for a double-quoted text, where a name's letters follow it - $name here" P-ERR THEN
     GET DROP CUR NAME0? 0= IF S" ${ wants a name" P-ERR THEN  VAR-P  GET [CHAR] } <> IF S" } missing after ${name" P-ERR THEN EXIT THEN
   CUR NAME0? IF VAR-P EXIT THEN
+  CUR DIG? IF S" $1 is sh's - the script's arguments are $args, $args[0] the first" P-ERR THEN   \ (916)
   S" $" N-TX N, ;
 : IX? ( --- )   \ [key]... after a value written in one word - a list or map, a text, a capture, a spread's capture -
   \ a N-IX of its keys, after the value (913): as $name[key] is a variable's, so [a b c][1] and $(cmd)[0]
@@ -138,7 +139,8 @@ VARIABLE IN-QU                                     \ reading a "...": ${name} al
     ELSE CUR [CHAR] " = IF GET DROP QUOTED-P ELSE CUR [CHAR] ' = IF GET DROP SQUOTE-P     \ texts too (874): $(( $a == "yes" ))
     ELSE OPR2? IF 2 OPR,
     ELSE CUR S" +-*/%<>()!" ONE-OF? IF  CUR [CHAR] ( = IF 1+ THEN  CUR [CHAR] ) = IF 1- THEN  1 OPR,
-    ELSE S" (( )) holds numbers, $values, texts and operators" P-ERR THEN THEN THEN THEN THEN THEN
+    ELSE CUR NAME0? IF S" a word in $(( )) - a text there is quoted, a variable has its $" P-ERR THEN   \ (916)
+      S" (( )) holds numbers, $values, texts and operators" P-ERR THEN THEN THEN THEN THEN THEN
   AGAIN ;
 ' ARITH-P' IS ARITH-P
 VARIABLE BARE                                      \ the word read so far: plain text, nothing quoted
@@ -171,11 +173,13 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
   \ a word's first character says what it is; texts and values are joined inside "...")
   GLOBW @ >R  0 GLOBW !  -1 BARE !  NDP @ SWAP T0
   BEGIN CUR OVER WORD-END? 0= WHILE
+    CUR [CHAR] ` = IF S" `...` is sh's - $( ) captures a command's output" P-ERR THEN      \ (916)
     CUR [CHAR] $ = CUR [CHAR] ' = OR CUR [CHAR] " = OR IF
       CUR [CHAR] $ = IF S" a $ inside a plain word - a double-quoted text joins a value to text: $dir/file in quotes"
       ELSE S" a quote inside a plain word - a word is one thing; a double-quoted text joins texts" THEN P-ERR THEN
     GET DUP [CHAR] * = OVER [CHAR] ? = OR IF -1 GLOBW ! THEN T,   \ \ too (867): quotes are the one way to escape
   REPEAT DROP
+  TXS @ TXP @ OVER - DUP 2 > IF + 2 - 2 S" ()" COMPARE 0= IF S" name() { } is sh's - def name { } makes a function" P-ERR THEN ELSE 2DROP THEN   \ (916)
   TXS @ TXP @ OVER - GLUED? IF S" an operator glued to a word - | > < & and 2> are words of their own, blanks round them" P-ERR THEN
   TXS @ TXP @ OVER - DUP 1 > IF  + 1- C@ [CHAR] \ =  CUR 10 = CUR 13 = OR AND
     IF S" a \ that continues the line is a word of its own - a blank before it" P-ERR THEN  ELSE 2DROP THEN   \ (906)
@@ -403,10 +407,20 @@ VARIABLE CC-N
   BEGIN DUP 0> WHILE
     2DUP BL CHAR-AT >R  2OVER 3 PICK R@ COMPARE 0= IF R> DROP 2DROP 2DROP -1 EXIT THEN  R> 1+ /STRING
   REPEAT 2DROP 2DROP 0 ;
-: PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program
+: HABIT-NAME? ( c-addr u --- f )   DUP 0= IF 2DROP 0 EXIT THEN  OVER C@ NAME0? ROT ROT 0 ?DO DUP I + C@ NAMEC? ROT AND SWAP LOOP DROP ;
+: SH-SAYS ( c-addr u advice-a advice-u --- )   2SWAP S| S"  is sh's - " CAT 2SWAP CAT G-ERR ;
+: SH-HABIT ( c-addr u --- )   \ a first word that is sh's and no program here: an error that says this language's way (916)
+  2DUP S" export" COMPARE 0= IF S" set env[NAME] value" SH-SAYS THEN
+  2DUP S" local declare typeset" IN-LIST? IF S" var name value - a def's variables are its own" SH-SAYS THEN
+  2DUP S" unset" COMPARE 0= IF S" del name[key], del env[NAME]" SH-SAYS THEN
+  2DUP S" function alias" IN-LIST? IF S" def name { ... }" SH-SAYS THEN
+  2DUP S" then fi do done esac" IN-LIST? IF S" blocks: if cond { }, while cond { }, for x values { }, case v { }" SH-SAYS THEN
+  2DUP [CHAR] = SCAN NIP IF  2DUP 2DUP [CHAR] = SCAN NIP - HABIT-NAME? IF S" var x 5 makes a variable, set x 5 changes one, set env[X] 5 the environment" SH-SAYS THEN THEN
+  2DROP ;
+: PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program - unless it is sh's (916)
   DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
   2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match read kind source glob del slice case trap upper lower" IN-LIST?
-  >R DEF-FIND R> OR 0= ;
+  >R 2DUP DEF-FIND R> OR IF 2DROP 0 EXIT THEN  SH-HABIT -1 ;
 : CHAIN-ANDOR ( from to --- w )   \ in if's or while's command: && and || in a condition are the condition's (914)
   SWAP -1 >R
   BEGIN 2DUP <> WHILE
@@ -569,7 +583,7 @@ VARIABLE ARM-1ST
   BEGIN DUP @ WHILE  DUP >R N+  BEGIN DUP @ WHILE ARM-WORD  R> R> 1+ >R >R  REPEAT DROP  R> NSKIP  REPEAT DROP
   S" DROP 0 STATUS !" SEQ+  R> 0 ?DO S" THEN" SEQ+ LOOP ;
 : IF-CMD ( from to --- c-addr u )
-  2DUP TO-BLOCK 2DUP = IF S" if condition { ... }" G-ERR THEN
+  2DUP TO-BLOCK 2DUP = IF S" if condition { ... } - a block, not sh's then and fi" G-ERR THEN
   ROT OVER FLAG S" IF" ++ 2 PICK INLINE ++  ROT NSKIP     \ else and elif see the condition's status, as sh's (902);
   DUP 4 PICK = IF DROP ROT DROP S" ELSE 0 STATUS ! THEN" ++ EXIT THEN    \ no branch taken: status 0
   DUP S" else" BARE= IF NSKIP DUP 4 PICK = IF ELSE-ERR THEN  DUP NSKIP 4 PICK <> IF ELSE-ERR THEN
@@ -589,6 +603,7 @@ VARIABLE ARM-1ST
   4 PICK N+ N+ BODY-CODE S" R-SIG?" 2SWAP ++ ++  2OVER 2SWAP DEF-WORD  ROT LOOP-PLAIN?  R> R> SWAP  ROT IF NIP 0 SWAP THEN  )SCOPE ;   \ id 0: plain
 : FOR-CMD ( from to --- c-addr u )   \ for name words... { body }
   OVER BARE? 0= 2 PICK NSKIP 2 PICK = OR IF S" for name words... { body }" G-ERR THEN
+  OVER NSKIP S" in" BARE= IF S" for name values... { } - no in, as sh has" G-ERR THEN      \ it had gone round in too (916)
   FR @ F-SLOT >R  OVER SWAP LAST-W
   OVER NSKIP OVER ARGS-CODE
   3 PICK NSKIP DUP NSKIP 4 PICK = SWAP N+ @ N-SP <> AND IF S" FOR-ONE" ++ THEN

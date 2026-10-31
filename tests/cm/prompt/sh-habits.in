@@ -1,0 +1,13 @@
+x=5
+echo $1
+for i in 1 2 { echo $i }
+f() { echo hi }
+if true; then echo y; fi
+export X=1
+local y=2
+unset y
+function f { }
+echo `date`
+fi
+nosuchprog arg
+echo still here

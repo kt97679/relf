@@ -280,8 +280,10 @@ VARIABLE SE-P  VARIABLE SE-CAP   VARIABLE SE-N   VARIABLE SE-B   VARIABLE SE-U  
 VARIABLE RV-N   VARIABLE RV-V
 
 DEFER R-WHICH-D ( t --- t2 | 0 )   \ R-WHICH, defined once R-ENV and R-SPLIT are
-: R-EXECV ( argv --- )   \ (834) with no setenv names, the command itself, found on PATH: one exec, not env's two
-  SE-N @ 0= IF  DUP CELL+ @ ?DUP IF DUP CSTRLEN R-TEXT R-WHICH-D ?DUP IF R-CSTR OVER CELL+ SWAP EXECVE DROP THEN THEN  THEN
+: R-EXECV ( argv --- )   \ (834) with no setenv names, the command itself, found on PATH: one exec, not env's two;
+  DUP SE-N @ 1+ CELLS + @ ?DUP IF  DUP CSTRLEN R-TEXT R-WHICH-D ?DUP 0= IF     \ none there, said as cm's (916): env had said
+      R-ERR> ." cm: " DUP SE-N @ 1+ CELLS + @ DUP CSTRLEN TYPE ." : no such program" R-ERR-NL  127 SYS-EXIT  THEN   \ it - or, for x=5, printed
+    SE-N @ IF DROP ELSE R-CSTR OVER CELL+ SWAP EXECVE DROP THEN  THEN                   \ the environment
   S" /usr/bin/env" R-TEXT R-CSTR EXECVE DROP  127 SYS-EXIT ;   \ else env: it sets the names, and says what it cannot find
 VARIABLE SIG-SEEN   VARIABLE SIG-CNT   \ a signal taken while waiting; safe points till the next look (786)
 : R-SIGNAL ( --- signo | 0 )   SIG-SEEN @ ?DUP IF 0 SIG-SEEN ! ELSE SIGNALS-PENDING THEN ;

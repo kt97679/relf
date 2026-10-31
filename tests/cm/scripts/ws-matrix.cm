@@ -1,0 +1,29 @@
+# a whole script (916), as one would write it
+# matrices as lists of rows: transpose and multiply
+def transpose {|m|
+    var t []
+    for j @(range $(count $m[0])) {
+        var row []
+        for r @m { append row $r[$j] }
+        append t $row
+    }
+    put $t
+}
+def mul {|a b|
+    var bt @(transpose $b)
+    var out []
+    for r @a {
+        var row []
+        for c @bt {
+            var s 0
+            for k @(range $(count $r)) { set s $(( $s + $r[$k] * $c[$k] )) }
+            append row $s
+        }
+        append out $row
+    }
+    put $out
+}
+var a [[1 2] [3 4]]
+var b [[5 6] [7 8]]
+for row @(mul $a $b) { echo @row }
+echo $(transpose [[1 2 3] [4 5 6]])
