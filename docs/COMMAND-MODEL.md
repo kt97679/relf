@@ -1,4 +1,4 @@
-# The command model (850; the language since 867)
+# The command model (850; the language since 867; working name rill3 since 918)
 
 **Status: the language (867).** Drafted at 850 as Q46's option C, a base for further development; at
 867, the owner having handed the choice over, chosen over A.4 by the owner's criteria - the smallest

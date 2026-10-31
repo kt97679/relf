@@ -941,6 +941,7 @@ do not trust the absence of a line below.
 - 915 — nine more whole scripts; a plain word a number only as written (01 stays 01); the overflow message
 - 916 — eleven more whole scripts; sh's habits (x=5, $1, for i in, export, fi...) errors naming the way here; no such program
 - 917 — longer programs and a prompt workflow; a top-level loop's turns may collect (a text grown in a loop had run out); join linear
+- 918 — a working name: rill3 (bin/cm and .cm unchanged)
 
 ### Not tied to an iteration
 

@@ -1,4 +1,7 @@
-# The command model - a reference for writing scripts
+# rill3 - a reference for writing scripts
+
+rill3 is the working name (918) of the language the repository calls the command model; its runner is
+still `bin/cm` and its scripts `.cm`.
 
 The language `bin/cm` runs: a shell whose commands pass values - texts, numbers, lists, maps, blocks -
 as well as bytes. This page is the language as it stands; docs/COMMAND-MODEL.md is how it came to be.

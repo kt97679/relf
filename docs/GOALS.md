@@ -242,7 +242,7 @@ the account of what each gained and cost.
    points - Devanagari's vowel signs among them). Nine scripts' cases
    match bash's readline; four are in the interactive suite.
 
-15. **The command model**, the work now (the language: docs/COMMAND-MODEL.md - its
+15. **The command model** - working name rill3 (918) - the work now (the language: docs/COMMAND-MODEL.md - its
    rules and "One way"; the design's study: SYNTAX-STUDY.md, SYNTAX-GENES.md). Chosen at
    867 by the owner's criteria - the smallest binary and image, good speed, short
    scripts, a consistent and friendly syntax, exactly one way to do each thing - over
