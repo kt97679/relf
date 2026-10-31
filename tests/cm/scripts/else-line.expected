@@ -1,2 +1,6 @@
-cm: line 3: else and elif go on the line of if's } - } else {
-status 2
+two
+else, status 1
+i 0
+i 1
+after the loop
+status 0

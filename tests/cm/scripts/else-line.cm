@@ -1,3 +1,18 @@
-# else and elif go on the line of if's } (877): on a line of their own, an error that says so
-if true { echo yes }
-else { echo no }
+# else and elif may start the line after an if's } (904): a newline ends a command (rule 1), but not before
+# them - as a line ending in | && or || goes on. 877 had made it an error; blank lines and comments between too
+var x 2
+if $(( $x == 1 )) {
+    echo one
+}
+elif $(( $x == 2 )) {
+    echo two
+}
+# a comment between
+
+else {
+    echo other
+}
+if false { echo no }
+else { echo "else, status $status" }
+for i @(range 2) { echo i $i }
+echo after the loop

@@ -82,7 +82,9 @@ says - or a value: a boolean, as `$(( ))` gives, or a block, run, its status say
     var n 0
     while $(( $n < 3 )) { set n $(( $n + 1 )) }
 
-`else` and `elif` go on the line of the `}` before them, and see the condition's status in `$status`.
+`else` and `elif` follow the `}` before them, on its line or starting the next - a newline ends a
+command, but not before them, as a line ending in `|`, `&&` or `||` goes on - and see the
+condition's status in `$status`.
 `&&`, `||` and `!` join commands by their status, as in sh.
 
 ## Functions

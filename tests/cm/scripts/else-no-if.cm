@@ -1,0 +1,4 @@
+# else or elif with no if before it - after a command that is not an if, or one whose last word is no block
+# - is an error when the script is read (904)
+echo hi
+else { echo x }
