@@ -42,8 +42,8 @@ script is read. A substituted value is never split into words and never globbed.
     # text number text bool list map block
 
 Numbers are whole, 64-bit. Lists and maps are held by reference: two variables can hold one list.
-`$l[-1]` is a list's last item. `echo` and a value nobody takes print a value's form - a list as
-`[a b]`, a map as `[k: v]`, a block as `<block>`.
+`$l[-1]` is a list's last item. `echo`, a value nobody takes, and a value inside `"..."` or given to `join` all
+use one printed form - a list as `[a b]`, a map as `[k: v]`, a block as `<block>`.
 
 ## Variables
 
@@ -74,7 +74,7 @@ texts too. A comparison gives a boolean.
 ## Control
 
 `if`, `while`, `for` and `def` are commands that take blocks. A condition is a command: its status
-says - or a boolean value, as `$(( ))` gives.
+says - or a value: a boolean, as `$(( ))` gives, or a block, run, its status saying.
 
     for i @(range 4) { if $(( $i == 1 )) { continue } elif $(( $i == 3 )) { break } else { echo i $i } }
     # i 0

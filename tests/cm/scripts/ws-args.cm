@@ -1,0 +1,22 @@
+# a whole script (901): options parsed into a map - a list inside "..." had printed as a b, a map as {k: "v"}; now as echo shows them
+# parse options: --name=value, -v flags, the rest positional
+def parse {|argv|
+    var opts [verbose: false]
+    var rest []
+    for a @argv {
+        if match $a '--*=*' {
+            var kv [@(split $a =)]
+            var key $(join '' @(split $kv[0] -))
+            set opts[$key] $kv[1]
+        } elif match $a '-v' {
+            set opts[verbose] true
+        } else {
+            append rest $a
+        }
+    }
+    set opts[rest] $rest
+    put $opts
+}
+var o @(parse [--name=ada -v one --mode=fast two])
+echo name $o[name] mode $o[mode] verbose $o[verbose] rest $o[rest]
+for k @(keys $o) { echo "$k = $o[$k]" }

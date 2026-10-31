@@ -1,0 +1,6 @@
+name ada mode fast verbose true rest [one two]
+verbose = true
+name = ada
+mode = fast
+rest = [one two]
+status 0

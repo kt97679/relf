@@ -1,0 +1,15 @@
+# a whole script (901), as one would write it in 899's syntax: a block as if's condition had been "a condition is a command" - it runs now, its status the answer
+# run a command until it succeeds, at most n times
+def retry {|n cmd|
+    var i 0
+    while $(( $i < $n )) {
+        set i $(( $i + 1 ))
+        if $cmd { echo succeeded on try $i; return 0 }
+        echo try $i failed
+    }
+    return 1
+}
+var tries 0
+def flaky { set tries $(( $tries + 1 )); test $tries -ge 3 }
+retry 5 { flaky } || echo gave up
+retry 2 { false } || echo gave up on false

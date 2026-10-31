@@ -35,6 +35,11 @@ DEFER SHOW ( item --- )
   K-UPV = IF UPV@ RECURSE EXIT THEN
   D-TEXT R-T@ OUT-TYPE ;
 ' SHOW-IMPL IS SHOW
+: SHOWN ( v kind --- t )   \ a list's, map's or block's text - in "...", join's - its printed form, as echo shows it
+  \ (901): it had been Rill's - a list's items blank-separated, a map as {k: "v"} - two forms of one value
+  R-BOX  CT-LEN @ >R  CT-ON @ >R  -1 CT-ON !  SHOW  R> CT-ON !
+  CT-BUF @ R@ +  CT-LEN @ R@ -  R-TEXT  R> CT-LEN ! ;
+' SHOWN IS R-CONT>TEXT-D
 
 \ ---- value output: a stack of sinks - each @( )'s list; 0, printed - at the terminal, or into $( )'s text ----
 64 CONSTANT SINK-MAX

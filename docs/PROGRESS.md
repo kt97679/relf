@@ -924,6 +924,7 @@ do not trust the absence of a line below.
 - 898 — $( ) of a number faster: printed and read back without >NUMBER or # (calls 650 to 280 ms; 890: 87)
 - 899 — a word's first character says what it is; operators words of their own, glued forms errors; "${k}d"; glob
 - 900 — docs/REFERENCE.md, every example run by the suite (tools/reference-check.py); the README names the command model
+- 901 — the front end priced (19.2 KB; a table might save 1 KB - not done); five whole scripts: a block as a condition, one printed form in "..."
 
 ### Not tied to an iteration
 

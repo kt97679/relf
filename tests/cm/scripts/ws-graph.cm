@@ -1,0 +1,27 @@
+# a whole script (901), as one would write it in 899's syntax
+# breadth-first search over a graph kept as a map of lists; the path found
+var g [a: [b c]  b: [d]  c: [d e]  d: [f]  e: [f]  f: []]
+def bfs {|start goal|
+    var seen [:]
+    set seen[$start] true
+    var queue [$start]
+    var from [:]
+    var at 0
+    while $(( $at < $(count $queue) )) {
+        var node $queue[$at]
+        set at $(( $at + 1 ))
+        if $(( $node == $goal )) {
+            var path [$node]
+            while has $from $node { set node $from[$node]; set path [$node @path] }
+            put $path
+            return 0
+        }
+        for next @g[$node] {
+            if ! has $seen $next { set seen[$next] true; set from[$next] $node; append queue $next }
+        }
+    }
+    return 1
+}
+var p @(bfs a f)
+echo path: $p
+bfs a z || echo no path to z

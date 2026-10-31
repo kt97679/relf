@@ -1,0 +1,19 @@
+# a whole script (901), as one would write it in 899's syntax
+# summarise an access log: requests per status, the busiest path
+var log /tmp/cm-ws-access.log
+printf '%s\n' 'GET /index.html 200' 'GET /about 200' 'POST /login 302' 'GET /index.html 200' 'GET /missing 404' 'GET /index.html 304' 'GET /about 200' > $log
+var by_status [:]
+var by_path [:]
+for line @(cat $log) {
+    var f [@(split $line ' ')]
+    var path $f[1]
+    var code $f[2]
+    if has $by_status $code { set by_status[$code] $(( $by_status[$code] + 1 )) } else { set by_status[$code] 1 }
+    if has $by_path $path { set by_path[$path] $(( $by_path[$path] + 1 )) } else { set by_path[$path] 1 }
+}
+for c @(keys $by_status) { echo "status $c: $by_status[$c]" }
+var best ''
+var most 0
+for p @(keys $by_path) { if $(( $by_path[$p] > $most )) { set most $by_path[$p]; set best $p } }
+echo "busiest: $best ($most)"
+rm $log

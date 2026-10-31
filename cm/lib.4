@@ -91,6 +91,7 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
   RR-N @ >R  CATCH  R> RDK-BACK  R> CT-ON !  THROW ;
 : D-COND ( item --- f )   \ a value as if's or while's condition: true or false, nothing else (876) - the
   DUP D-KIND K-BOOL = IF D-TRUE? EXIT THEN            \ shell's [ -f x ] is a list here, and was taken as true
+  DUP D-KIND K-BLOCK = IF ARGL SWAP BLK-CALL STATUS @ 0= EXIT THEN   \ a block: run, its status (901) - if $cmd { }
   D-KIND K-LIST = IF S" cm: a list is no condition - [ ] makes a list here; test -f x tests a file" R-FAIL THEN
   S" cm: a condition is a command, true or false - $(( )) makes one of a number" R-FAIL ;
 : MATCH-OF ( args --- )   \ match text pattern: status 0 if the whole text matches - * ? [...], as a glob's (877)

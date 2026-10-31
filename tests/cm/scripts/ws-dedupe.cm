@@ -1,0 +1,19 @@
+# a whole script (901), as one would write it in 899's syntax
+# find files with the same content: group by checksum
+var dir /tmp/cm-ws-dedupe
+rm -rf $dir
+mkdir -p $dir
+echo alpha > "$dir/a"
+echo beta > "$dir/b"
+echo alpha > "$dir/c"
+echo alpha > "$dir/d"
+var groups [:]
+for f @(glob "$dir/*") {
+    var sum @(md5sum $f | cut -d ' ' -f 1)
+    if has $groups $sum { append groups[$sum] $f } else { set groups[$sum] [$f] }
+}
+for s @(keys $groups) {
+    var files $groups[$s]
+    if $(( $(count $files) > 1 )) { echo duplicates: @files }
+}
+rm -rf $dir
