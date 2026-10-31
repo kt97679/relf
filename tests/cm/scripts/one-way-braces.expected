@@ -1,2 +1,2 @@
-cm: line 4: ${name} is for a double-quoted text, where a name's letters follow it - $name here
+cm: ${name} is for a double-quoted text, where a name's letters follow it - $name here (line 4)
 status 2

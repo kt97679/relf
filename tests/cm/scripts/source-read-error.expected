@@ -1,2 +1,2 @@
-cm: tests/cm/scripts/lib/broken.cm line 2: @ spreads a name or a ( ) - not this
+cm: @ spreads a name or a ( ) - not this (tests/cm/scripts/lib/broken.cm line 2)
 status 2

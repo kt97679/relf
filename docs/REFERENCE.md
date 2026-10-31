@@ -64,7 +64,8 @@ use one printed form - a list as `[a b]`, a map as `[k: v]`, a block as `<block>
 
 Scope is lexical. A def sees its parameters, its own variables, and the script's variables declared
 before it. A loop's variable is a new one each time round, so a block made in a loop keeps that time's
-value. `$env[HOME]` reads the environment and `set env[NAME] value` sets it for programs run after;
+value. `$env[HOME]` reads the environment, `set env[NAME] value` sets it for programs run after, and
+`del env[NAME]` takes it away;
 `$args` is the script's arguments, a list; `$status` the last command's status; `$job` the last job `&`
 started, for `wait $job` (sh's `$!`). Reading a variable
 that does not exist is an error.
@@ -111,7 +112,8 @@ from inside any blocks; `break` and `continue` end or skip a loop's turn the sam
     if find 4 { echo 4 is in l }
     find 9 || echo 9 is not
 
-A block is a value: called by putting it first, its parameters the words after.
+A value can stand first in a command: a block runs, its parameters the words after; a boolean gives its
+status; a text names a program to run, as `$EDITOR file` does: `var ed vi; $ed notes.txt`.
 
     var twice {|f x| $f $($f $x) }
     echo $($twice { |v| put $(( $v * 2 )) } 5)          # 20
@@ -160,7 +162,7 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 |---|---|
 | `var name value`, `set name value`, `set name[k] value` | make a variable, change one, change an element |
 | `append name values...` | add values to a list |
-| `del name[k]` | take an item out of a list - by index, negative from the end - or a key out of a map, in place |
+| `del name[k]` | take an item out of a list - by index, negative from the end - or a key out of a map, in place; `del env[NAME]` unsets |
 | `put values...` | write values |
 | `echo words...` | write the words' printed forms, a blank between, a newline after |
 | `if c {..} elif c {..} else {..}`, `while c {..}`, `for x values... {..}` | control |
@@ -182,9 +184,9 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 
 ## Errors
 
-An error found when the script is read stops it before anything runs, and says its line:
-`cm: line 4: ...`. One found as it runs says the line of the command it was in: `cm: index 2 past a
-list of 2 (line 4)`; in a sourced file, that file's name and line. Either ends the script with status 2.
+An error found when the script is read stops it before anything runs; one found as it runs stops it
+there. Both say the message, then where: `cm: index 2 past a list of 2 (line 4)` - in a sourced file,
+that file's name and line. Either ends the script with status 2.
 Recursion is bounded by the engine's return stack: about 2,500 calls deep, 1,000 through `$( )`, 700 in a
 def that uses `return` - past it, `recursion too deep for the stacks`.
 

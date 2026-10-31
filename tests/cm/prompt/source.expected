@@ -1,5 +1,5 @@
 more, from lib/more.cm
 hi you
-cm: line 1: source cannot open nowhere.cm
+cm: source cannot open nowhere.cm (line 1)
 still here
 status 0

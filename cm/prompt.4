@@ -16,10 +16,13 @@
   REPEAT DROP  CL-D @ 0> CL-Q @ 0<> OR IF -1 EXIT THEN
   CL# @ BEGIN 1- DUP 0< IF DROP 0 EXIT THEN DUP CL@ BL > UNTIL
   DUP CL@ [CHAR] | = IF DROP -1 EXIT THEN  DUP CL@ [CHAR] & = SWAP 1- CL@ [CHAR] & = AND ;
-: CL-ADD ( c-addr u --- )   CL-MAX CL# @ - 2 - MIN  CL-BUF @ CL# @ + SWAP DUP >R MOVE  R> CL# +!  10 CL-BUF @ CL# @ + C!  1 CL# +! ;
+VARIABLE CL-CAP                                    \ the entry's buffer, grown as a line needs (907: 64 KB before)
+: CL-ROOM ( --- )   CL-CAP @ CL# @ - 4096 < IF  CL-CAP @ 2* DUP CL-CAP !  CL-BUF @ SWAP RESIZE THROW CL-BUF !  THEN ;
+: CL-ADD ( c-addr u --- )   CL-ROOM  CL-CAP @ CL# @ - 2 - MIN  CL-BUF @ CL# @ + SWAP DUP >R MOVE  R> CL# +!  10 CL-BUF @ CL# @ + C!  1 CL# +! ;
 : CL-READ ( --- f )   \ a line, from no terminal
-  CL-BUF @ CL# @ +  CL-MAX CL# @ - 1-  0 READ-LINE  IF 2DROP 0 EXIT THEN  0= IF DROP 0 EXIT THEN
-  CL# +!  10 CL-BUF @ CL# @ + C!  1 CL# +!  -1 ;
+  BEGIN  CL-ROOM  CL-BUF @ CL# @ +  CL-CAP @ CL# @ - 1-  DUP >R  0 READ-LINE  IF R> DROP 2DROP 0 EXIT THEN
+    0= IF R> 2DROP 0 EXIT THEN  DUP CL# +!  R> =  WHILE REPEAT      \ the buffer filled: more of the line
+  10 CL-BUF @ CL# @ + C!  1 CL# +!  -1 ;
 : CL-EDIT ( --- f )   \ a line from the editor; ^C drops what was typed so far
   CL# @ 0= CMD-START? !  0 TERM-RAW DROP  ED-LINE  0 TERM-RESTORE DROP
   0= IF 2DROP 0 EXIT THEN  ED-DONE @ 2 = IF 2DROP 0 CL# ! -1 EXIT THEN  CL-ADD -1 ;
@@ -36,7 +39,7 @@ VARIABLE CL-RUN-XT   ' CL-RUN CL-RUN-XT !XT
   DUP -4100 -3999 WITHIN 0= IF R-ERR> ." cm: error " DUP . R-NL R-OUT-BACK THEN
   DUP -4000 = R-EXITED @ AND IF CL-BACK THROW THEN  DROP  0 R-SIGGED !  CL-BACK ;
 : CM-REPL ( --- )
-  -1 SESSION !  0 ISATTY CL-TTY !  CL-MAX ALLOCATE THROW CL-BUF !  R-SIG-CATCH
+  -1 SESSION !  0 ISATTY CL-TTY !  CL-MAX DUP CL-CAP ! ALLOCATE THROW CL-BUF !  R-SIG-CATCH
   SESSION-SLOTS 1+ DUP CL-HAVE ! FRAME  FP @ MFP !  ACT-PUSH D-NUM 0 LS!  FP @ CL-FP !  LS# @ CL-LS# !  CTL# @ CL-CTL# !
   BEGIN 0 CL# !
     BEGIN CL-TTY @ IF CL-EDIT ELSE CL-READ THEN

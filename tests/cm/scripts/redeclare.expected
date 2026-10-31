@@ -1,2 +1,2 @@
-cm: line 3: x is declared here already - set changes it
+cm: x is declared here already - set changes it (line 3)
 status 2

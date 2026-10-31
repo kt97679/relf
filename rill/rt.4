@@ -257,8 +257,12 @@ CREATE RN-T 40 ALLOT
 : R-CSTR ( t --- c-addr )   R-T@ DUP 1+ R-ALLOT >R  TUCK R@ SWAP MOVE  R@ + 0 SWAP C!  R> ;
 \ setenv(name, value) (783): for env(name), and for every command Rill runs from then on - each
 \ gets NAME=value from env, which starts them all. The NAME=value strings live in the C heap.
-32 CONSTANT SE-MAX   CREATE SE-A SE-MAX CELLS ALLOT   VARIABLE SE-N   VARIABLE SE-B   VARIABLE SE-U
-: SE-MATCH? ( a u e --- f )   \ the C string e is NAME=... for the name a u
+VARIABLE SE-P  VARIABLE SE-CAP   VARIABLE SE-N   VARIABLE SE-B   VARIABLE SE-U   \ setenv's names: in the heap, grown
+: SE-A ( --- a )   SE-P @ ;                        \ as they come (907: 32 at most before); each NAME=value or --unset=NAME
+: SE-ROOM ( --- )   SE-N @ SE-CAP @ < IF EXIT THEN  SE-CAP @ 2* 16 MAX DUP SE-CAP !  CELLS SE-P @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW SE-P ! ;
+: SE-UNSET? ( e --- f )   DUP CSTRLEN 8 MIN S" --unset=" COMPARE 0= ;
+: SE-MATCH? ( a u e --- f )   \ the C string e is NAME=... for the name a u - or --unset=NAME
+  DUP SE-UNSET? IF  8 + DUP CSTRLEN COMPARE 0= EXIT  THEN
   >R  R@ CSTRLEN OVER > 0= IF 2DROP R> DROP 0 EXIT THEN
   DUP R@ + C@ [CHAR] = <> IF 2DROP R> DROP 0 EXIT THEN
   R> OVER COMPARE 0= ;
@@ -270,7 +274,7 @@ CREATE RN-T 40 ALLOT
   [CHAR] = SE-B @ SE-U @ + C!
   DUP >R SE-B @ SE-U @ 1+ + SWAP MOVE  0 SE-B @ SE-U @ 1+ R> + + C!
   SE-B @ SE-U @ SE-FIND DUP 0< IF
-    DROP SE-N @ SE-MAX = IF R-ERR> ." cm: setenv: more than 32 names" R-ERR-NL -4007 THROW THEN  SE-N @ 1 SE-N +!
+    DROP SE-ROOM  SE-N @ 1 SE-N +!
   ELSE DUP CELLS SE-A + @ FREE DROP THEN
   CELLS SE-A + SE-B @ SWAP ! ;
 VARIABLE RV-N   VARIABLE RV-V
@@ -431,8 +435,14 @@ VARIABLE JB-CAP  JB-MAX JB-CAP !                   \ grown when full (891): the 
   DUP 0< OVER SYS-ARGC < 0= OR IF DROP 0 0 R-TEXT EXIT THEN  SYS-ARG DUP CSTRLEN R-TEXT ;
 
 : R-ARGS ( --- l )   R-NEW-LIST  SYS-ARGC 1 ?DO  I R-ARG K-TEXT R-BOX OVER R-PUSH  LOOP ;
-: R-ENV ( t --- t )   \ env(name): what setenv gave it (783), or the process's
+: R-UNSETENV ( name --- )   \ del env[NAME] (907): programs run after it do not have it - env's --unset=NAME
+  R-T@ DUP 9 + ALLOCATE THROW SE-B !  DUP SE-U !  S" --unset=" SE-B @ SWAP MOVE  SE-B @ 8 + SWAP MOVE
+  0 SE-B @ SE-U @ 8 + + C!
+  SE-B @ 8 + SE-U @ SE-FIND DUP 0< IF DROP SE-ROOM SE-N @ 1 SE-N +! ELSE DUP CELLS SE-A + @ FREE DROP THEN
+  CELLS SE-A + SE-B @ SWAP ! ;
+: R-ENV ( t --- t )   \ env(name): what setenv gave it (783), or the process's - unset, nothing
   DUP R-T@ SE-FIND DUP 0< IF DROP R-CSTR GETENV ?DUP IF DUP CSTRLEN R-TEXT ELSE 0 0 R-TEXT THEN EXIT THEN
+  DUP CELLS SE-A + @ SE-UNSET? IF 2DROP 0 0 R-TEXT EXIT THEN
   CELLS SE-A + @  SWAP R-T@ NIP 1+ +  DUP CSTRLEN R-TEXT ;
      \ the first unless it is empty
 

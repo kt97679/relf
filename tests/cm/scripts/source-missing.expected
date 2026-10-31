@@ -1,2 +1,2 @@
-cm: line 3: source cannot open tests/cm/scripts/lib/none.cm
+cm: source cannot open tests/cm/scripts/lib/none.cm (line 3)
 status 2

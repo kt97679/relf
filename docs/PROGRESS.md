@@ -930,6 +930,7 @@ do not trust the absence of a line below.
 - 904 — else and elif may start the next line after an if's } (a newline before them does not end the command)
 - 905 — del name[k] (lists and maps, in place); & sets $job, wait $job
 - 906 — \ at a line's end, a word of its own, continues the command; glued or mid-line, an error
+- 907 — a text value as a command runs its program; arity errors name the def; one error format; del env; setenv and the prompt's entry grow
 
 ### Not tied to an iteration
 

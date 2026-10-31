@@ -1,2 +1,2 @@
-cm: line 2: arithmetic is $(( ))
+cm: arithmetic is $(( )) (line 2)
 status 2

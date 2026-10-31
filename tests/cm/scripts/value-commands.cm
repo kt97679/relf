@@ -1,0 +1,20 @@
+# a value first in a command (907): a text names a program, as $EDITOR file - it had been "programs come
+# later"; and del env[NAME] unsets it for programs after; setenv holds more than 32 names now
+var ed echo
+$ed hi from a text value
+var p printf
+$p '%s-%s\n' a b
+var cmd [tr a-z A-Z]
+echo shout | $cmd[0] $cmd[1] $cmd[2]
+echo "captured: $($ed x y)"
+set env[CM907] here
+sh -c 'echo child sees ${CM907:-nothing}'
+del env[CM907]
+sh -c 'echo after del: ${CM907:-nothing}'
+echo "read back: [$env[CM907]]"
+set env[CM907] again
+sh -c 'echo set again: $CM907'
+for i @(range 40) { set env["CM907_$i"] $i }
+sh -c 'echo 40 names: $CM907_39'
+def two {|a b| echo $a $b }
+var l [1]

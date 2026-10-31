@@ -33,7 +33,8 @@ VARIABLE SF-N  VARIABLE SF-NEXT                    \ how many; the next line fre
   0 SF-N @ 1 MAX 1 ?DO  OVER I SF @ - DUP 0> SWAP I SF CELL+ @ > 0= AND IF DROP I LEAVE THEN  LOOP NIP ;
 : SF-LINE. ( n --- )   DUP SF-AT ?DUP IF  DUP SF$ TYPE BL EMIT  SF @ -  THEN  ." line " R-.N ;
 ' SF-LINE. IS R-LINE.
-: CM-ERR ( c-addr u line --- )   R-ERR> ." cm: " SF-LINE. ." : " TYPE R-NL -4100 THROW ;
+: CM-ERR ( c-addr u line --- )   \ the message, then where - as a runtime error says it (907: had been "line 4:" first)
+  >R R-ERR> ." cm: " TYPE ."  (" R> SF-LINE. ." )" R-NL -4100 THROW ;
 : P-ERR ( c-addr u --- )   IN-LINE @ CM-ERR ;
 : G-ERR ( c-addr u --- )   LN @ CM-ERR ;
 : TOO-BIG ( --- )   S" cm: the script is too big" R-FAIL ;
@@ -241,8 +242,9 @@ VARIABLE SF-SEEN  VARIABLE SF-MORE  VARIABLE TOP-CMD   \ sourced text so far, si
   R/O OPEN-FILE IF DROP 0 EXIT THEN  >R
   R@ FILE-SIZE THROW DROP  DUP ALLOCATE THROW  DUP ROT R@ READ-FILE THROW  R> CLOSE-FILE DROP -1 ;
 : SF-AGAIN ( c-addr u i --- )   \ sourced already: where
-  R-ERR> ." cm: " LN @ SF-LINE. ." : " >R TYPE
-  R@ IF ."  is sourced already, at " R> SF 5 CELLS + @ SF-LINE. ELSE R> DROP ."  is the script itself" THEN R-NL -4100 THROW ;
+  R-ERR> ." cm: " >R TYPE
+  R@ IF ."  is sourced already, at " R> SF 5 CELLS + @ SF-LINE. ELSE R> DROP ."  is the script itself" THEN
+  ."  (" LN @ SF-LINE. ." )" R-NL -4100 THROW ;
 : SF-PUSH ( c-addr u --- )   \ the reader below kept; the file read from its start, its lines the next free
   SF-N @ 0 ?DO  2DUP I SF$ COMPARE 0= IF I SF-AGAIN THEN  LOOP
   SF-ROOM
@@ -626,7 +628,7 @@ VARIABLE CAPS  VARIABLE CAPS#  VARIABLE CAPS-CAP   \ the names some block refers
     2OVER 2OVER R@ 2 CELLS + @ ARITY-CHECK 2DROP
     2DUP R@ 2 CELLS + @ PLAIN-ARGS? DUP >R IF STACK-CODE ELSE ARGS-CODE THEN  R> R@ 2 CELLS + @ SWAP >R #++
     2OVER DNAME ++ S" # @" CAT 2OVER DNAME ++ S" % @ [']" CAT 2SWAP DNAME ++
-    R> IF R@ 3 CELLS + @ IF S" DEF-CALL-P" ELSE S" DEF-CALL-S" THEN ELSE S" DEF-CALL-M" THEN ++ R> DROP EXIT THEN
+    R> IF R@ 3 CELLS + @ IF S" DEF-CALL-P" ELSE S" DEF-CALL-S" THEN ELSE R@ DUP @ SWAP CELL+ @ SQ$ S" CALLING 2! DEF-CALL-M" ++ THEN ++ R> DROP EXIT THEN
   S" : no such command" CAT G-ERR ;
 
 \ ---- pipelines (859, 862): programs side by side an OS pipeline, a function's stage run to its end

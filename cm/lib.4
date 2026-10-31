@@ -43,7 +43,7 @@ CREATE ENV-BOX 9 , 0 ,                             \ $env: the environment, as a
 : SCRIPT-ARGS ( --- item )   R-ARGS K-LIST R-BOX ;  \ $args: the script's arguments, each a text (870)
 : CM-AT ( c k --- item )   OVER ENV-BOX = IF NIP D-TEXT R-ENV K-TEXT R-BOX EXIT THEN
   OVER D-KIND K-LIST <> IF D-AT EXIT THEN  D>N SWAP D-LIST DUP R-LEN ROT SWAP D-IDX R-AT ;
-: CM-DEL ( c k --- )   OVER ENV-BOX = IF 2DROP S" cm: del env[...] is not here yet" R-FAIL THEN  D-DEL ;
+: CM-DEL ( c k --- )   OVER ENV-BOX = IF NIP D-TEXT R-UNSETENV EXIT THEN  D-DEL ;   \ del env[NAME]: unset (907)
 : CM-SET ( c k v --- )   2 PICK ENV-BOX = IF ROT DROP SWAP D-TEXT SWAP D-TEXT R-SETENV EXIT THEN   \ programs see it
   2 PICK D-KIND K-LIST <> IF D-SET EXIT THEN  ROT D-LIST ROT D>N OVER R-LEN D-IDX R-SET ;
 \ ---- the library (870): what values need and programs cannot do - split, join, keys; has, count, range,
@@ -150,8 +150,9 @@ VARIABLE DONE  VARIABLE DONE#  VARIABLE DONE-CAP   \ jobs a plain wait reaped: [
   FP @ >R  CTL# @ >R  CATCH  R> CTL# !  R> FP !
   0 LS@ D>N  OVER T-RETURN = OVER T-TARGET @ = AND IF 2DROP 0 ELSE DROP THEN
   ACT-POP UNFRAME  THROW ;
+CREATE CALLING 2 CELLS ALLOT                      \ the def a call with @ binds, named by its code: for an error (907)
 : BIND-M ( args k mask --- )   \ slots 1..k from the arguments - in an upvalue where mask's bit is set (866, gene d3)
-  ROT ROT  OVER #ARGS OVER <> IF S" cm: a call with the wrong number of arguments" R-FAIL THEN
+  ROT ROT  OVER #ARGS OVER <> IF  R-ERR> ." cm: " CALLING 2@ TYPE ."  wants " R-.N ." , given " #ARGS R-.N R-ERR-NL -4004 THROW  THEN
   0 ?DO  DUP I ARGN  2 PICK 1 I LSHIFT AND IF UPV-NEW THEN  I 1+ LS!  LOOP 2DROP ;
 : BIND-S ( a1 .. ak k mask --- )   \ slots k..1 from the stack's top down - in an upvalue where mask's bit is set (868)
   SWAP BEGIN ?DUP WHILE  >R  DUP 1 R@ 1- LSHIFT AND IF SWAP UPV-NEW ELSE SWAP THEN  R@ LS!  R> 1-  REPEAT DROP ;
@@ -159,10 +160,12 @@ VARIABLE DONE  VARIABLE DONE#  VARIABLE DONE-CAP   \ jobs a plain wait reaped: [
 : DEF-CALL-P ( a1 .. ak k n mask xt --- )   \ a def with no return in it (878): no activation, no CATCH - an
   >R >R  1+ FRAME  R> BIND-S  R> EXECUTE  UNFRAME ;   \ error goes on up, and what catches it puts the frames back
 : DEF-CALL-M ( args k n mask xt --- )   >R >R  1+ FRAME  ACT-PUSH D-NUM 0 LS!  R> BIND-M  R> DEF-TAIL ;
+DEFER RUN-NAMED ( args text --- )   \ the program a text names: below, once PSTAGE is
 : CALL-VALUE ( args item --- )   \ rule 11: a value as a command's first word
   DUP D-KIND K-BLOCK = IF BLK-CALL EXIT THEN
+  DUP D-KIND K-TEXT = IF RUN-NAMED EXIT THEN           \ a text names a program: $EDITOR file (907)
   DUP D-KIND K-BOOL = IF NIP D-TRUE? 0= 1 AND STATUS ! EXIT THEN     \ false: status 1, not -1 (869)
-  S" cm: a value that is no block or boolean as a command - programs come later" R-FAIL ;
+  S" cm: a value as a command is a block, a boolean or a text naming a program" R-FAIL ;
 
 \ ---- programs (859): a command whose first word names no builtin, def or value - its words as texts
 : ARG-TEXTS ( args --- l )   \ each as a text - a number its digits, true or false; a list, map or block an error (rule 12)
@@ -172,6 +175,9 @@ VARIABLE DONE  VARIABLE DONE#  VARIABLE DONE-CAP   \ jobs a plain wait reaped: [
 : RD-FILE ( item mode fd --- )   ROT D-STR CELL+ @ ROT ROT R-RD-FILE ;
 : PSTAGE ( args last? --- )   >R ARG-TEXTS R> PL-STAGE-L ;
 : PIPE-END ( --- )   PL-CAPR @ -1 <> >R  PL-END STATUS !  R> IF R-T@ CT+ THEN ;   \ read for a $( ) (896)
+: RUN-NAMED' ( args text --- )   \ its arguments after it, a pipeline of one program - captured as any is (907)
+  2 PL-BEGIN  ARGL SWAP ARG  SWAP DUP #ARGS 0 ?DO  DUP I ARGN ROT SWAP ARG SWAP  LOOP DROP  -1 PSTAGE PIPE-END ;
+' RUN-NAMED' IS RUN-NAMED
 : TRIM-NLS ( t --- t )   \ every trailing newline off (rule 4 of C.1)
   BEGIN  DUP @ DUP IF OVER CELL+ + 1- C@ 10 = THEN  WHILE  -1 OVER +!  REPEAT ;   \ an empty text: its 0 the flag (881:
 \ it was left under one, so a capture of nothing - $(printf "") - made a broken value and the next use crashed)

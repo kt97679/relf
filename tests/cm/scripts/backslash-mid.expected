@@ -1,2 +1,2 @@
-cm: line 2: a \ word goes on to the next line - at a line's end; the text \ is '\'
+cm: a \ word goes on to the next line - at a line's end; the text \ is '\' (line 2)
 status 2
