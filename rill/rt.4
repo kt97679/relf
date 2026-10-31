@@ -399,7 +399,12 @@ VARIABLE R-SIGGED   \ ended by INT or TERM, not by exit: at the prompt, the line
 VARIABLE R-ON-EXIT-XT
 \ A script with on EXIT runs it when INT or TERM stops it too, and exits 128 + the signal, as the shell's
 \ trap would (786): from the block's registration INT and TERM are caught, and its safe points poll.
-: R-SIG-CATCH ( --- )   2 2 SIGNAL-ACTION DROP  15 2 SIGNAL-ACTION DROP ;
+VARIABLE SIG-ON  VARIABLE SIG-TICK               \ signals caught: the safe points look, one in 1,024 (910)
+: R-SIG-CATCH ( --- )   2 2 SIGNAL-ACTION DROP  15 2 SIGNAL-ACTION DROP  -1 SIG-ON ! ;
+: R-SIG-POLL ( --- )   \ a caught signal ends the script there, its status 128 + it - its trap run, its jobs stopped;
+  1 SIG-TICK +!  SIG-TICK @ 1023 AND IF EXIT THEN   \ at the prompt the line (824). Before 910 only a wait saw it
+  R-SIGNAL ?DUP IF 128 + R-STATUS ! -1 R-SIGGED ! -4000 THROW THEN ;
+: R-SIG? ( --- )   SIG-ON @ IF R-SIG-POLL THEN ;   \ each loop's turn: a busy loop stopped too
                 \ on EXIT { }: run when the script ends
 : R-RUN-EXIT ( --- )   R-ON-EXIT-XT @ ?DUP IF 0 R-ON-EXIT-XT ! CATCH DROP THEN ;
 \ Jobs (Iteration 813, QUESTIONS.md A36): spawn((cmd)) starts a pipeline and does not wait - its stdin
@@ -1003,6 +1008,6 @@ DEFER G-MORE ( --- )   \ roots beyond the registered variables - a runtime may a
   R> DUP R-ARENA0 !  R-ARENA-SIZE + R-END !  G-TOP @ R-TOP !
   R-TOP @ R-ARENA0 @ - 2* 16777216 MAX R-TOP @ + R-END @ MIN R-GC-AT !
   G-STRESS @ IF R-TOP @ 65536 + R-GC-AT ! THEN  1 G-RUNS +! ;     \ under stress: again after 64 KB more
-: R-GC? ( --- )   R-TOP @ R-GC-AT @ U> IF R-GC THEN ;   \ a safe point: the compilers put one before each top-level statement
+: R-GC? ( --- )   R-TOP @ R-GC-AT @ U> IF R-GC THEN  SIG-ON @ IF R-SIG-POLL THEN ;   \ a safe point: the compilers put one before each top-level statement
 \ SIGNALS-PENDING scans every flag (~27 ns): looked at every 1024th safe point, and at the first after each command
 

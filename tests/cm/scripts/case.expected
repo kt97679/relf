@@ -1,0 +1,12 @@
+a.txt text
+b.md text
+c.png image
+Makefile build
+d.zip other
+matched é by ?
+status 0
+number by a pattern in a variable
+n 1
+n 3
+two
+status 0

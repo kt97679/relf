@@ -210,3 +210,18 @@ DEFER RUN-NAMED ( args text --- )   \ the program a text names: below, once PSTA
 VARIABLE CM-WID-O   256 WORDLIST-N START @ - CM-WID-O !     \ an offset: the image is saved and reloaded
 : CM-WID ( --- wid )   CM-WID-O @ START @ + ;
 : CM-WORDS ( --- )   CM-WID CURRENT !  2 #ORDER !  FORTH-WORDLIST CONTEXT !  CM-WID CONTEXT CELL+ ! ;
+
+\ ---- trap { block } [EXIT INT TERM HUP] (910): the block run when the script ends - normally, by exit, by an
+\ error, or by a signal it names, which then ends it, status 128 + the signal - as sh's trap is mostly used, to
+\ clean up. A new trap replaces the last. Rill's on EXIT's machinery: R-ON-EXIT-XT, run by R-BOOT
+: TRAP-RUN ( --- )   TRAP-BLK @ ?DUP IF  0 TRAP-BLK !  MAIN-TOP @ LS# @ MAX LS# !  ARGL SWAP BLK-CALL  THEN ;
+VARIABLE TRAP-XT   ' TRAP-RUN TRAP-XT !XT
+: TRAP-SIG ( c-addr u --- )
+  2DUP S" EXIT" COMPARE 0= IF 2DROP EXIT THEN
+  2DUP S" INT" COMPARE 0= IF 2DROP 2 ELSE 2DUP S" TERM" COMPARE 0= IF 2DROP 15 ELSE 2DUP S" HUP" COMPARE 0= IF 2DROP 1
+  ELSE 2DROP S" cm: trap: EXIT, INT, TERM or HUP" R-FAIL THEN THEN THEN  2 SIGNAL-ACTION DROP  -1 SIG-ON ! ;
+: TRAP-OF ( args --- )
+  DUP #ARGS 0= IF DROP S" cm: trap { block } EXIT INT TERM HUP" R-FAIL THEN
+  DUP 0 ARGN DUP D-KIND K-BLOCK <> IF 2DROP S" cm: trap takes a block first" R-FAIL THEN  TRAP-BLK !
+  DUP #ARGS 1 ?DO  DUP I ARGN D-TEXT R-T@ TRAP-SIG  LOOP DROP
+  TRAP-XT @XT R-ON-EXIT-XT !  0 STATUS ! ;

@@ -1,0 +1,19 @@
+# case value { patterns... { ... } } (910): the first arm a pattern of which matches runs, as sh's case - a plain
+# word the pattern as written, not globbed; patterns in variables too; arms a line each or several on one; none, status 0
+def kind-of {|f|
+    case $f {
+        *.txt *.md { put text }
+        *.png *.jpg { put image }
+        'Makefile' { put build }
+        * { put other }
+    }
+}
+for f a.txt b.md c.png Makefile d.zip { echo $f $(kind-of $f) }
+var x héllo
+case $x { h?llo { echo "matched é by ?" } }
+case $x { 'nope' { echo no } }
+echo status $status
+var p '[0-9]*'
+case 42 { $p { echo number by a pattern in a variable } }
+for n 1 2 3 4 { case $n { 2 { continue } 4 { break } * { echo n $n } } }
+case 2 { 2 { echo two } * { echo other } }

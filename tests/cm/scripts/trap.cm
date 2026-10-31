@@ -1,0 +1,6 @@
+# trap { block } EXIT (910): the block runs when the script ends - at its end, at exit, after an error
+var tmp /tmp/cm-910-trap.txt
+echo data > $tmp
+trap { rm -f $tmp; echo "cleaned, exit status kept" } EXIT
+test -f $tmp && echo file there
+exit 3

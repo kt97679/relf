@@ -23,6 +23,7 @@ echo $(( 7 / 2 )) $(( -7 % 2 )) $(( 2 * (3 + 4) )) $(( 3 > 2 )) $(( "abc" == "ab
 for i @(range 4) { if $(( $i == 1 )) { continue } elif $(( $i == 3 )) { break } else { echo i $i } }
 var n 0
 while $(( $n < 3 )) { set n $(( $n + 1 )) }
+case report.md { *.txt *.md { echo text } * { echo other } }
 echo n $n
 # -- functions
 def greet {|who| echo hello $who }

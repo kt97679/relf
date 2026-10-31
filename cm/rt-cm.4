@@ -25,6 +25,7 @@ VARIABLE LS-BODY  ' LS >BODY START @ - LS-BODY !    \ LS's descriptor, as an off
 : UNFRAME ( --- )   FP @ 1- DUP LS# !  CELLS LS + @ 2/ FP ! ;
 : LS@ ( i --- item )   FP @ + CELLS LS + @ ;
 : LS! ( item i --- )   FP @ + CELLS LS + ! ;
+VARIABLE MAIN-TOP                                  \ LS# past the main frame: a trap's block runs above it (910)
 VARIABLE MFP                                       \ the main frame's, a script's or the prompt's (884): a def
 : MLS@ ( i --- item )   MFP @ + CELLS LS + @ ;    \ reads and sets the script's variables in it
 : MLS! ( item i --- )   MFP @ + CELLS LS + ! ;
@@ -64,7 +65,9 @@ VARIABLE ENV-CAP  ENV-MAX ENV-CAP !   ' ENVS >BODY START @ - CONSTANT ENVS'   \ 
 ' G-COPY-CM IS G-COPY
 : G-PTR-CM ( kind --- f )   DUP K-BLOCK = OVER K-UPV = OR IF DROP -1 EXIT THEN  G-PTR-KIND-IMPL ;
 ' G-PTR-CM IS G-PTR-KIND?
+VARIABLE TRAP-BLK
 : G-MORE-CM ( --- )   \ the frames' slots, and the blocks running
   LS# @ 0 ?DO  LS I CELLS + DUP @ G-BOX SWAP !  LOOP
-  ENV# @ 0 ?DO  ENVS I CELLS + DUP @ G-BLOCK SWAP !  LOOP ;
+  ENV# @ 0 ?DO  ENVS I CELLS + DUP @ G-BLOCK SWAP !  LOOP
+  TRAP-BLK @ ?DUP IF G-BOX TRAP-BLK ! THEN ;              \ the trap's block (910)
 ' G-MORE-CM IS G-MORE

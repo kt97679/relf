@@ -933,6 +933,7 @@ do not trust the absence of a line below.
 - 907 — a text value as a command runs its program; arity errors name the def; one error format; del env; setenv and the prompt's entry grow
 - 908 — five more whole scripts (config merge, wrap, a supervisor with wait $job, inventory with del, a template): all worked
 - 909 — [...] by character; defs load 3.5 times faster (a word list of their own, a hash for DEF-FIND); slice; the prompt's sourced files kept
+- 910 — case; trap { } EXIT INT TERM HUP; a caught signal ends a busy loop too
 
 ### Not tied to an iteration
 

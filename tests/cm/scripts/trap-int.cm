@@ -1,0 +1,6 @@
+# trap { block } INT (910): the signal is caught, ends the script - in a busy loop too, its turns looking - the
+# block run, status 128 + 2
+trap { echo trapped INT } INT
+sh -c 'kill -INT $PPID'
+var n 0
+while true { set n $(( $n + 1 )) }

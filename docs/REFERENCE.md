@@ -96,6 +96,12 @@ condition's status in `$status`. A condition that tests `$status` replaces it, a
 `var s $status`, to use it in the branch.
 `&&`, `||` and `!` join commands by their status, as in sh.
 
+`case` tests a value's text against patterns - `*`, `?`, `[...]`, as `match` does - an arm a line, or
+several on one; the first arm one of whose patterns matches runs; none, status 0. A plain word is the
+pattern as written, not globbed:
+
+    case report.md { *.txt *.md { echo text } * { echo other } }
+
 ## Functions
 
     def greet {|who| echo hello $who }
@@ -182,6 +188,7 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 | `source file` | another script read in where the line stands - at the top level, its path from this file's directory; at the prompt, sourcing again reloads |
 | `wait`, `wait $job` | wait for every job `&` started, the status the last ended with - or for that one job, its status |
 | `cd [dir]`, `exit [n]` | as sh's |
+| `trap { block } [EXIT INT TERM HUP]` | the block run when the script ends - at its end, by `exit`, by an error, or by a signal named, which then ends it with status 128 + the signal |
 | `true`, `false` | booleans: as a command, status 0 or 1 |
 
 ## Errors
@@ -200,4 +207,6 @@ def that uses `return` - past it, `recursion too deep for the stacks`.
 - `[` is a list, not `test`: `test -f x`, or `$(( ))` for numbers.
 - `if has $m $k`, `if match $t '*.txt'`: statuses, as `test` gives.
 - `$(cmd)` is text - the same as sh's; `@(cmd)` takes a function's values.
-- Not here (yet): heredocs (a quoted text may span lines), traps, `case` (`match` is its test).
+- No heredocs: a quoted text spans lines - `var msg '...'` over several, then `echo $msg | cmd`.
+- `trap` takes a block, and a signal it names ends the script after it - for cleaning up, as sh's is
+  mostly used.
