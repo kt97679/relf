@@ -68,3 +68,11 @@ VARIABLE XT-FN-RUN   ' FN-RUN XT-FN-RUN !XT
   CT-LEN @ >R  CT-ON @ >R  -1 CT-ON !  0 SINK+        \ an error goes up to the top, which puts CT-ON and CT-LEN back
   EXECUTE  -1 SINK# +!  R> CT-ON !
   CT-BUF @ R@ +  CT-LEN @ R@ -  R-TEXT  R> CT-LEN !  TRIM-NLS K-TEXT R-BOX ;
+
+\ ---- a loop's turn (917): its signal look, and a collection when nothing holds the arena by hand. A loop at the
+\ script's top level - its frame the main one, no capture, no function stage, no text being made - holds
+\ only slots' numbers on the stacks between turns, so the collector may move what it likes; elsewhere, as
+\ before, only between top-level statements. A text grown a character at a time in such a loop had run
+\ out of the arena's 128 MB: nothing was collected until the loop ended
+: R-TURN ( --- )   SIG-ON @ IF R-SIG-POLL THEN
+  FP @ MFP @ = SINK# @ 0= AND IN# @ 0= AND CT-ON @ 0= AND IF R-GC? THEN ;

@@ -1,0 +1,29 @@
+# a whole script (917), as one would write it
+# a tiny adventure: rooms in a map, moves read from stdin
+var rooms [hall: [desc: 'a cold hall'  north: library  east: kitchen]
+           library: [desc: 'dusty shelves'  south: hall]
+           kitchen: [desc: 'a smell of bread'  west: hall  item: key]]
+var here hall
+var bag []
+def look { echo "You are in $rooms[$here][desc]."; if has $rooms[$here] item { echo "There is a $rooms[$here][item] here." } }
+def play {
+    var cmd ''
+    look
+    while read cmd {
+        var w [@(split $cmd ' ')]
+        case $w[0] {
+            go {
+                if has $rooms[$here] $w[1] { set here $rooms[$here][$w[1]]; look } else { echo 'You cannot go that way.' }
+            }
+            take {
+                if has $rooms[$here] item && match $rooms[$here][item] $w[1] {
+                    append bag $w[1]; del rooms[$here][item]; echo "Taken: $w[1]."
+                } else { echo 'Nothing like that here.' }
+            }
+            bag { echo "You carry: $bag" }
+            quit { break }
+            * { echo "I do not know $w[0]." }
+        }
+    }
+}
+printf 'go north\ngo west\ngo south\ngo east\ntake key\ntake key\nbag\ndance\nquit\n' | play

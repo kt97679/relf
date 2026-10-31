@@ -1,0 +1,9 @@
+# a text grown in a top-level loop, and join over many long items (917): both had run out of the arena's 128 MB -
+# a loop collected nothing till it ended, and join made a new text of all before each item
+var chunk $(printf '%2000s' x)
+var s ''
+for i @(range 400) { set s "$s$chunk" }
+echo $(count $s)
+var parts []
+for i @(range 400) { append parts $chunk }
+echo $(count $(join '' @parts))

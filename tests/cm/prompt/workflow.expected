@@ -1,0 +1,10 @@
+49
+total 14
+redefined 9
+1 2
+cm: nosuch: no such program (line 1)
+
+after an error the session goes on: 14
+fourteen
+bye from the trap
+status 0

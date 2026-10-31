@@ -61,8 +61,8 @@ VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
 : JOIN-OF ( args --- )   \ join sep items...: one text, sep between the items' texts
   DUP #ARGS 0= IF S" cm: join takes a separator, then items" R-FAIL THEN
   DUP 0 ARGN D-KIND K-LIST = IF S" cm: join takes the separator first - join ' ' @list" R-FAIL THEN   \ (884)
-  0 0 R-TEXT  OVER #ARGS 1 ?DO  I 1 > IF OVER 0 ARGN D-TEXT 2 R-CONCAT THEN  OVER I ARGN D-TEXT 2 R-CONCAT  LOOP
-  K-TEXT R-BOX PUT DROP ;
+  TXT(  DUP #ARGS 1 ?DO  I 1 > IF DUP 0 ARGN D-TEXT R-T@ TXT+ THEN  DUP I ARGN D-TEXT R-T@ TXT+  LOOP   \ in one buffer (917):
+  )TXT PUT DROP ;          \ each item had made a new text of all before it, and 20,000 ran out of the arena
 : KEYS-OF ( args --- )   \ keys $map: each key put
   DUP #ARGS 1 <> IF S" cm: keys takes one map" R-FAIL THEN  0 ARGN D-REC R-KEYS  DUP R-LEN 0 ?DO DUP I R-AT PUT LOOP DROP ;
 4096 BUFFER: GE-BUF
@@ -178,7 +178,8 @@ DEFER RUN-NAMED ( args text --- )   \ the program a text names: below, once PSTA
   DUP D-KIND K-BLOCK = IF BLK-CALL EXIT THEN
   DUP D-KIND K-TEXT = IF RUN-NAMED EXIT THEN           \ a text names a program: $EDITOR file (907)
   DUP D-KIND K-BOOL = IF NIP D-TRUE? 0= 1 AND STATUS ! EXIT THEN     \ false: status 1, not -1 (869)
-  S" cm: a value as a command is a block, a boolean or a text naming a program" R-FAIL ;
+  DUP D-KIND K-LIST = IF S" cm: a list is a value, not a command - [ -f x ] is test -f x; @(cmd) takes a command's values, a list needs no @( )" R-FAIL THEN
+  S" cm: a value as a command is a block, a boolean or a text naming a program" R-FAIL ;   \ the list's hint (917)
 
 \ ---- programs (859): a command whose first word names no builtin, def or value - its words as texts
 : ARG-TEXTS ( args --- l )   \ each as a text - a number its digits, true or false; a list, map or block an error (rule 12)

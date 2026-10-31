@@ -600,7 +600,7 @@ VARIABLE ARM-1ST
   SCOPE(  S" %loop" 0 DECLARE V-SLOT >R            \ the loop's number and of its variable - fresh each time
   DUP IF 2DUP CAPTURED? DECLARE V-SLOT ELSE 2DROP 0 THEN >R
   S" L" FRESH  R@ SC @ CELL+ @ 5 CELLS + @ AND IF R@ #$ S" LS@ UPV-NEW" ++ R@ #++ S" LS!" ++ ELSE 0 0 THEN
-  4 PICK N+ N+ BODY-CODE S" R-SIG?" 2SWAP ++ ++  2OVER 2SWAP DEF-WORD  ROT LOOP-PLAIN?  R> R> SWAP  ROT IF NIP 0 SWAP THEN  )SCOPE ;   \ id 0: plain
+  4 PICK N+ N+ BODY-CODE S" R-TURN" 2SWAP ++ ++  2OVER 2SWAP DEF-WORD  ROT LOOP-PLAIN?  R> R> SWAP  ROT IF NIP 0 SWAP THEN  )SCOPE ;   \ id 0: plain
 : FOR-CMD ( from to --- c-addr u )   \ for name words... { body }
   OVER BARE? 0= 2 PICK NSKIP 2 PICK = OR IF S" for name words... { body }" G-ERR THEN
   OVER NSKIP S" in" BARE= IF S" for name values... { } - no in, as sh has" G-ERR THEN      \ it had gone round in too (916)

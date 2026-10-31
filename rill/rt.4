@@ -131,7 +131,7 @@ DEFER R-LINE. ( n --- )   \ "line n" - the command model's says the file, for a 
   DUP R@ U< 0= IF R> R> 2DROP 2DROP R-OVF THEN  R> UM/MOD
   DUP 0< IF R> DROP 2DROP R-OVF THEN  R> IF SWAP IF 1+ THEN NEGATE ELSE NIP THEN ;
 : R-FULL-IMPL ( --- )   \ (791) the arena (128 MB) full: memory is collected between the script's top-level statements only
-  R-ERR> ." cm: out of memory - 128 MB in use since the last collection, which happens between the script's top-level statements, not inside a function"
+  R-ERR> ." cm: out of memory - 128 MB in use since the last collection, which happens between top-level statements and a top-level loop's turns, not inside a function"
   R-ERR-NL  -4006 THROW ;
 ' R-FULL-IMPL IS R-FULL
 
@@ -406,7 +406,6 @@ VARIABLE SIG-ON  VARIABLE SIG-TICK               \ signals caught: the safe poin
 : R-SIG-POLL ( --- )   \ a caught signal ends the script there, its status 128 + it - its trap run, its jobs stopped;
   1 SIG-TICK +!  SIG-TICK @ 1023 AND IF EXIT THEN   \ at the prompt the line (824). Before 910 only a wait saw it
   R-SIGNAL ?DUP IF 128 + R-STATUS ! -1 R-SIGGED ! -4000 THROW THEN ;
-: R-SIG? ( --- )   SIG-ON @ IF R-SIG-POLL THEN ;   \ each loop's turn: a busy loop stopped too
                 \ on EXIT { }: run when the script ends
 : R-RUN-EXIT ( --- )   R-ON-EXIT-XT @ ?DUP IF 0 R-ON-EXIT-XT ! CATCH DROP THEN ;
 \ Jobs (Iteration 813, QUESTIONS.md A36): spawn((cmd)) starts a pipeline and does not wait - its stdin

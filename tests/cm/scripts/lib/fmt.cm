@@ -1,0 +1,4 @@
+# formatting: columns padded, money with two decimals from cents - sourced by ws-shop.cm (a library, not a test)
+def pad {|t w| var s "$t"; while $(( $(count $s) < $w )) { set s "$s " }; put $s }
+def rpad {|t w| var s "$t"; while $(( $(count $s) < $w )) { set s " $s" }; put $s }
+def money {|cents| var c $(( $cents % 100 )); if $(( $c < 10 )) { set c "0$c" }; put "$(( $cents / 100 )).$c" }

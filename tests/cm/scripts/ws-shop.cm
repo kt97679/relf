@@ -1,0 +1,10 @@
+# a whole script (917), as one would write it
+# an order priced with libraries: helpers sourced from lib/
+source lib/fp.cm
+source lib/fmt.cm
+var items [[name: apple  cents: 45  qty: 4] [name: melon  cents: 299  qty: 1] [name: plum  cents: 15  qty: 0] [name: pear  cents: 60  qty: 3]]
+var ordered [@(filter-l $items {|i| test $i[qty] -gt 0 })]
+var lines [@(map-l $ordered {|i| put [name: $i[name]  total: $(( $i[cents] * $i[qty] ))] })]
+for l @lines { echo "$(pad $l[name] 8)$(rpad $(money $l[total]) 8)" }
+var sum @(reduce-l $lines {|acc l| put $(( $acc + $l[total] )) } 0)
+echo "$(pad total 8)$(rpad $(money $sum) 8)"

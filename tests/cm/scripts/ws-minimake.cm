@@ -1,0 +1,26 @@
+# a whole script (917), as one would write it
+# rebuild a target only when a source is newer than it
+var dir /tmp/cm-ws13-make
+rm -rf $dir
+mkdir -p $dir
+echo 'a' > "$dir/a.txt"
+echo 'b' > "$dir/b.txt"
+var rules [out.txt: [a.txt b.txt]]
+def stale {|target sources|
+    if ! test -e "$dir/$target" { return 0 }
+    for s @sources { if test "$dir/$s" -nt "$dir/$target" { return 0 } }
+    return 1
+}
+def build {|target|
+    if stale $target $rules[$target] {
+        cat @(for s @rules[$target] { put "$dir/$s" }) > "$dir/$target"
+        echo "built $target"
+    } else { echo "$target is up to date" }
+}
+build out.txt
+build out.txt
+sleep 1
+echo 'b2' >> "$dir/b.txt"
+build out.txt
+cat "$dir/out.txt"
+rm -rf $dir

@@ -1,0 +1,23 @@
+# a whole script (917), as one would write it
+# CSV with quoted fields: commas and quotes inside quotes
+def fields {|line|
+    var out []
+    var cur ''
+    var inq false
+    var i 0
+    var n $(count $line)
+    while $(( $i < $n )) {
+        var c $line[$i]
+        if $inq {
+            if match $c '"' {
+                if $(( $i + 1 < $n )) && match $line[$(( $i + 1 ))] '"' { set cur "$cur\""; set i $(( $i + 1 )) } else { set inq false }
+            } else { set cur "$cur$c" }
+        } elif match $c '"' { set inq true
+        } elif match $c ',' { append out $cur; set cur ''
+        } else { set cur "$cur$c" }
+        set i $(( $i + 1 ))
+    }
+    append out $cur
+    put $out
+}
+for f @(fields 'plain,"with, comma","say ""hi""",,end')[0] { echo "[$f]" }
