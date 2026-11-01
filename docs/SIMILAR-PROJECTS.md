@@ -6,8 +6,17 @@ the simpler the syntax and the shorter the scripts, the better; ideally one way 
 
 ## Where rill3 stands (measured 921)
 
-- Size: the engine `relf64` 45,360 bytes and the image `kernel64-cm.img` 87,040 bytes - about 132 KB.
-  On the same machine: dash 129,784; mksh 310,312; yash 445,352; bash 1,446,024; busybox 2,124,608.
+- Size: the engine `relf64` 45,360 bytes and the image `kernel64-cm.img` 87,040 bytes - about 132 KB;
+  relfsh on the same engine, `relfsh64`, 174,404 (its image 129,028). On the assembly engine
+  `relfasm64` (15,856 bytes) rill3's suite passes whole (922): 102,896 bytes together, against
+  `relfshasm64`'s 144,900. On the same machine: dash 129,784; mksh 310,312; yash 445,352; bash
+  1,446,024; busybox 2,124,608.
+- Where the image's 76.5 KB above the kernel go (922, HERE after each file): the front end cm/cmc.4
+  23.1 KB; Rill's runtime rill/rt.4 18.5; builtins cm/lib.4 8.6; relfsh's line editor 4.2 and the
+  character widths 2.8; TAB 3.9; the case tables 3.0; the rest of cm/ 7.8; the Forth libraries 4.4.
+  Across them: some 20 KB of word headers (1,084 named words - generated code finds the runtime by
+  name, so its words keep their names) and 12.9 KB of quoted text (messages, and the Forth the
+  front end writes out as text).
 - Builtins: 37 names. Syntax: a word's first character decides its kind (899).
 - The whole scripts (54 files, 714 lines that are not comments) as a corpus of real use: 23
   increments `set x $(( $x + ... ))`, 5 counts into a map (`if has $m $k { set m[$k] ... } else
