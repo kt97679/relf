@@ -948,6 +948,7 @@ do not trust the absence of a line below.
 - 922 — sizes measured: rill3 132 KB vs relfsh 174 KB; on the 16 KB assembly engine 103 KB, its suite passing
 - 923 — the suite on both engines in the verify; Rill's JSON, decimals and dead words out (-4.4 KB); long literals in $(( )) checked
 - 924 — forth words values... (Forth from rill3); source once, a bare name from $RILL3_PATH; names kept
+- 925 — the suite passes with busybox's tools too, and the verify runs it so
 
 ### Not tied to an iteration
 

@@ -5,5 +5,5 @@ need no-such-program-885 || echo "a needed program is missing"
 def check {|n| if $(( $n > 2 )) { return 0 }; return 1 }
 for n 1 3 { if check $n { echo $n passes } else { echo $n fails } }
 false || echo false failed, as it does
-ls /no/such/dir 2> /dev/null || echo "ls failed with $status"
+grep x /no/such/file 2> /dev/null || echo "grep failed with $status"
 exit 3

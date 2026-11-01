@@ -12,6 +12,33 @@ At the prompt TAB completes builtins, defs, programs and file names.
     bin/cm                          the prompt: a line at a time, variables and defs kept
     #!/usr/bin/env cm               a script that starts so runs as itself
 
+## rill3 in ten rules
+
+The whole language, each feature below under one of these (925); a new feature fits one, or argues for
+an eleventh.
+
+1. A script is commands, one a line or separated by `;`; a command is words separated by blanks. A
+   line goes on after `|`, `&&`, `||`, inside brackets, before `else` or `elif`, and after a lone `\`.
+2. A word's first character says what it is: `'` a text as written, `"` a text with `$` values, `$` a
+   value, `@` a spread, `[` a list or map, `{` a block, `#` a comment; anything else plain text - a
+   number if written as one, `true` and `false`, a glob with `*` or `?`.
+3. A word ends where its form does; only index keys may follow a value. Operators - `|` `&&` `||` `&`
+   and the redirections - are words of their own.
+4. A command's first word says what runs: a builtin, a def, a value (a block runs, a boolean is a
+   status, a text names a program), or else the program of that name.
+5. Values are texts, whole 64-bit numbers, booleans, lists, maps and blocks; a value is one word,
+   never split or globbed - `@` spreads a list into words.
+6. `$(cmd)` is the text cmd printed, `@(cmd)` its values one by one, `$(( ))` arithmetic and
+   comparison.
+7. `var` makes a variable in its block, `set` changes one, `del` takes from one; a block and a def see
+   the variables made before them, and keep them.
+8. Every command has a status; `if`, `while`, `&&`, `||` and `!` test it.
+9. `|` carries bytes between programs and values between functions; `>` `>>` `<` `2>` `&>` `2>&1`
+   redirect as sh's.
+10. The rest are builtins (the table below): control (`if` `for` `while` `case` `def` `return`
+   `break` `continue`), values (`put` `count` `split` `slice` ...), the script (`source` `trap`
+   `exit` `forth`).
+
 ## Words
 
 A script is commands, one a line or separated by `;`. A command is words separated by blanks, and a
@@ -151,7 +178,7 @@ status; a text names a program to run, as `$EDITOR file` does: `var ed vi; $ed n
         var both [@(pair)]                  # [a b]
         var one @(sq 3)                     # the number 9
         echo $(range 3) @(range 3)          # "0\n1\n2" as one word, then 0 1 2
-        var out $(ls /no/such 2>&1)         # $status 2
+        var out $(grep x /no/such 2>&1)         # $status 2
 
 A function whose number of results varies is taken with `[@(f)]` - always a list - or `for x @(f)`.
 A number taken with `$(f)` is printed and read back as text; in a hot loop, `var x @(f)` keeps it a
@@ -165,7 +192,7 @@ its values' printed forms, a line each.
 
     printf 'one\ntwo\n' | each {|line| echo got $line }      # got one, got two
     pair | tr a-z A-Z                                         # A, B
-    ls /no/such 2> /dev/null || echo status $status           # status 2
+    grep x /no/such 2> /dev/null || echo status $status           # status 2
     echo saved > /tmp/cm-ref.txt; echo more >> /tmp/cm-ref.txt; cat < /tmp/cm-ref.txt
     greet file > /tmp/cm-ref.txt                              # functions and builtins redirect too,
                                                               # alone or as a pipeline's stage

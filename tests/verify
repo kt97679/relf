@@ -611,6 +611,19 @@ if [ -x ./relfasm64 ]; then
 else
     for k in cm-asm:passed cm-asm:failed; do emit "$k" skipped; done
 fi
+# and with busybox's tools in place of GNU's (925): the scripts must not lean on one set of programs
+if command -v busybox >/dev/null 2>&1 && [ -x ./relf64 ]; then
+    bb=$(mktemp -d)
+    for t in date seq awk sed sort grep wc tr cat head tail cut printf test ls mkdir rm cp mv touch sleep echo sh env uniq basename dirname find xargs tee expr true false kill rmdir cmp diff od; do
+        ln -s "$(command -v busybox)" "$bb/$t"
+    done
+    R=$(PATH="$bb:$PATH" sh tests/cm/run < /dev/null 2>&1 | tail -1)
+    emit cm-busybox:passed "$(echo "$R" | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed.*/\1/p')"
+    emit cm-busybox:failed "$(echo "$R" | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed.*/\2/p')"
+    rm -rf "$bb"
+else
+    for k in cm-busybox:passed cm-busybox:failed; do emit "$k" skipped; done
+fi
 
 # ---------------------------------------------------------------
 # 4. Sizes. Cheap, and the number the engine work is chasing.

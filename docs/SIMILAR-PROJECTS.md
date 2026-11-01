@@ -74,7 +74,7 @@ Each names the aim it serves; those marked (owner) change the language and need 
    `inherited` by keeping the parent's block before overriding.
 6. **(owner) One kind of function, as es has it.** `def f {|x| }` the same as a block in a
    variable, called by name - the defs table and its lookup gone. Aims: one way; a smaller front end.
-7. **The rules, numbered and few.** The reference's syntax as a short list, as Tcl's twelve; each
+7. **Done (925).** **The rules, numbered and few.** The reference's syntax as a short list, as Tcl's twelve; each
    feature placed under one, a new rule argued for. Aim: simple syntax, kept so.
 8. **A size budget.** 132 KB now, as dash. Each feature priced when added (as 909-919 were); the
    front end's ~1 KB (901); TAB completion's 3.5 KB only for the prompt. Aim: small binary.
@@ -82,7 +82,7 @@ Each names the aim it serves; those marked (owner) change the language and need 
    one. Aim: small binary.
 10. **An independent review** of core changes - the collector, the parser - by a fresh session
     without the change's context, before it is committed (kbool's critic). Aim: fewer faults like 919's.
-11. **Tests that do not need GNU tools.** The whole scripts call `date -d`, `seq` and GNU awk; run
+11. **Done (925).** **Tests that do not need GNU tools.** The whole scripts call `date -d`, `seq` and GNU awk; run
     the suite with busybox's tools too, or keep tests to POSIX options. Aim: rill3 runs where sh does.
 
 Not now: classes (kbool, Bash Infinity), multiple dispatch (NGS), typed pipes and built-in data formats

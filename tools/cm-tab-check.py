@@ -36,7 +36,7 @@ def run(keys):
 
 checks = [
     ('a builtin completed', ['ech\t', 'tab-completed\r'], '\r\ntab-completed\r\n'),
-    ("a name with a blank put in '...'", ['ls %s/my\t' % d, '\r'], "'%s/my notes.txt'\r\n" % d),
+    ("a name with a blank put in '...'", ['echo %s/my\t' % d, '\r'], "\r\n%s/my notes.txt\r\n" % d),   # echo: GNU ls quotes at a terminal (925)
     ('a def completed', ['def greetings { echo hey from a def }\r', 'gree\t', '\r'], '\r\nhey from a def\r\n'),
     ('two TABs list', ['ls %s/\t\t' % d, '\x03'], 'my notes.txt  other.txt'),
     ('a $name completed', ['var greeting hello\r', 'echo $gree\t', '\r'], '\r\nhello\r\n'),

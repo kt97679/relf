@@ -14,7 +14,7 @@ if test -f /tmp/cm-859.txt { echo the file is there }
 if ! test -d /tmp/cm-859.txt { echo not a directory }
 false || echo after false
 true && echo after true
-ls /no/such/dir 2> /dev/null || echo ls failed: $status
+grep x /no/such/file 2> /dev/null || echo grep failed: $status
 rm /tmp/cm-859.txt
 nosuchprogram-859 2> /dev/null
 echo a missing program: $status

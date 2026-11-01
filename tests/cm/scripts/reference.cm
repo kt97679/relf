@@ -58,14 +58,14 @@ printf 'b\na\n' | sort
 echo $(printf 'x\ny\n' | wc -l) @(printf 'p\nq\n')
 pair | tr a-z A-Z
 printf 'one\ntwo\n' | each {|line| echo got $line }
-ls /no/such 2> /dev/null || echo status $status
+grep x /no/such 2> /dev/null || echo status $status
 echo saved > /tmp/cm-ref.txt; echo more >> /tmp/cm-ref.txt; cat < /tmp/cm-ref.txt
 greet file > /tmp/cm-ref.txt
 cat /tmp/cm-ref.txt
 sleep 0 & 
 wait
 echo waited, status $status
-var out $(ls /no/such 2>&1)
+var out $(grep x /no/such 2>&1)
 echo var status $status
 # -- the environment and arguments
 set env[CM_REF] hello
