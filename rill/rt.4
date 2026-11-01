@@ -45,7 +45,6 @@ VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
   RC-T @ DUP @ + CELL+ RC-P !
   RC-N @ 0 ?DO  R-T@ DUP NEGATE RC-P +!  RC-P @ SWAP MOVE  LOOP
   RC-T @ ;
-: R-T= ( t1 t2 --- f )   >R R-T@ R> R-T@ COMPARE 0= ;
 : R-TCMP ( t1 t2 --- n )   >R R-T@ R> R-T@ COMPARE ;   \ texts in order, by their bytes: Python's order for UTF-8 (786)
 : R-TYPE ( t --- )   R-T@ OUT-TYPE ;
 : R-NL ( --- )   10 OUT-EMIT ;
@@ -57,8 +56,7 @@ VARIABLE RC-N   VARIABLE RC-T   VARIABLE RC-P
 \ record the same with a key array beside it, each key a text. Both grow
 \ by a new array twice the size, the old one left in the arena.
 : /STRING ( c-addr u n --- c-addr' u' )   TUCK - >R + R> ;   \ not in the kernel
-1 CONSTANT K-NUM   2 CONSTANT K-TEXT   3 CONSTANT K-BOOL   4 CONSTANT K-LIST   5 CONSTANT K-REC   6 CONSTANT K-DEC
-DEFER R-DEC>TEXT-HOOK   \ R-ANY>TEXT needs it before the library defines it
+1 CONSTANT K-NUM   2 CONSTANT K-TEXT   3 CONSTANT K-BOOL   4 CONSTANT K-LIST   5 CONSTANT K-REC   \ 6 was Rill's decimal (923)
 VARIABLE RL   VARIABLE RJ-SEP
 : R-BOX ( v kind --- box )   2 CELLS R-ALLOT >R  R@ !  R@ CELL+ !  R> ;   \ boxsmall tried and taken out (752)
 : R-UNBOX ( box --- v kind )   DUP CELL+ @ SWAP @ ;
@@ -111,7 +109,7 @@ DEFER R-LINE. ( n --- )   \ "line n" - the command model's says the file, for a 
   R@ @ OVER R@ CELL+ @ MOVE  R@ @ IN-ARENA? 0= IF R@ @ FREE DROP THEN  R@ !  R> CELL+ ! ;
                                                             \ added the word it was in, then `cm: error -2`, no line (818)
 : R-.N ( n --- )   DUP ABS 0 <# #S ROT SIGN #> TYPE ;   \ a number, no blank after: before " (line n)" (799)
-\ ---- Checked arithmetic (Iteration 794): past 64 bits - a decimal past 9223372036854.775807 - or a division by zero
+\ ---- Checked arithmetic (Iteration 794): past 64 bits, or a division by zero
 \ is an error naming the line, not a wrapped number or the engine's trap. 1+ and 1- stay plain: counting cannot get there.
 : R-OVF ( --- )   R-ERR> ." cm: a number past 64 bits - whole numbers are -9223372036854775808 to 9223372036854775807" R-ERR-NL -4008 THROW ;
 : R-ZDIV ( --- )   R-ERR> ." cm: division by zero" R-ERR-NL -4008 THROW ;
@@ -120,16 +118,6 @@ DEFER R-LINE. ( n --- )   \ "line n" - the command model's says the file, for a 
 : R-MUL ( a b --- c )   M*  OVER 0< IF DUP -1 <> ELSE DUP 0<> THEN NIP IF DROP R-OVF THEN ;
 : R-DIV ( a b --- c )   DUP 0= IF R-ZDIV THEN  / ;
 : R-MODC ( a b --- c )   DUP 0= IF R-ZDIV THEN  MOD ;
-: R-N>D ( n --- d )   1000000 R-MUL ;                          \ a number as a decimal
-: R-DMUL ( d1 d2 --- d )   \ d1 * d2 / 10^6, floored as */ - in unsigned double cells, the bound exact
-  2DUP XOR 0< >R  ABS SWAP ABS UM*
-  DUP 1000000 U< 0= IF R> DROP 2DROP R-OVF THEN  1000000 UM/MOD
-  DUP 0< IF R> DROP 2DROP R-OVF THEN  R> IF SWAP IF 1+ THEN NEGATE ELSE NIP THEN ;
-: R-DDIV ( d1 d2 --- d )   \ d1 * 10^6 / d2, floored as */
-  DUP 0= IF R-ZDIV THEN
-  2DUP XOR 0< >R  ABS >R  ABS 1000000 UM*
-  DUP R@ U< 0= IF R> R> 2DROP 2DROP R-OVF THEN  R> UM/MOD
-  DUP 0< IF R> DROP 2DROP R-OVF THEN  R> IF SWAP IF 1+ THEN NEGATE ELSE NIP THEN ;
 \ ---- the arena in chunks (918): full where nothing may be collected - in a def a capture called, its loop
 \ building a long text - it grows: the chunk it fills kept as it is, a new one taken, the next collection
 \ copying what is live in all of them into one. 128 MB had been the most; now the machine's memory is
@@ -152,7 +140,6 @@ VARIABLE XN   VARIABLE XC-P   VARIABLE XC-CAP      \ chunks filled since the las
 DEFER R-CONT>TEXT-D   \ a list's or a record's text: R-CONT>TEXT, below (793)
 : R-ANY>TEXT ( box --- t )
   R-UNBOX  DUP K-TEXT = IF DROP EXIT THEN
-  DUP K-DEC = IF DROP R-DEC>TEXT-HOOK EXIT THEN                \ 754: decimals, defined later
   DUP K-NUM = IF DROP R-NUM EXIT THEN
   DUP K-BOOL = IF DROP IF S" true" ELSE S" false" THEN R-TEXT EXIT THEN
   R-CONT>TEXT-D ;                                              \ a list or a record (793: it left the value under its text)
@@ -174,16 +161,6 @@ DEFER R-CONT>TEXT-D   \ a list's or a record's text: R-CONT>TEXT, below (793)
 
    \ a slice's bound: negative from the end, within the list
 
-DEFER R-LIST=-D  DEFER R-REC=-D   \ defined below, with the words they need (782)
-: R-BOX= ( box1 box2 --- f )   \ Python's ==: texts by their bytes, lists and records by what they hold, 1 == 1.0 (782)
-  R-UNBOX ROT R-UNBOX                                             ( v2 k2 v1 k1 )
-  DUP K-NUM = 3 PICK K-DEC = AND IF DROP R-N>D K-DEC THEN
-  DUP K-DEC = 3 PICK K-NUM = AND IF 2SWAP DROP R-N>D K-DEC 2SWAP THEN
-  ROT OVER <> IF 2DROP DROP 0 EXIT THEN                           ( v2 v1 kind )
-  DUP K-TEXT = IF DROP R-T= EXIT THEN
-  DUP K-LIST = IF DROP R-LIST=-D EXIT THEN
-  DUP K-REC = IF DROP R-REC=-D EXIT THEN
-  DROP = ;
 VARIABLE RK-A  VARIABLE RK-U   \ a key's bytes, while it is looked for (775)
 
 \ records
@@ -467,12 +444,6 @@ VARIABLE JB-CAP  JB-MAX JB-CAP !                   \ grown when full (891): the 
 VARIABLE PX-XT
 
 
-\ echo piped, redirected or captured (807): Rill's echo in a child, as a def is a stage - not /bin/echo,
-\ which took -n from a variable and printed a spread that the shell's own echo did not
-VARIABLE PE-L   \ the stage's words, a list, echo first
-: PE-RUN ( --- )   \ the child: the words after echo, a blank between, a newline - no options
-  PE-L @ DUP R-LEN 1 ?DO  I 1 > IF BL EMIT THEN  DUP I R-AT R-ANY>TEXT R-TYPE  LOOP DROP R-NL ;
-VARIABLE PE-XT   ' PE-RUN PE-XT !XT          \ kept as an offset: the image is saved and reloaded
 
 \ par for: each body in a child of its own, all waited for at the end (745)
 VARIABLE R-BRK   \ break, from a loop body made a def of its own by a continue
@@ -564,21 +535,10 @@ VARIABLE RS-NEW
 
 
 
-40 BUFFER: DT-BUF   VARIABLE DT#
-: DT+ ( c-addr u --- )   DT-BUF DT# @ + SWAP DUP DT# +! MOVE ;
-: R-DEC>TEXT ( d --- t )   \ a decimal as text: its digits, trailing zeros after the point dropped, one kept
-  0 DT# !  DUP 0< IF S" -" DT+ THEN  ABS 1000000 /MOD
-  0 <# #S #> DT+  S" ." DT+
-  0 <# # # # # # # #>  BEGIN DUP 1 > IF 2DUP + 1- C@ [CHAR] 0 = ELSE 0 THEN WHILE 1- REPEAT  DT+
-  DT-BUF DT# @ R-TEXT ;
-' R-DEC>TEXT IS R-DEC>TEXT-HOOK
 
 \ ---- What the second pilot needs (Iteration 758) ---------------------------
-: RC-NUMISH? ( kind --- f )   DUP K-NUM = SWAP K-DEC = OR ;
-: RC-DEC ( box --- d )   R-UNBOX K-NUM = IF R-N>D THEN ;
 : R-CMP ( b1 b2 --- n )   \ Python's order: numbers by value, texts by bytes, lists item by item, then length
   OVER @ OVER @ 2DUP <> IF
-    2DUP RC-NUMISH? SWAP RC-NUMISH? AND IF 2DROP RC-DEC SWAP RC-DEC SWAP 2DUP = IF 2DROP 0 ELSE < IF -1 ELSE 1 THEN THEN EXIT THEN   \ 1 and 1.5 by value (798)
     > IF 2DROP 1 ELSE 2DROP -1 THEN EXIT THEN
   DUP K-REC = IF R-ERR> ." cm: records have no order - sort-by(list, field) puts them in a field's order" R-ERR-NL -4001 THROW THEN   \ 798
   DROP
@@ -616,40 +576,8 @@ VARIABLE SP-L  VARIABLE SP-A  VARIABLE SP-U
 
 : R-CONTAINS ( t s --- f )   \ contains(text, part)
   R-T@ SP-U ! SP-A !  R-T@ SP-FIND 0< 0= ;
-VARIABLE RP-NEW
 
 
-\ Numbers read from text (811): one reader for decimal() and from-json - a sign, digits, a fraction,
-\ an exponent (-?D*(.D*)?([eE][+-]?D+)?, a digit somewhere). With neither fraction nor exponent a
-\ number, checked; with either a decimal of six places, truncated, checked. decimal() read the digits
-\ before anything it did not know and dropped the rest: "1e3" gave 1.0, "abc" 0.0, " 1.5" 0.5.
-VARIABLE NT-M  VARIABLE NT-E  VARIABLE NT-X  VARIABLE NT-DEC  VARIABLE NT-BIG  VARIABLE NT-DIG
-: NT-D? ( c --- f )   [CHAR] 0 [CHAR] 9 1+ WITHIN ;
-: NT-ROOM? ( d --- f )   NT-M @ 922337203685477580 < IF DROP -1 EXIT THEN  NT-M @ 922337203685477580 = SWAP 7 > 0= AND ;
-: NT-INT ( d --- )   1 NT-DIG +!  DUP NT-ROOM? IF NT-M @ 10 * + NT-M ! ELSE DROP -1 NT-BIG ! 1 NT-E +! THEN ;
-: NT-FRAC ( d --- )   1 NT-DIG +!  DUP NT-ROOM? IF NT-M @ 10 * + NT-M ! -1 NT-E +! ELSE DROP THEN ;   \ past it: truncated
-: NT-DIGITS ( a u xt --- a' u' )   >R  BEGIN DUP IF OVER C@ NT-D? ELSE 0 THEN WHILE OVER C@ [CHAR] 0 - R@ EXECUTE 1 /STRING REPEAT  R> DROP ;
-: NT-EXP ( d --- )   NT-X @ 100000 < IF NT-X @ 10 * + NT-X ! ELSE DROP THEN ;
-VARIABLE NT-INT-XT  ' NT-INT NT-INT-XT !XT   VARIABLE NT-FRAC-XT  ' NT-FRAC NT-FRAC-XT !XT   VARIABLE NT-EXP-XT  ' NT-EXP NT-EXP-XT !XT
-: R-NUMTEXT ( c-addr u --- v kind -1 | 0 )
-  0 NT-M ! 0 NT-E ! 0 NT-X ! 0 NT-DEC ! 0 NT-BIG ! 0 NT-DIG !
-  DUP 0= IF 2DROP 0 EXIT THEN
-  OVER C@ [CHAR] - = DUP >R IF 1 /STRING THEN                         ( a u )  ( R: negative? )
-  NT-INT-XT @XT NT-DIGITS
-  DUP IF OVER C@ [CHAR] . = IF -1 NT-DEC ! 1 /STRING NT-FRAC-XT @XT NT-DIGITS THEN THEN
-  NT-DIG @ 0= IF 2DROP R> DROP 0 EXIT THEN                             \ a digit somewhere
-  DUP IF OVER C@ 32 OR [CHAR] e = IF
-    -1 NT-DEC !  1 /STRING  0 >R                                      ( a u )  ( R: negative? exp-negative? )
-    DUP IF OVER C@ [CHAR] - = IF R> DROP -1 >R 1 /STRING ELSE OVER C@ [CHAR] + = IF 1 /STRING THEN THEN THEN
-    DUP IF OVER C@ NT-D? ELSE 0 THEN 0= IF 2DROP R> R> 2DROP 0 EXIT THEN
-    NT-EXP-XT @XT NT-DIGITS  R> IF NT-X @ NEGATE ELSE NT-X @ THEN NT-E +!  THEN THEN
-  NIP IF R> DROP 0 EXIT THEN                                           \ something after it
-  NT-DEC @ 0= IF  NT-BIG @ IF R-OVF THEN  NT-M @ R> IF NEGATE THEN K-NUM -1 EXIT  THEN
-  NT-E @ 6 +  DUP 0< IF NEGATE NT-M @ SWAP 0 ?DO 10 / LOOP ELSE NT-M @ SWAP 0 ?DO 10 R-MUL LOOP THEN
-  R> IF NEGATE THEN K-DEC -1 ;
-: R-TEXT>DEC ( t --- d )   \ decimal(text): "1.021" -> 1021000, "-0.5" -> -500000, "7" -> 7000000, "1e3" -> 1000000000
-  R-T@ R-NUMTEXT 0= IF R-ERR> ." cm: not a decimal" R-ERR-NL -4004 THROW THEN  K-NUM = IF R-N>D THEN ;
-VARIABLE LM-K
 
 
 : R-WHICH ( t --- t2 | 0 )   \ a command's file: itself if it has a /; else the first on PATH that opens (834)
@@ -660,13 +588,8 @@ VARIABLE LM-K
   LOOP  2DROP 0 ;
 ' R-WHICH IS R-WHICH-D
 
-VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
 
 
-: R-ANY>DEC ( box --- d )   \ an item as a decimal: a decimal, a number, or a text that reads as one
-  R-UNBOX DUP K-DEC = IF DROP EXIT THEN  DUP K-NUM = IF DROP 1000000 * EXIT THEN
-  K-TEXT = IF R-TEXT>DEC EXIT THEN  R-ERR> ." cm: not a decimal" R-ERR-NL 1 R-STATUS ! -4000 THROW ;
-1 63 LSHIFT CONSTANT R-NONE   \ a number of the script's that may be read before it is set holds this until it is (785)
 
    \ $x[i], x an item: checked (801)
    \ $x[f], x an item: no key boxed (801)
@@ -674,16 +597,6 @@ VARIABLE CWD-STACK   \ cd DIR { ... }: where to come back to, innermost on top
 
 \ ---- Paths (Iteration 782) ------------------------------------------------
 
-: R-LIST= ( l l --- f )   \ as long as each other, each item = (782)
-  OVER @ OVER @ <> IF 2DROP 0 EXIT THEN
-  DUP @ 0 ?DO  OVER I R-AT OVER I R-AT R-BOX= 0= IF 2DROP 0 UNLOOP EXIT THEN  LOOP 2DROP -1 ;
-: R-REC= ( r r --- f )   \ the same keys, in any order, each value = (782)
-  OVER R-KEYS @ OVER R-KEYS @ <> IF 2DROP 0 EXIT THEN
-  OVER R-KEYS DUP @ 0 ?DO                                         ( r1 r2 keys )
-    DUP I R-AT R-ANY>TEXT  2 PICK R-FIND DUP 0< IF DROP 2DROP DROP 0 UNLOOP EXIT THEN
-    2 PICK R-VALS SWAP R-AT  3 PICK R-VALS I R-AT R-BOX= 0= IF 2DROP DROP 0 UNLOOP EXIT THEN
-  LOOP DROP 2DROP -1 ;
-' R-LIST= IS R-LIST=-D  ' R-REC= IS R-REC=-D
 
 \ ---- Glob patterns (Iteration 783): case's arms, as the shell's: * ? [...] and \ ----------
 VARIABLE GL-T  VARIABLE GL-N  VARIABLE GL-P  VARIABLE GL-M  VARIABLE GL-I  VARIABLE GL-J  VARIABLE GL-ST  VARIABLE GL-MK
@@ -733,27 +646,17 @@ VARIABLE GC-C  VARIABLE GC-NEG  VARIABLE GC-HIT  VARIABLE GC-K0
 : R-ANY-CMP ( box1 box2 --- n )   \ two items in order: texts by their bytes, numbers and decimals by value; a text and a number cannot be (786)
   OVER R-UNBOX NIP K-TEXT =  OVER R-UNBOX NIP K-TEXT =  2DUP AND IF 2DROP R-ANY>TEXT >R R-ANY>TEXT R> R-TCMP EXIT THEN
   OR IF R-ERR> ." cm: a text and a number cannot be put in order" R-ERR-NL -4001 THROW THEN
-  R-ANY>DEC >R R-ANY>DEC R>  2DUP < IF 2DROP -1 ELSE > IF 1 ELSE 0 THEN THEN ;
+  R-ANY>NUM >R R-ANY>NUM R>  2DUP < IF 2DROP -1 ELSE > IF 1 ELSE 0 THEN THEN ;
 
 
 
-: R-NUM-OR-DEC ( box --- v dec? )   DUP R-UNBOX NIP K-DEC = IF R-UNBOX DROP -1 ELSE R-ANY>NUM 0 THEN ;
       \ an item against a number, on one scale
 
    \ len() of an item: a record's fields counted (799)
    \ abs() of an item (799)
-VARIABLE AR-OP
-: AR-DEC ( v dec? --- d )   0= IF R-N>D THEN ;
-: R-ARITH ( v1 dec1 v2 dec2 op --- box )   \ op 0 + 1 - 2 * 3 / 4 %: a decimal if either is one, else a number
-  AR-OP !  2 PICK OVER OR IF
-    AR-DEC >R AR-DEC R>
-    AR-OP @ CASE 0 OF R-ADD ENDOF 1 OF R-MINUS ENDOF 2 OF R-DMUL ENDOF 3 OF R-DDIV ENDOF >R R-MODC R> ENDCASE K-DEC R-BOX
-  ELSE DROP NIP
-    AR-OP @ CASE 0 OF R-ADD ENDOF 1 OF R-MINUS ENDOF 2 OF R-MUL ENDOF 3 OF R-DIV ENDOF >R R-MODC R> ENDCASE K-NUM R-BOX
-  THEN ;
-
-
-: R-ARITH-AA ( box box op --- box )   >R >R R-NUM-OR-DEC R> R-NUM-OR-DEC R> R-ARITH ;
+: R-ARITH ( n1 n2 op --- box )   \ op 0 + 1 - 2 * 3 / 4 %: checked (decimals gone, 923)
+  CASE 0 OF R-ADD ENDOF 1 OF R-MINUS ENDOF 2 OF R-MUL ENDOF 3 OF R-DIV ENDOF >R R-MODC R> ENDCASE K-NUM R-BOX ;
+: R-ARITH-AA ( box box op --- box )   >R >R R-ANY>NUM R> R-ANY>NUM R> R-ARITH ;
 
    \ @name of an item (799)
 
@@ -810,112 +713,6 @@ VARIABLE SH-B  VARIABLE SH-N  VARIABLE SH-CAP  CREATE SH-C 1 ALLOT
 ' R-SHOW IS R-SHOW-D
 : R-CONT>TEXT ( v kind --- t )   K-LIST = IF S"  " R-TEXT R-JOIN ELSE R-SHOW-REC THEN ;
 ' R-CONT>TEXT IS R-CONT>TEXT-D
-
-\ ---- JSON (Iteration 811, QUESTIONS.md A36): json(x) writes a value, from-json(t) reads one ----
-\ The writer is compact, as Python's json.dumps(x, separators=(',', ':'), ensure_ascii=False): every
-\ key quoted, \" \\ \n \r \t \b \f, other bytes below 32 as \u00XX.
-: J-HEXD ( n --- c )   DUP 10 < IF [CHAR] 0 + ELSE 87 + THEN ;
-: J-TEXT ( t --- t' )
-  0 SH-N !  [CHAR] " SH-CH
-  R-T@ 0 ?DO DUP I + C@ CASE
-      [CHAR] " OF [CHAR] \ SH-CH [CHAR] " SH-CH ENDOF
-      [CHAR] \ OF [CHAR] \ SH-CH [CHAR] \ SH-CH ENDOF
-      10 OF [CHAR] \ SH-CH [CHAR] n SH-CH ENDOF   13 OF [CHAR] \ SH-CH [CHAR] r SH-CH ENDOF
-      9 OF [CHAR] \ SH-CH [CHAR] t SH-CH ENDOF    8 OF [CHAR] \ SH-CH [CHAR] b SH-CH ENDOF
-      12 OF [CHAR] \ SH-CH [CHAR] f SH-CH ENDOF
-      DUP 32 < IF S" \u00" SH-ADD DUP 4 RSHIFT J-HEXD SH-CH DUP 15 AND J-HEXD SH-CH ELSE DUP SH-CH THEN
-    ENDCASE LOOP DROP
-  [CHAR] " SH-CH  SH-B @ SH-N @ R-TEXT ;
-DEFER R-JSON-D
-: J-LIST ( l --- t )   R-NEW-LIST SWAP  DUP @ 0 ?DO DUP I R-AT R-JSON-D K-TEXT R-BOX 2 PICK R-PUSH LOOP DROP
-  S" ," R-TEXT R-JOIN  S" [" R-TEXT SWAP S" ]" R-TEXT 3 R-CONCAT ;
-: J-REC ( r --- t )   R-NEW-LIST SWAP
-  DUP R-KEYS @ 0 ?DO
-    DUP R-KEYS I R-AT R-ANY>TEXT J-TEXT  S" :" R-TEXT  2 PICK R-VALS I R-AT R-JSON-D  3 R-CONCAT
-    K-TEXT R-BOX 2 PICK R-PUSH
-  LOOP DROP
-  S" ," R-TEXT R-JOIN  S" {" R-TEXT SWAP S" }" R-TEXT 3 R-CONCAT ;
-: R-JSON ( box --- t )   \ json(x); numbers, decimals and bools as Rill writes them, which JSON reads
-  DUP R-UNBOX NIP
-  DUP K-TEXT = IF DROP R-ANY>TEXT J-TEXT EXIT THEN
-  DUP K-LIST = IF DROP R-UNBOX DROP J-LIST EXIT THEN
-  K-REC = IF R-UNBOX DROP J-REC EXIT THEN
-  R-ANY>TEXT ;
-' R-JSON IS R-JSON-D
-\ The reader: a recursive descent over the text's bytes - an object a record, an array a list, a
-\ string a text (\uXXXX as UTF-8, a surrogate pair one character), true and false bools, null an
-\ empty text, a number as decimal() reads one (R-NUMTEXT). Nesting past 200 deep is an error.
-VARIABLE JP  VARIABLE JE  VARIABLE JS  VARIABLE JD   \ the place, the end, the start, the depth
-: J-FAIL ( c-addr u --- )   R-ERR> ." cm: from-json: " TYPE ."  at byte " JP @ JS @ - R-.N R-ERR-NL -4004 THROW ;
-: J-END? ( --- f )   JP @ JE @ U< 0= ;
-: J-C ( --- c )   J-END? IF 0 ELSE JP @ C@ THEN ;
-: J-WS ( --- )   BEGIN J-C DUP 32 = OVER 9 = OR OVER 10 = OR SWAP 13 = OR WHILE 1 JP +! REPEAT ;
-: J-EXPECT ( c --- )   J-WS J-C OVER = IF DROP 1 JP +! EXIT THEN
-  R-ERR> ." cm: from-json: " EMIT ."  expected at byte " JP @ JS @ - R-.N R-ERR-NL -4004 THROW ;
-: J-WORD ( c-addr u --- )   \ true, false, null: exactly
-  JE @ JP @ - OVER < IF 2DROP S" an unknown word" J-FAIL THEN
-  TUCK JP @ OVER COMPARE IF DROP S" an unknown word" J-FAIL THEN  JP +! ;
-: J-UTF8 ( u --- )   \ a code point as UTF-8, onto the text being made
-  DUP 128 < IF SH-CH EXIT THEN
-  DUP 2048 < IF DUP 6 RSHIFT 192 OR SH-CH 63 AND 128 OR SH-CH EXIT THEN
-  DUP 65536 < IF DUP 12 RSHIFT 224 OR SH-CH DUP 6 RSHIFT 63 AND 128 OR SH-CH 63 AND 128 OR SH-CH EXIT THEN
-  DUP 18 RSHIFT 240 OR SH-CH DUP 12 RSHIFT 63 AND 128 OR SH-CH DUP 6 RSHIFT 63 AND 128 OR SH-CH 63 AND 128 OR SH-CH ;
-: J-HEX4 ( --- u )   \ the four hex digits of a \u
-  JE @ JP @ - 4 < IF S" a short \u escape" J-FAIL THEN
-  0 4 0 DO JP @ I + C@ DUP NT-D? IF [CHAR] 0 - ELSE 32 OR DUP [CHAR] a [CHAR] f 1+ WITHIN IF 87 - ELSE
-    DROP S" a \u escape not in hex" J-FAIL THEN THEN SWAP 16 * + LOOP  4 JP +! ;
-: J-PAIR ( u --- u' )   \ a high surrogate and the low one after it: one character
-  DUP 56320 57344 WITHIN IF S" a lone surrogate" J-FAIL THEN
-  DUP 55296 56320 WITHIN 0= IF EXIT THEN
-  JE @ JP @ - 6 < IF S" a lone surrogate" J-FAIL THEN
-  JP @ C@ [CHAR] \ <> JP @ 1+ C@ [CHAR] u <> OR IF S" a lone surrogate" J-FAIL THEN
-  2 JP +!  J-HEX4  DUP 56320 57344 WITHIN 0= IF S" a lone surrogate" J-FAIL THEN
-  56320 -  SWAP 55296 - 10 LSHIFT +  65536 + ;
-: J-ESCAPE ( --- )   \ after a backslash
-  J-END? IF S" a string not closed" J-FAIL THEN  J-C 1 JP +!
-  CASE
-    [CHAR] " OF [CHAR] " SH-CH ENDOF   [CHAR] \ OF [CHAR] \ SH-CH ENDOF   [CHAR] / OF [CHAR] / SH-CH ENDOF
-    [CHAR] b OF 8 SH-CH ENDOF   [CHAR] f OF 12 SH-CH ENDOF   [CHAR] n OF 10 SH-CH ENDOF
-    [CHAR] r OF 13 SH-CH ENDOF   [CHAR] t OF 9 SH-CH ENDOF
-    [CHAR] u OF J-HEX4 J-PAIR J-UTF8 ENDOF
-    S" a bad escape" J-FAIL
-  ENDCASE ;
-: J-STRING ( --- t )   \ its opening " taken: to the closing one
-  0 SH-N !
-  BEGIN J-END? IF S" a string not closed" J-FAIL THEN  J-C [CHAR] " <> WHILE
-    J-C 32 < IF S" a control character in a string" J-FAIL THEN
-    J-C [CHAR] \ = IF 1 JP +! J-ESCAPE ELSE J-C SH-CH 1 JP +! THEN
-  REPEAT  1 JP +!  SH-B @ SH-N @ R-TEXT ;
-: J-NUMBER ( --- box )   \ the bytes a number may hold, read as decimal() reads them
-  JP @  BEGIN J-C DUP NT-D? OVER [CHAR] - = OR OVER [CHAR] + = OR OVER [CHAR] . = OR SWAP 32 OR [CHAR] e = OR
-    J-END? 0= AND WHILE 1 JP +! REPEAT
-  JP @ OVER - R-NUMTEXT 0= IF S" a bad number" J-FAIL THEN  R-BOX ;
-DEFER J-VALUE-D
-: J-DEEPER ( --- )   1 JD +!  JD @ 200 > IF S" nested past 200 deep" J-FAIL THEN ;
-: J-ARRAY ( --- box )   \ its [ taken
-  J-DEEPER  R-NEW-LIST  J-WS J-C [CHAR] ] = IF 1 JP +! ELSE
-    BEGIN J-VALUE-D OVER R-PUSH  J-WS J-C [CHAR] , = WHILE 1 JP +! REPEAT  [CHAR] ] J-EXPECT THEN
-  -1 JD +!  K-LIST R-BOX ;
-: J-OBJECT ( --- box )   \ its { taken
-  J-DEEPER  R-NEW-RECORD  J-WS J-C [CHAR] } = IF 1 JP +! ELSE
-    BEGIN
-      J-WS J-C [CHAR] " <> IF S" a key, in quotes" J-FAIL THEN  1 JP +! J-STRING    ( r key )
-      [CHAR] : J-EXPECT  J-VALUE-D SWAP 2 PICK R-PUT                               ( r )
-      J-WS J-C [CHAR] , = WHILE 1 JP +! REPEAT  [CHAR] } J-EXPECT THEN
-  -1 JD +!  K-REC R-BOX ;
-: J-VALUE ( --- box )
-  J-WS J-END? IF S" a value expected" J-FAIL THEN
-  J-C CASE
-    [CHAR] { OF 1 JP +! J-OBJECT ENDOF
-    [CHAR] [ OF 1 JP +! J-ARRAY ENDOF
-    [CHAR] " OF 1 JP +! J-STRING K-TEXT R-BOX ENDOF
-    [CHAR] t OF S" true" J-WORD -1 K-BOOL R-BOX ENDOF
-    [CHAR] f OF S" false" J-WORD 0 K-BOOL R-BOX ENDOF
-    [CHAR] n OF S" null" J-WORD 0 0 R-TEXT K-TEXT R-BOX ENDOF
-    DUP [CHAR] - = OVER NT-D? OR 0= IF S" a value expected" J-FAIL THEN  J-NUMBER SWAP
-  ENDCASE ;
-' J-VALUE IS J-VALUE-D
-
 
 \ ---- glob (Iteration 786) -------------------------------------------------
 \ glob(pattern): the paths it matches, sorted - * ? [...] in any part (in the last only, 786-879); a name starting with . only for a pattern that does; . and .. never. No wildcard:
@@ -1021,7 +818,6 @@ DEFER G-MORE ( --- )   \ roots beyond the registered variables - a runtime may a
   R-TOP @ R-ARENA0 @ - 64 / 1+  DUP ALLOCATE THROW  DUP G-BITS !  SWAP ERASE
   XN @ 0 ?DO  I X-CHUNK DUP CELL+ @ OVER @ - 64 / 1+  DUP ALLOCATE THROW  DUP 3 PICK 2 CELLS + !  SWAP ERASE DROP  LOOP
   G-RN @ 0 ?DO  G-RV I CELLS + @  DUP @ G-RK I CELLS + @ G-COPY  SWAP !  LOOP  G-MORE
-  CWD-STACK @ ?DUP IF G-LIST CWD-STACK ! THEN
   G-BITS @ FREE THROW  R-ARENA0 @ FREE THROW
   XN @ 0 ?DO  I X-CHUNK DUP 2 CELLS + @ FREE THROW  @ FREE THROW  LOOP  0 XN !
   R> DUP R-ARENA0 !  G-SIZE @ + R-END !  G-TOP @ R-TOP !

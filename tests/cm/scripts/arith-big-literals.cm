@@ -1,0 +1,4 @@
+# numbers near 64 bits written in $(( )) (923): 2^61 and up had been tagged past what a tag holds, and a literal past
+# 64 bits had wrapped - 9223372036854775807 read -1; now boxed, and past 64 bits an error when read
+echo $(( 9223372036854775807 - 1 )) $(( 4611686018427387904 * 1 )) $(( 4611686018427387904 + 4611686018427387903 ))
+echo $(( 9223372036854775807 ))

@@ -15,7 +15,8 @@ open(os.path.join(d, 'other.txt'), 'w').close()
 def run(keys):
     pid, fd = pty.fork()
     if pid == 0:
-        os.execv('./relf64', ['./relf64', img])
+        eng = os.environ.get('CM_ENGINE', './relf64')   # the engine the suite runs on (923)
+        os.execv(eng, [eng, img])
     out = b''
     def drain(t):
         nonlocal out

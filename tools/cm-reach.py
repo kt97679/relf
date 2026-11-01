@@ -37,7 +37,15 @@ for m in re.finditer(r'(?ms)(?:^|(?<=\s)):\s+(\S+)(.*?)(?:\s;(?=\s|$))', bl):
     pos = m.end()
 top += bl[pos:].split()
 data = set(x.upper() for x in re.findall(r'(?:VARIABLE|CONSTANT|CREATE|DEFER|BUFFER:|VALUE|2VARIABLE)\s+(\S+)', bl))
-roots = set(t.upper() for t in top) | {'R-BOOT'}
+# a DEFER filled at the top level - ' X IS Y, or ' X Y !XT - is an edge Y -> X, not a root (923): a cluster
+# reached only through its own hook had counted as reached - Rill's JSON, its decimals
+hooks = {}
+for m in re.finditer(r"(?<!\S)'\s+(\S+)\s+(?:IS\s+(\S+)|(\S+)\s+!XT)", bl):
+    hooks.setdefault((m.group(2) or m.group(3)).upper(), []).append(m.group(1).upper())
+hooked = set(x for v in hooks.values() for x in v)
+for y, xs in hooks.items(): defs.setdefault(y, []).extend(xs)
+topwords = [t.upper() for t in top]
+roots = set(t for t in topwords if t not in hooked and t not in hooks) | {'R-BOOT'}
 for f in glob.glob('cm/*.4') + glob.glob('tests/cm/*.4') + ['shell/edit.4']:
     roots |= set(t.upper() for t in blank(open(f).read()).split())
     roots |= set(t.upper() for s in re.findall(r'S" ([^"]*)"', open(f).read()) for t in s.split())   # the Forth cmc.4 makes

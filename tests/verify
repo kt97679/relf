@@ -603,6 +603,14 @@ if [ -x ./relf64 ]; then
 else
     for k in cm:passed cm:failed; do emit "$k" skipped; done
 fi
+# the same suite on the assembly engine (923): the language must not care which engine runs it
+if [ -x ./relfasm64 ]; then
+    R=$(CM_ENGINE=./relfasm64 sh tests/cm/run < /dev/null 2>&1 | tail -1)
+    emit cm-asm:passed "$(echo "$R" | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed.*/\1/p')"
+    emit cm-asm:failed "$(echo "$R" | sed -n 's/^\([0-9]*\) passed, \([0-9]*\) failed.*/\2/p')"
+else
+    for k in cm-asm:passed cm-asm:failed; do emit "$k" skipped; done
+fi
 
 # ---------------------------------------------------------------
 # 4. Sizes. Cheap, and the number the engine work is chasing.

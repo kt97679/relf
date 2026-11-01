@@ -58,7 +58,7 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
   OVER 0= OVER 0= OR IF S" cm: none has no order" D-ERR THEN  D-BOXED SWAP D-BOXED SWAP R-ANY-CMP ;
 : D< ( a b --- c )   D-CMP 0< D-BOOL ;      : D> ( a b --- c )   D-CMP 0> D-BOOL ;
 : D<= ( a b --- c )   D-CMP 0> 0= D-BOOL ;  : D>= ( a b --- c )   D-CMP 0< 0= D-BOOL ;
-: D-CLASS ( item --- c )   D-KIND DUP K-DEC = IF DROP K-NUM THEN ;
+: D-CLASS ( item --- c )   D-KIND ;
 : D== ( a b --- c )
   BOTH# IF = D-BOOL EXIT THEN  2DUP = IF 2DROP TRUE-BOX EXIT THEN  D-NUMERIC SWAP D-NUMERIC SWAP  BOTH# IF = D-BOOL EXIT THEN
   OVER 0= OVER 0= OR IF 2DROP FALSE-BOX EXIT THEN

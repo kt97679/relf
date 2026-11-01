@@ -129,12 +129,15 @@ VARIABLE IN-QU                                     \ reading a "...": ${name} al
 : OPR, ( n --- )   HERE-IN OVER N-OP N,  0 ?DO GET DROP LOOP ;      \ an operator of n characters, a leaf
 : OPR2? ( --- f )   0  12 0 DO  S" ==!=<=>=&&||" DROP I +  DUP C@ CUR =  SWAP 1+ C@ 1 PK =  AND OR  2 +LOOP ;
 : ONE-OF? ( c c-addr u --- f )   0 SWAP 0 ?DO  OVER I + C@ 3 PICK = OR  LOOP NIP NIP ;
+: A-DIGIT ( n c --- n' )   \ a digit more of a number in $(( )), checked (923): past 64 bits it had wrapped
+  [CHAR] 0 -  OVER 922337203685477580 >  2 PICK 922337203685477580 = 2 PICK 7 > AND  OR
+  IF S" a number past 64 bits" P-ERR THEN  SWAP 10 * + ;
 : ARITH-P' ( --- )   \ (( )): numbers, $values and operators in a N-AR - ended by )) outside any ( )
   IN-LINE @ 0 N-AR N,  0
   BEGIN  BEGIN CUR -1 BLANK? WHILE GET DROP REPEAT
     CUR 0= IF S" )) missing" P-ERR THEN
     CUR [CHAR] ) = OVER 0= AND  1 PK [CHAR] ) = AND IF DROP GET GET 2DROP N) EXIT THEN
-    CUR DIG? IF  0 BEGIN CUR DIG? WHILE 10 * GET [CHAR] 0 - + REPEAT  0 N-NM N,
+    CUR DIG? IF  0 BEGIN CUR DIG? WHILE GET A-DIGIT REPEAT  0 N-NM N,
     ELSE CUR [CHAR] $ = IF GET DROP DOLLAR-P
     ELSE CUR [CHAR] " = IF GET DROP QUOTED-P ELSE CUR [CHAR] ' = IF GET DROP SQUOTE-P     \ texts too (874): $(( $a == "yes" ))
     ELSE OPR2? IF 2 OPR,
@@ -476,7 +479,7 @@ VARIABLE AP                                        \ the next of (( ))'s nodes
 DEFER A-OR ( --- c-addr u )
 : A-PRIM ( --- c-addr u )
   AP @ DUP @ 0= IF S" (( )) ends too soon" G-ERR THEN  DUP NSKIP AP !
-  DUP @ N-NM = IF @A #$ S" D-NUM" ++ EXIT THEN
+  DUP @ N-NM = IF @A DUP #$ ROT  1 61 LSHIFT DUP NEGATE 1+ SWAP WITHIN IF S" D-NUM" ELSE S" N>ITEM-D" THEN ++ EXIT THEN   \ 2^61 up: boxed (923)
   DUP @ N-OP <> IF PIECE EXIT THEN
   DUP @A OVER @B S" (" COMPARE 0= IF DROP A-OR S" )" AOP? 0= IF S" ) missing in (( ))" G-ERR THEN  AP @ N+ AP ! EXIT THEN
   DUP @A OVER @B S" -" COMPARE 0= IF DROP RECURSE S" D-NEG" ++ EXIT THEN

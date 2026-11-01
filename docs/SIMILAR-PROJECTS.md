@@ -88,3 +88,9 @@ Each names the aim it serves; those marked (owner) change the language and need 
 Not now: classes (kbool, Bash Infinity), multiple dispatch (NGS), typed pipes and built-in data formats
 (Murex), process substitution `<{cmd}` (rc), parallel `each` (Elvish's peach), compiling to bash
 (Amber) - each a large addition against the size and one-way aims.
+
+## After 923
+
+The image 87,040 bytes to 82,664: Rill's JSON reader and writer, its echo stage, its deep equality and
+its decimals - reached by nothing of rill3 but through their own hooks, which tools/cm-reach.py had
+counted as roots - taken out (-4.4 KB). rill3's suite runs on both engines in the verify.

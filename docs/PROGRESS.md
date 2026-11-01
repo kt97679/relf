@@ -946,6 +946,7 @@ do not trust the absence of a line below.
 - 920 — } ends a word in a block, as ) and ] do ({ echo $y} and }} had been refused)
 - 921 — docs/SIMILAR-PROJECTS.md: kbool, Elvish, es, rc, Tcl, YSH, NGS, Hush, Murex, Amber; eleven action items
 - 922 — sizes measured: rill3 132 KB vs relfsh 174 KB; on the 16 KB assembly engine 103 KB, its suite passing
+- 923 — the suite on both engines in the verify; Rill's JSON, decimals and dead words out (-4.4 KB); long literals in $(( )) checked
 
 ### Not tied to an iteration
 
