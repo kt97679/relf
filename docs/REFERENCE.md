@@ -22,7 +22,7 @@ word's first character says what it is - as Forth reads its input:
 | `'` | a text, exactly as written | the next `'` |
 | `"` | a text with `$` values in it, and `\n` `\t` `\"` `\\` | the next `"` |
 | `$` | a value: `$x`, `$l[0]`, `$m[k][j]`; `$(cmd)` a capture; `$(( ))` arithmetic | the name and its `[...]`, or the `)` |
-| `@` | a spread: `@l`, `@(cmd)` - several words | likewise |
+| `@` | a spread: `@l`, `@(cmd)`, `@[a b c]` - several words | likewise |
 | `[` | a list `[a b c]`, or a map `[k: v  j: w]`, `[:]` empty | the matching `]` |
 | `{` | a block `{ cmds }`, `{|a b| cmds }` | the matching `}` |
 | `#` | a comment | the line's end |

@@ -1,0 +1,8 @@
+/name = shop
+/items/0/id = 1
+/items/0/tags/0 = a
+/items/0/tags/1 = b
+/items/1/id = 2
+/owner/name = ada
+6 leaves
+status 0

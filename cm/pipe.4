@@ -11,9 +11,12 @@ VARIABLE IN-CAP  IN-MAX IN-CAP !   ' INS >BODY START @ - CONSTANT INS'   \ grown
 : INPUT ( --- list )   IN# @ IF INS IN# @ 1- CELLS + @ ELSE ARGL THEN ;
 : IN-PUSH ( list --- )
   IN# @ IN-CAP @ < 0= IF  INS' BODY-OF BUF-GROW  IN-CAP @ 2* IN-CAP !  THEN  INS IN# @ CELLS + !  1 IN# +! ;
-: EACH-OF ( args --- )   \ each {|x| ... }: the block, run with each value of the function's input
-  DUP #ARGS 1 <> IF S" cm: each takes one block" R-FAIL THEN  0 ARGN  INPUT
-  DUP #ARGS 0 ?DO  ARGL OVER I ARGN ARG  2 PICK BLK-CALL  LOOP 2DROP ;
+VARIABLE HELD                                      \ runtime words holding the arena by hand while user code runs (918)
+: EACH-RUN ( block input --- )   DUP #ARGS 0 ?DO  ARGL OVER I ARGN ARG  2 PICK BLK-CALL  LOOP 2DROP ;
+VARIABLE XT-EACH-RUN   ' EACH-RUN XT-EACH-RUN !XT
+: EACH-OF ( args --- )   \ each {|x| ... }: the block, run with each value of the function's input - its block
+  DUP #ARGS 1 <> IF S" cm: each takes one block" R-FAIL THEN  0 ARGN  INPUT     \ and input held on the stack
+  1 HELD +!  XT-EACH-RUN @XT CATCH  -1 HELD +!  THROW ;                        \ meanwhile: HELD says so (918)
 VARIABLE TMP#
 : TMP-PATH ( --- text )   1 TMP# +!  S" /tmp/cm" TXT GETPID D-NUM JOIN S" ." TXT JOIN TMP# @ D-NUM JOIN ;
 : PATH$ ( text --- c-addr u )   CELL+ @ R-T@ ;
@@ -74,5 +77,5 @@ VARIABLE XT-FN-RUN   ' FN-RUN XT-FN-RUN !XT
 \ only slots' numbers on the stacks between turns, so the collector may move what it likes; elsewhere, as
 \ before, only between top-level statements. A text grown a character at a time in such a loop had run
 \ out of the arena's 128 MB: nothing was collected until the loop ended
-: R-TURN ( --- )   SIG-ON @ IF R-SIG-POLL THEN
-  FP @ MFP @ = SINK# @ 0= AND IN# @ 0= AND CT-ON @ 0= AND IF R-GC? THEN ;
+: R-TURN ( --- )   SIG-ON @ IF R-SIG-POLL THEN       \ in a def or a block too (918): what holds the arena by
+  SINK# @ 0= IN# @ 0= AND CT-ON @ 0= AND HELD @ 0= AND IF R-GC? THEN ;   \ hand - a capture, a stage, each - says so

@@ -1,0 +1,13 @@
+# a whole script (919), as one would write it
+# walk nested maps and lists with a callback: count leaves, collect paths
+def walk {|v path f|
+    case $(kind $v) {
+        map { for k @(keys $v) { walk $v[$k] "$path/$k" $f } }
+        list { var i 0; for x @v { walk $x "$path/$i" $f; set i $(( $i + 1 )) } }
+        * { $f $path $v }
+    }
+}
+var data [name: shop  items: [[id: 1  tags: [a b]] [id: 2  tags: []]]  owner: [name: ada]]
+var leaves 0
+walk $data '' {|p v| set leaves $(( $leaves + 1 )); echo "$p = $v" }
+echo $leaves leaves

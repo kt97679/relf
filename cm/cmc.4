@@ -228,7 +228,8 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
   CUR [CHAR] ( = 1 PK [CHAR] ( = AND IF S" arithmetic is $(( ))" P-ERR THEN     \ one way (867)
   CUR [CHAR] @ = IF GET DROP 0 0 N-SP N,
     CUR [CHAR] ( = IF GET DROP 0 0 N-CP N, [CHAR] ) DUP CMDS N) IX?
-    ELSE CUR NAME0? 0= IF S" @ spreads a name or a ( ) - not this" P-ERR THEN VAR-P THEN  N) N) WORD-ENDS EXIT THEN
+    ELSE CUR [CHAR] [ = IF GET DROP LIST-P IX?                        \ @[a b c]: a list written there, spread (918)
+    ELSE CUR NAME0? 0= IF S" @ spreads a name, a [list] or a ( ) - not this" P-ERR THEN VAR-P THEN THEN  N) N) WORD-ENDS EXIT THEN
   CUR [CHAR] " = IF GET DROP QUOTED-P IX? N) WORD-ENDS EXIT THEN
   CUR [CHAR] ' = IF GET DROP 0 0 N-QU N, SQUOTE-P N) IX? N) WORD-ENDS EXIT THEN
   CUR [CHAR] $ = IF GET DROP DOLLAR-P IX? N) WORD-ENDS EXIT THEN

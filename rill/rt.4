@@ -130,10 +130,21 @@ DEFER R-LINE. ( n --- )   \ "line n" - the command model's says the file, for a 
   2DUP XOR 0< >R  ABS >R  ABS 1000000 UM*
   DUP R@ U< 0= IF R> R> 2DROP 2DROP R-OVF THEN  R> UM/MOD
   DUP 0< IF R> DROP 2DROP R-OVF THEN  R> IF SWAP IF 1+ THEN NEGATE ELSE NIP THEN ;
-: R-FULL-IMPL ( --- )   \ (791) the arena (128 MB) full: memory is collected between the script's top-level statements only
-  R-ERR> ." cm: out of memory - 128 MB in use since the last collection, which happens between top-level statements and a top-level loop's turns, not inside a function"
-  R-ERR-NL  -4006 THROW ;
+\ ---- the arena in chunks (918): full where nothing may be collected - in a def a capture called, its loop
+\ building a long text - it grows: the chunk it fills kept as it is, a new one taken, the next collection
+\ copying what is live in all of them into one. 128 MB had been the most; now the machine's memory is
+VARIABLE XN   VARIABLE XC-P   VARIABLE XC-CAP      \ chunks filled since the last collection: [start][end][bits] each
+: X-CHUNK ( i --- addr )   3 * CELLS XC-P @ + ;
+: R-OOM ( --- )   R-ERR> ." cm: out of memory - the machine has no more for the arena" R-ERR-NL -4006 THROW ;
+: R-NEW-CHUNK ( n --- )   \ the chunk being filled kept, filled to R-TOP; a new one, n bytes at least, the arena's size at least
+  XN @ XC-CAP @ = IF  XC-CAP @ 2* 8 MAX DUP XC-CAP !  3 * CELLS XC-P @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN IF R-OOM THEN XC-P !  THEN
+  R-ARENA0 @ XN @ X-CHUNK !  R-TOP @ XN @ X-CHUNK CELL+ !  1 XN +!
+  R-ARENA-SIZE MAX  DUP ALLOCATE IF R-OOM THEN                ( size a )
+  DUP R-ARENA0 !  DUP R-TOP !  + R-END !  R-TOP @ R-GC-AT ! ;  \ collected at the next safe point
+: R-FULL-IMPL ( old new --- old' new' )   OVER - NIP  DUP 2* 65536 + R-NEW-CHUNK  R-TOP @ TUCK + ;
 ' R-FULL-IMPL IS R-FULL
+: R-READ-GROW ( t p --- t' p' )   \ a program's output outgrew the chunk: what is read so far moved to a new one
+  OVER - >R  R@ 2* 65536 + R-NEW-CHUNK  R-TOP @ R@ MOVE  R-TOP @ DUP R> + ;
 
 : R-KIND-ERR ( --- )   R-ERR> ." cm: a value of the wrong kind" R-ERR-NL  -4001 THROW ;
 : R-ANY>NUM ( box --- n )   R-UNBOX DUP K-NUM = OVER K-BOOL = OR 0= IF R-KIND-ERR THEN DROP ;
@@ -373,7 +384,7 @@ VARIABLE PL-DEPTH   VARIABLE PL-SAVED
 : R-READ-ALL ( fd --- t )   \ to its end, one text; one trailing newline off
   >R  R-TOP @ ALIGNED DUP R-TOP !  DUP CELL+                 ( t p )
   BEGIN
-    DUP 65536 + R-END @ U> IF R-FULL THEN
+    DUP 65536 + R-END @ U> IF R-READ-GROW THEN
     DUP 65536 R@ READ-SOME DUP 0>
   WHILE + REPEAT  DROP R> DROP                                ( t end )
   OVER CELL+ -                                                ( t len )
@@ -963,9 +974,13 @@ G-MAXROOTS CELLS BUFFER: G-RV   G-MAXROOTS CELLS BUFFER: G-RK   VARIABLE G-RN
 : R-ROOT ( addr kind --- )
   G-RN @ G-MAXROOTS < 0= IF S" cm: too many variables to collect" R-FAIL THEN
   G-RK G-RN @ CELLS + !  G-RV G-RN @ CELLS + !  1 G-RN +! ;
-VARIABLE G-OLD  VARIABLE G-END  VARIABLE G-TOP  VARIABLE G-BITS  VARIABLE G-RUNS
-: G-IN? ( a --- f )   DUP G-OLD @ U< 0= SWAP G-END @ U< AND ;
-: G-BIT ( a --- byte-addr mask )   G-OLD @ - 3 RSHIFT  DUP 3 RSHIFT G-BITS @ +  SWAP 7 AND 1 SWAP LSHIFT ;
+VARIABLE G-OLD  VARIABLE G-END  VARIABLE G-TOP  VARIABLE G-BITS  VARIABLE G-RUNS  VARIABLE G-SIZE
+: G-WHICH ( a --- entry | 0 )   \ the filled chunk holding a (918)
+  XN @ 0 ?DO  I X-CHUNK  2DUP @ U< 0=  OVER CELL+ @ 3 PICK SWAP U< AND IF NIP UNLOOP EXIT THEN DROP  LOOP DROP 0 ;
+: G-IN? ( a --- f )   DUP G-OLD @ U< 0= OVER G-END @ U< AND IF DROP -1 EXIT THEN  XN @ IF G-WHICH 0<> ELSE DROP 0 THEN ;
+: G-BIT ( a --- byte-addr mask )
+  DUP G-OLD @ U< 0= OVER G-END @ U< AND IF  G-OLD @ G-BITS @  ELSE  DUP G-WHICH DUP @ SWAP 2 CELLS + @  THEN   ( a base bits )
+  >R - 3 RSHIFT  DUP 3 RSHIFT R> +  SWAP 7 AND 1 SWAP LSHIFT ;
 : G-FWD? ( a --- f )   G-BIT SWAP C@ AND 0<> ;
 : G-ALLOT ( n --- a )   7 + -8 AND  G-TOP @ SWAP OVER + G-TOP ! ;
 : G-MOVE ( a n --- a' )   \ an object's n bytes into the new arena; the old place forwarded to it
@@ -1001,12 +1016,15 @@ DEFER G-MORE ( --- )   \ roots beyond the registered variables - a runtime may a
 ' G-COPY-IMPL IS G-COPY
 : R-GC ( --- )   \ what the variables reach, copied to a new arena; the old one freed
   R-ARENA0 @ G-OLD !  R-TOP @ G-END !
-  R-ARENA-SIZE ALLOCATE THROW  DUP G-TOP !  >R
+  R-TOP @ R-ARENA0 @ -  XN @ 0 ?DO I X-CHUNK DUP CELL+ @ SWAP @ - + LOOP  R-ARENA-SIZE MAX  DUP G-SIZE !   \ room for all
+  ALLOCATE IF R-OOM THEN  DUP G-TOP !  >R                                                               \ that is used
   R-TOP @ R-ARENA0 @ - 64 / 1+  DUP ALLOCATE THROW  DUP G-BITS !  SWAP ERASE
+  XN @ 0 ?DO  I X-CHUNK DUP CELL+ @ OVER @ - 64 / 1+  DUP ALLOCATE THROW  DUP 3 PICK 2 CELLS + !  SWAP ERASE DROP  LOOP
   G-RN @ 0 ?DO  G-RV I CELLS + @  DUP @ G-RK I CELLS + @ G-COPY  SWAP !  LOOP  G-MORE
   CWD-STACK @ ?DUP IF G-LIST CWD-STACK ! THEN
   G-BITS @ FREE THROW  R-ARENA0 @ FREE THROW
-  R> DUP R-ARENA0 !  R-ARENA-SIZE + R-END !  G-TOP @ R-TOP !
+  XN @ 0 ?DO  I X-CHUNK DUP 2 CELLS + @ FREE THROW  @ FREE THROW  LOOP  0 XN !
+  R> DUP R-ARENA0 !  G-SIZE @ + R-END !  G-TOP @ R-TOP !
   R-TOP @ R-ARENA0 @ - 2* 16777216 MAX R-TOP @ + R-END @ MIN R-GC-AT !
   G-STRESS @ IF R-TOP @ 65536 + R-GC-AT ! THEN  1 G-RUNS +! ;     \ under stress: again after 64 KB more
 : R-GC? ( --- )   R-TOP @ R-GC-AT @ U> IF R-GC THEN  SIG-ON @ IF R-SIG-POLL THEN ;   \ a safe point: the compilers put one before each top-level statement

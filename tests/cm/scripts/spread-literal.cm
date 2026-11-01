@@ -1,0 +1,4 @@
+# @[a b c] spreads a list written in place (919), as @name and @(cmd) spread theirs - for r @([...]) had been
+# the habit, a list run as a command
+echo @[a b c] [@[1 2] 3] @[[1 2] [3 4]][1]
+for x @[p q] { echo $x }

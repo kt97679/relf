@@ -1,0 +1,12 @@
+# loops inside a def, a block and each, called from captures, growing texts past the arena's 128 MB (918): the
+# arena now grows in chunks where nothing may be collected, the next collection copying all of them into one;
+# a loop's turn collects in a def or a block too, unless a capture, a stage or each holds the arena by hand
+def grow {|n| var chunk $(printf '%2000s' x); var s ''; for i @(range $n) { set s "$s$chunk" }; put $(count $s) }
+echo one $(grow 100)
+echo two $(grow 400)
+echo three $(grow 400)
+var b {|n| var s ''; var i 0; while $(( $i < $n )) { set s "$s$(printf '%2000s' y)"; set i $(( $i + 1 )) }; put $(count $s) }
+echo block $($b 50)
+echo block2 $($b 300)
+def each-loop { put 1 2 | each {|k| var t ''; for i @(range 200) { set t "$t$(printf '%1000s' z)" }; echo each $k $(count $t) } }
+each-loop
