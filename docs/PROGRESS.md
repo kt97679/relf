@@ -944,6 +944,7 @@ do not trust the absence of a line below.
 - 918 — a working name: rill3 (bin/cm and .cm unchanged)
 - 919 — loops in defs and blocks collect; the arena grows in chunks (memory, not 128 MB, the limit); @[a b c]; three scripts inside defs
 - 920 — } ends a word in a block, as ) and ] do ({ echo $y} and }} had been refused)
+- 921 — docs/SIMILAR-PROJECTS.md: kbool, Elvish, es, rc, Tcl, YSH, NGS, Hush, Murex, Amber; eleven action items
 
 ### Not tied to an iteration
 

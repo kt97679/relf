@@ -257,6 +257,7 @@ the account of what each gained and cost.
    of their own (899); del, wait $job, backslash continuation, case, trap, slice, upper
    and lower, TAB completion, an index after any value (904-914). Open (docs/progress/
    0900-0999.md, the last handoff): more whole scripts - each round has found something;
+   docs/SIMILAR-PROJECTS.md (921): projects like kbool, and eleven action items from them;
    by the owner's word not now: $( ) of a def's number (`var x @(f)` the fast form), the
    front end smaller (cm/cmc.4, about 20 KB of an 85 KB image), recursion's depth, heredocs.
    Checks: `sh tests/cm/run` - the runtime's tests, the scripts (whole ones among
