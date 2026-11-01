@@ -1,3 +1,4 @@
-# a file sourced a second time is an error, naming the line of the first: no cycles, no def made twice
+# a file sourced a second time is read once (924): before, an error naming the first - now `source` loads a library
+# once, as a module is; no cycles, no def made twice
 source lib/more.cm
 source lib/more.cm

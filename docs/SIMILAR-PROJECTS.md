@@ -60,7 +60,7 @@ Each names the aim it serves; those marked (owner) change the language and need 
    `&&`, `||`, `!` - ends the script with its status and the line, as Elvish, NGS and Amber do; `cmd
    || true` to go on. One rule, no try/catch. Aims: safer and shorter scripts. The corpus has only 2 `||
    exit`, so the gain is safety more than length.
-2. **Modules: `source` once, by name.** A second `source` of a file does nothing (an error now); a
+2. **Done (924).** **Modules: `source` once, by name.** A second `source` of a file does nothing (an error now); a
    name with no `/` is looked for in a library path (next to the script, then `$env[RILL3_PATH]`).
    The same word, not a new one - kbool, Elvish, YSH. Aims: one way; shorter scripts.
 3. **(owner) Counting.** 23 increments and 5 map counts in 714 lines. One form for it - `set n +=

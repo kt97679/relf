@@ -1,0 +1,16 @@
+# forth words values... (924): Forth run in rill3's own image - values onto its stack first, what it leaves put as
+# numbers; words it defines kept; its output the command's, captured by $( ) too; an error fails the command
+forth '2 3 + .'
+echo
+var x @(forth '*' 6 7)
+echo six times seven: $x
+forth ': SQ DUP * ;'
+echo squares: @(forth 'SQ SWAP SQ' 3 4)
+echo captured: "$(forth '.( from forth) 42 .')"
+forth 'TYPE' 'a text from rill3'
+echo
+echo $(forth 'DROP' 1 2 3)
+forth 'NOSUCHWORD' || echo "failed, status $status"
+echo $(forth 'BASE @')
+var n $(count [a b c])
+echo $(forth '1+' $n)

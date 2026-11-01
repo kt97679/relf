@@ -198,7 +198,8 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 | `upper text`, `lower text` | the text in capitals or small letters, by Unicode's simple case mapping: é to É, ж to Ж |
 | `glob patterns...` | the paths each matches, sorted, put - none, none put |
 | `read name` | a line of stdin into name; status 1 at the end |
-| `source file` | another script read in where the line stands - at the top level, its path from this file's directory; at the prompt, sourcing again reloads |
+| `source file` | another script read in where the line stands, once - its path from this file's directory; a name with no `/` not there, from the directories of `$env[RILL3_PATH]`; at the prompt, a later line's source reloads |
+| `forth words values...` | Forth run in rill3's own image: the values onto its stack (a number a cell, a text its address and length), the words run, what they leave put as numbers |
 | `wait`, `wait $job` | wait for every job `&` started, the status the last ended with - or for that one job, its status |
 | `cd [dir]`, `exit [n]` | as sh's |
 | `trap { block } [EXIT INT TERM HUP]` | the block run when the script ends - at its end, by `exit`, by an error, or by a signal named, which then ends it with status 128 + the signal |

@@ -1,0 +1,8 @@
+var greeting hello
+set env[RILL3_PATH] /nonexistent:tests/cm/scripts/lib
+source greet.cm
+source greet.cm
+greet ada
+echo $shared $(twice 21)
+source nosuch.cm
+echo after

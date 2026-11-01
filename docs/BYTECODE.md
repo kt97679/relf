@@ -34,12 +34,10 @@ before the capture, a loop's body before its loop - each read its parts from the
 already whole, rather than from strings made earlier. Defs stay found at compile time (DEF-FIND); a
 call is the def's xt, recursion the xt :NONAME gives at its start.
 
-Stage 2 - the names go. With no text interpreted, nothing of rill3's runtime is looked up by name
-while a script runs; the image may drop its headers (the build's last step, kept only for words the
-prompt's Forth needs - none, once the prompt goes through the same compiler). To be measured: the
-image's 20 KB of headers is the size at stake.
+Not done - the owner's word (924): the image keeps its names. `forth words values...` (924) runs Forth
+in rill3's image, by name, so the names are part of the language now.
 
-Stage 3 - what the text needed and nothing else does: FRESH names, `#$` numbers as text, OUT+ and
+Stage 2 - what the text needed and nothing else does: FRESH names, `#$` numbers as text, OUT+ and
 its buffer growing per sourced file (CM-COMPILE's retry, 890), CM-SHOW (a disassembler or a node dump
 instead, for debugging).
 

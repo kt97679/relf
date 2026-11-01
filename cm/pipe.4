@@ -79,3 +79,32 @@ VARIABLE XT-FN-RUN   ' FN-RUN XT-FN-RUN !XT
 \ out of the arena's 128 MB: nothing was collected until the loop ended
 : R-TURN ( --- )   SIG-ON @ IF R-SIG-POLL THEN       \ in a def or a block too (918): what holds the arena by
   SINK# @ 0= IN# @ 0= AND CT-ON @ 0= AND HELD @ 0= AND IF R-GC? THEN ;   \ hand - a capture, a stage, each - says so
+
+\ ---- forth words values... (924): Forth run in rill3's own image - its words, and any the script defined
+\ before, there by name. The values go first onto Forth's stack: a whole number, or a text that reads as
+\ one, a cell; another text its address and length; true and false -1 and 0. The words are then
+\ EVALUATEd, and the cells they leave above the values' are put, deepest first, as numbers. What Forth
+\ prints is the command's output - inside $( ), written to a file and read back, as TYPE is the engine's.
+\ An error - an undefined word, an abort - says the kernel's message and fails the command
+VARIABLE FT-ARGS  VARIABLE FT-BASE  VARIABLE FT-N  VARIABLE FT-PATH  VARIABLE FT-FID  VARIABLE FT-KEPT  VARIABLE XT-EVAL   ' EVALUATE XT-EVAL !XT
+: FT-PUSH ( item --- x | c-addr u )
+  D-NUMERIC  DUP 1 AND IF 2/ EXIT THEN
+  DUP D-KIND K-NUM = IF D>N EXIT THEN  DUP D-KIND K-TEXT = IF D-TEXT R-T@ EXIT THEN
+  DUP D-KIND K-BOOL = IF D-TRUE? EXIT THEN
+  DROP S" cm: forth's values are numbers, texts, true and false" R-FAIL ;
+: FT-RUN ( --- x* code )   \ the values pushed, the words run: its THROW code, or 0, above what it left
+  DEPTH FT-BASE !  FT-ARGS @ #ARGS 1 ?DO  FT-ARGS @ I ARGN FT-PUSH  LOOP
+  FT-ARGS @ 0 ARGN D-TEXT R-T@  XT-EVAL @XT CATCH ;
+: FT-RESULTS ( x* --- )   \ what it left, put as numbers, deepest first
+  DEPTH FT-BASE @ - DUP 0< IF S" cm: forth took more from its stack than it was given" R-FAIL THEN  FT-N !
+  FT-N @ 0 ?DO  FT-N @ 1- I - PICK N>ITEM-D PUT  LOOP  FT-N @ 0 ?DO DROP LOOP ;
+: FT-FAILED ( code --- )   \ the command fails, status 1, as a program would - the script goes on
+  >R  BEGIN DEPTH FT-BASE @ > WHILE DROP REPEAT
+  R-ERR> ." cm: forth: error " R> DUP >R ABS 0 <# #S R> SIGN #> TYPE R-ERR-NL R-OUT-BACK  1 STATUS ! ;
+: FORTH-OF ( args --- )
+  DUP #ARGS 0= IF DROP S" cm: forth takes Forth's words, then values for its stack" R-FAIL THEN  FT-ARGS !
+  CT-ON @ IF                                             \ in $( ): Forth's TYPE to a file, then into the text
+    TMP-PATH DUP FT-PATH !  OUT-TO FT-FID ! FT-KEPT !  0 CT-ON !  FT-RUN  -1 CT-ON !  FT-KEPT @ FT-FID @ OUT-BACK
+    FT-PATH @ PATH$ R-SLURP 2DUP CT+ DROP FREE DROP  FT-PATH @ DEL-PATH
+  ELSE FT-RUN THEN
+  ?DUP IF FT-FAILED EXIT THEN  FT-RESULTS  0 STATUS ! ;
