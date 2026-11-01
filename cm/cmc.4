@@ -218,7 +218,7 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
     BEGIN 0 SKIP-WS CUR [CHAR] | <> WHILE
       CUR NAME0? 0= IF S" a block's parameters are names between | |" P-ERR THEN
       NAME-P N-TX N,  1 OVER CELL+ +!  REPEAT  GET DROP THEN
-  DROP [CHAR] } 0 CMDS N) ;
+  DROP [CHAR] } DUP CMDS N) ;      \ } ends a word too, as ) and ] do (920): { echo $y} and }} had been refused
 : WORD-ENDS ( closer --- )   \ after a word's form - ] } " ' a $name or $( ): its end, nothing glued (899)
   CUR SWAP WORD-END? 0= IF S" nothing right after a ] } quote or $value - a blank first; a double-quoted text joins texts" P-ERR THEN ;
 : WORD-P' ( closer --- )   \ one word: a N-WRD - what it is said by its first character (899)

@@ -1,0 +1,7 @@
+# a block's } ends a word, as ) and ] do (920): { echo $y} and }} had been "nothing right after ..." - the block
+# had read its words with no closer, so a plain word went on through } ("a closing bracket is missing")
+for x @[[1 2] [3 4]] { for y @x {echo $y}}
+for x @[[1 2] [3 4]] { for y x {echo $y}}
+if true { if true { echo a}}
+var b {|v| put $v}
+echo $($b 7) a}b
