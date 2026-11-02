@@ -1,0 +1,19 @@
+# functions as blocks in variables (929, the owner's): called by name; recursion; one declared later used (the
+# script's top-level variables known from its start); a variable named like a program not a function unless a
+# block was written to it; one set from a function; passed as a value; an arity error says the call's line
+var greet {|who| echo hello $who }
+greet ada
+var fib {|n| if $(( $n < 2 )) { put $n; return 0 }; var a @(fib $(( $n - 1 ))); var b @(fib $(( $n - 2 ))); put $(( $a + $b )) }
+echo fib 15 is $(fib 15)
+var main {|| helper 3 }
+var helper {|x| echo helper got $x }
+main
+var date $(date +%Y)
+date +%Y > /dev/null && echo date still runs the program
+var count2 0
+var bump {|| set count2 $(( $count2 + 1 )) }
+bump; bump
+echo count2 $count2
+var apply {|f x| $f $x }
+apply $greet grace
+greet a b

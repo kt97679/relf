@@ -13,7 +13,7 @@ def g {
         if $(( $i == 1 )) { continue }
         echo g $i
     }
-    var r { return }
+    var r { return }      # a block's return ends the block - a function's call (929): it had ended g
     for i 0 1 2 {
         if $(( $i == 2 )) { $r }
         echo g again $i

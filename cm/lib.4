@@ -163,6 +163,10 @@ VARIABLE DONE  VARIABLE DONE#  VARIABLE DONE-CAP   \ jobs a plain wait reaped: [
   FP @ >R  CTL# @ >R  CATCH  R> CTL# !  R> FP !
   0 LS@ D>N  OVER T-RETURN = OVER T-TARGET @ = AND IF 2DROP 0 ELSE DROP THEN
   ACT-POP UNFRAME  THROW ;
+: BLK-TAIL ( xt --- )   \ a block's body with return in it: its return caught, its activation put back (929)
+  FP @ >R  CTL# @ >R  CATCH  R> CTL# !  R> FP !
+  0 LS@ D>N  OVER T-RETURN = OVER T-TARGET @ = AND IF 2DROP 0 ELSE DROP THEN
+  ACT-POP  THROW ;
 CREATE CALLING 2 CELLS ALLOT                      \ the def a call with @ binds, named by its code: for an error (907)
 : BIND-M ( args k mask --- )   \ slots 1..k from the arguments - in an upvalue where mask's bit is set (866, gene d3)
   ROT ROT  OVER #ARGS OVER <> IF  R-ERR> ." cm: " CALLING 2@ TYPE ."  wants " R-.N ." , given " #ARGS R-.N R-ERR-NL -4004 THROW  THEN
@@ -189,6 +193,9 @@ DEFER RUN-NAMED ( args text --- )   \ the program a text names: below, once PSTA
   DUP D-KIND K-BOOL = IF NIP D-TRUE? 0= 1 AND STATUS ! EXIT THEN     \ false: status 1, not -1 (869)
   DUP D-KIND K-LIST = IF S" cm: a list is a value, not a command - [ -f x ] is test -f x; @(cmd) takes a command's values, a list needs no @( )" R-FAIL THEN
   S" cm: a value as a command is a block, a boolean or a text naming a program" R-FAIL ;   \ the list's hint (917)
+: CALL-NAMED ( args item c-addr u --- )   \ a function called by its name (929): its arity said with the name
+  CALLING 2!  DUP 0= IF  R-ERR> ." cm: " CALLING 2@ TYPE ." is called before it is set" R-ERR-NL -4004 THROW  THEN
+  CALL-VALUE ;
 
 \ ---- programs (859): a command whose first word names no builtin, def or value - its words as texts
 : ARG-TEXTS ( args --- l )   \ each as a text - a number its digits, true or false; a list, map or block an error (rule 12)

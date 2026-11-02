@@ -75,7 +75,8 @@ VARIABLE MK-A  VARIABLE MK-N  VARIABLE MK-CAP
   MK-N @ 0= IF DROP 0 EXIT THEN
   DUP MK-A @ @ U< IF DROP 0 EXIT THEN
   DUP HERE U< 0= IF DROP 0 EXIT THEN
-  0 SWAP  MK-N @ 0 ?DO  DUP MK-A @ I 2* CELLS + @ U< IF LEAVE THEN  NIP MK-A @ I 2* CELLS + CELL+ @ SWAP  LOOP DROP ;
+  0 SWAP  MK-N @ 0 ?DO  MK-A @ I 2* CELLS + @ OVER U< 0= IF LEAVE THEN  NIP MK-A @ I 2* CELLS + CELL+ @ SWAP  LOOP DROP ;
+  \ the last mark before a, strictly (929): a return address can be where the next statement's mark is
 \ Rill's own messages go to the err port (821): an error is not the script's output - `x = $(a-script)`
 \ took one as its value. At an error's first word, R-ERR>: the engine's output buffer flushed (the WRITE
 \ primitive flushes it first - a write of nothing; WRITE-FILE writes nothing for nothing, so does not

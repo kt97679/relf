@@ -1,4 +1,4 @@
-# a def sees only the script's variables declared before it (884): one after it an error, when read
+# a def sees the script's top-level variables, wherever they are declared (929: before, only those declared before it, 884)
 def later { echo $y }
 var y 1
 later

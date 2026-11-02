@@ -952,6 +952,7 @@ do not trust the absence of a line below.
 - 926 — compiled to bytecode directly: tokens installed, no Forth text; start-up halved, 4,000 defs 4x faster
 - 927 — 926 reviewed by its code; lib/json.cm and lib/args.cm in rill3; $t[$i] linear, not quadratic; size budget in the verify
 - 928 — a failure untested ends a script (the owner's yes); closures stay
+- 929 — functions as blocks in variables, called by name; top-level variables known from the start; a block's return its own
 
 ### Not tied to an iteration
 
