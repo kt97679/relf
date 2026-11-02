@@ -15,6 +15,8 @@ if python3 tools/cm-reach.py > /tmp/cm-out.$$ 2>&1; then pass=$((pass + 1))     
 else fail=$((fail + 1)); echo "FAIL tools/cm-reach.py"; cat /tmp/cm-out.$$; fi
 if python3 tools/reference-check.py > /tmp/cm-out.$$ 2>&1; then pass=$((pass + 1))   # the reference's examples, each run (900)
 else fail=$((fail + 1)); echo "FAIL tools/reference-check.py"; cat /tmp/cm-out.$$; fi
+if python3 tools/reference-check.py docs/TUTORIAL.md tests/cm/scripts/tutorial.cm > /tmp/cm-out.$$ 2>&1; then pass=$((pass + 1))   # the tutorial's (932)
+else fail=$((fail + 1)); echo "FAIL tools/reference-check.py docs/TUTORIAL.md"; cat /tmp/cm-out.$$; fi
 if python3 tools/cm-tab-check.py > /tmp/cm-out.$$ 2>&1; then pass=$((pass + 1))    # TAB at the prompt, in a terminal (911)
 else fail=$((fail + 1)); echo "FAIL tools/cm-tab-check.py"; cat /tmp/cm-out.$$; fi
 if sh tools/build-cm-image.sh "$E" forth/kernel64.img /tmp/cm.$$.img > /dev/null 2>&1; then

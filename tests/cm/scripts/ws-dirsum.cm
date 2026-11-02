@@ -1,0 +1,16 @@
+# a whole script (932), in the language as it stands
+# sizes per extension under a directory, by find and stat, sorted by size
+var dir /tmp/cm-ws16-tree
+rm -rf $dir
+mkdir -p "$dir/a" "$dir/b"
+printf '%0100d' 0 > "$dir/a/x.txt"
+printf '%0300d' 0 > "$dir/b/y.txt"
+printf '%050d' 0 > "$dir/b/z.log"
+var sizes [:]
+for f @(find $dir -type f) {
+    var ext [@(split $f .)][-1]
+    var n $(stat -c %s $f)
+    if has $sizes $ext { set sizes[$ext] $(( $sizes[$ext] + $n )) } else { set sizes[$ext] $n }
+}
+for e @(keys $sizes) { echo "$sizes[$e] $e" } | sort -n
+rm -rf $dir

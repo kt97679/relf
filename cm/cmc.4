@@ -508,6 +508,7 @@ VARIABLE SCAN-BK
     DUP @A OVER @B 2DUP CAPTURED? DUP >R DECLARE DROP
     R> IF ROT 1 3 PICK LSHIFT OR ROT ROT THEN  SWAP 1+ SWAP  N+ REPEAT  NIP SWAP ;
 : BLOCK-CODE ( bk --- c-addr u )   \ a block: a word with a frame of its own - made, with its captures
+  DUP S" break" BARE-IN? OVER S" continue" BARE-IN? OR >R        \ a break or continue may leave it: a guard (931)
   FR @ >R  2 NEW-FRAME FR !  SCOPE(
   DUP S" return" BARE-IN? IF S" %def" 0 0 VAR+ DROP THEN      \ return ends the block, a function (929)
   DUP N+ PARAMS >R
@@ -517,6 +518,7 @@ VARIABLE SCAN-BK
   ROT @A >R  2OVER TK-IDX T-BEGIN  T" [ 0 R-MARK ]" ++  FR @ CELL+ @ T#++ T" FRAME" ++   \ its binding no line: the call's said
   R> T# R> T#++ T" BIND-K" ++ ++  2SWAP ++ T" UNFRAME" ++ T-END ++ OUT+   \ its arguments on the stack (930)
   FR @ )SCOPE R> FR !
+  R> IF  >R  S" B" FRESH 2SWAP T-TICK$ T" BLK-GUARD" ++  2OVER 2SWAP T-DEF OUT+  R>  THEN   \ guarded: its word inside (931)
   0 0 TOP$ 2 PICK 2 CELLS + @ 0 ?DO  2 PICK I CAP@ REF SEQ+  LOOP
   ROT 2 CELLS + @ T#++ 2SWAP T-TICK$ ++ T" BLK-NEW" ++ ;
 : NO-TRANSFER? ( node --- f )   \ no break, continue or return in it: a capture of it needs no CATCH (878)
@@ -682,7 +684,9 @@ VARIABLE FN-NEXT   \ the var being made has a block written as its value: a func
   S" del" NAMED? IF 2DROP DEL-CMD OK$ EXIT THEN
   S" put" NAMED? IF 2DROP  2DUP <> IF OVER NSKIP OVER = 2 PICK N+ @ N-SP <> AND IF DROP WORD-CODE T" PUT" ++ OK$ EXIT THEN THEN
     ARGS-CODE T" PUTS" ++ OK$ EXIT THEN                     \ put one value: PUT it, no list made (866)
-  S" echo" NAMED? IF 2DROP ARGS-CODE T" ECHO" ++ OK$ EXIT THEN
+  S" echo" NAMED? IF 2DROP  2DUP <> IF OVER S" -n" BARE= 2 PICK S" -e" BARE= OR IF   \ sh's echo options (932)
+      S" echo -n and -e are sh's - echo prints its words and a newline; printf '%s' text prints none" G-ERR THEN THEN
+    ARGS-CODE T" ECHO" ++ OK$ EXIT THEN
   2DUP S" cd exit wait match has trap forth" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER S" -OF" CAT T-NAMED ++ EXIT THEN      \ they set the status themselves (873)
   2DUP S" count range merge each split join keys kind glob slice upper lower" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER S" -OF" CAT T-NAMED ++ OK$ EXIT THEN
   S" append" NAMED? IF 2DROP  2DUP = IF APPEND-ERR THEN  OVER N+ DUP @ N-VR = SWAP NSKIP @ 0= AND 0= IF APPEND-ERR THEN

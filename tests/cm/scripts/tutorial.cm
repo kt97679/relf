@@ -1,0 +1,52 @@
+# docs/TUTORIAL.md's examples, in its order (932): tools/reference-check.py, in tests/cm/run, fails if the tutorial shows one not here
+echo hello world
+ls /tmp > /dev/null
+echo 'single: $x stays' "double: $(( 2 + 3 ))"
+# single: $x stays double: 5
+var name 'Ada Lovelace'
+var langs [forth rill3]
+var born [year: 1815  city: London]
+set langs[1] sh
+echo "$name knows $langs, born in $born[city]"
+# Ada Lovelace knows [forth sh], born in London
+var n 7
+echo $(( $n * 6 )) $(( $n > 5 ))
+# 42 true
+var l [3 1 2]
+append l 5
+echo $(count $l) $l[0] $l[-1] [@(slice $l 1 3)]
+# 4 3 5 [1 2]
+var m [a: 1]
+set m[b] 2
+for k @(keys $m) { echo $k is $m[$k] }
+for x @[1 2 3] { if $(( $x == 2 )) { continue }; echo x $x }
+var i 0
+while $(( $i < 2 )) { set i $(( $i + 1 )) }
+case report.md { *.txt *.md { echo a text file } * { echo something else } }
+if grep -q root /etc/passwd { echo there is a root }
+false || echo the first failed
+var greet {|who| echo hello $who }
+greet world
+var sq {|x| put $(( $x * $x )) }
+echo $(sq 9)
+# 81
+var twice {|f x| put @($f @($f $x)) }
+echo @(twice $sq 3)
+# 81
+var counter {|| var c 0; put { set c $(( $c + 1 )); put $c } }
+var next @(counter)
+echo $($next) $($next)
+# 1 2
+var evens { each {|x| if $(( $x % 2 == 0 )) { put $x } } }
+printf '1\n2\n3\n4\n' | evens | sort -r
+# 4
+# 2
+var today $(date +%Y)
+var lines [@(printf 'a\nb\n')]
+echo $(count $lines) lines
+# 2 lines
+var hits $(grep -c nothing-here /etc/passwd || true)
+echo $hits hits
+trap { echo cleaned up } EXIT
+echo @(forth '*' 6 7)
+# 42

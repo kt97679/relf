@@ -1,0 +1,17 @@
+# a whole script (932), in the language as it stands
+# a state machine: states map to functions that return the next state
+var machine [
+    start: {|c| case $c { a { put middle } * { put start } } }
+    middle: {|c| case $c { b { put done } a { put middle } * { put start } } }
+    done: {|c| put done }
+]
+var run {|input|
+    var s start
+    var i 0
+    while $(( $i < $(count $input) )) {
+        set s @($machine[$s] $input[$i])
+        set i $(( $i + 1 ))
+    }
+    put $s
+}
+for w @[aab xab ab bba] { echo "$w -> $(run $w)" }

@@ -11,4 +11,5 @@ cm: `...` is sh's - $( ) captures a command's output (line 1)
 cm: fi is sh's - blocks: if cond { }, while cond { }, for x values { }, case v { } (line 1)
 cm: nosuchprog: no such program (line 1)
 still here
+cm: echo -n and -e are sh's - echo prints its words and a newline; printf '%s' text prints none (line 1)
 status 0

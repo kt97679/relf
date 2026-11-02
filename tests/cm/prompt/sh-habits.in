@@ -11,3 +11,4 @@ echo `date`
 fi
 nosuchprog arg
 echo still here
+echo -n no newline

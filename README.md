@@ -19,7 +19,7 @@ self-hosting (docs/GOALS.md). What it is today:
   shell is one static file of 144,900 bytes on the assembly engine, and
   `forth` drops from it into the live system it is written in: every
   word, compiler included, is there to extend it.
-- **A shell language of its own, rill3** (the command model) - `bin/cm script.cm`,
+- **A shell language of its own, rill3** (the command model; docs/TUTORIAL.md, then docs/REFERENCE.md) - `bin/cm script.cm`,
   or its prompt: commands whose arguments and pipes carry values (texts,
   numbers, lists, maps, blocks) as well as bytes, words read as Forth reads
   them. docs/REFERENCE.md is the language; `sh tests/cm/run` its suite.

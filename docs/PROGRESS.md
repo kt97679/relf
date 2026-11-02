@@ -955,6 +955,7 @@ do not trust the absence of a line below.
 - 929 — functions as blocks in variables, called by name; top-level variables known from the start; a block's return its own
 - 930 — def gone: functions are blocks in variables, called as fast; kebab-case names; += left out
 - 931 — a round of whole scripts in the new language: all worked
+- 932 — block calls without a CATCH (guarded only if break/continue); a round; echo -n said; docs/TUTORIAL.md
 
 ### Not tied to an iteration
 

@@ -1,0 +1,8 @@
+# break and continue out of a block called in a loop, and a loop inside a function (931): BLK-RUN no longer CATCHes -
+# a block a transfer may leave guards itself (BLK-GUARD), so the stacks are put back
+for i @[1 2 3 4] { var stop { break }; if $(( $i == 3 )) { $stop }; echo i $i }
+for i @[1 2 3] { var skip { continue }; if $(( $i == 2 )) { $skip }; echo j $i }
+var f {|| for k @[1 2 3] { var b { break }; $b }; echo after the loop in f }
+f
+for i @[1 2] { var c {|| for x @[a b] { echo in $x } }; c }
+echo done

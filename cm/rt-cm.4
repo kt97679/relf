@@ -49,10 +49,12 @@ VARIABLE ENV-CAP  ENV-MAX ENV-CAP !   ' ENVS >BODY START @ - CONSTANT ENVS'   \ 
 : BLK-RUN ( a1 .. ak k block --- )   \ rule 11's block run, its arguments on the stack and their count (930):
   DUP D-KIND K-BLOCK <> IF S" cm: not a block" R-FAIL THEN      \ its word binds them itself (BIND-K)
   CELL+ @  R-DEEP?  ENV# @ ENV-CAP @ < 0= IF  ENVS' BODY-OF BUF-GROW  ENV-CAP @ 2* ENV-CAP !  THEN
-  DUP ENVS ENV# @ CELLS + !  1 ENV# +!
-  LS# @ >R  FP @ >R  @ CATCH  R> R> ROT                    \ a block with a frame of its own (858):
-  ?DUP IF  >R  LS# !  FP !  -1 ENV# +!  R> THROW  THEN      \ a throw through it puts the frames back
-  2DROP  -1 ENV# +! ;
+  DUP ENVS ENV# @ CELLS + !  1 ENV# +!  @ EXECUTE  -1 ENV# +! ;   \ no CATCH (931): a block that a break or
+\ continue could leave through guards itself (BLK-GUARD); an error ends a script, and the prompt puts back
+\ its frames and environments itself
+: BLK-GUARD ( a1 .. ak k xt --- )   \ a block with break or continue in it: a throw through it puts the frames,
+  LS# @ >R  FP @ >R  CATCH  R> R> ROT                    \ and its environment, back (858)
+  ?DUP IF  >R  LS# !  FP !  -1 ENV# +!  R> THROW  THEN  2DROP ;
 
 \ ---- the collector: the two new kinds, and the new roots ----
 : G-UPV ( u --- u' )   DUP G-IN? 0= IF EXIT THEN  DUP G-FWD? IF @ EXIT THEN

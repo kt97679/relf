@@ -8,19 +8,22 @@
 \ a def's frame here: slot 0 its number (DEF-RUN), 1 the list, 2 the element, 3 the loop's number
 
 \ def f { for i [0 1 2] { if (( $i == 1 )) { break }; echo $i }; echo after }
-: BREAK-BLK ( --- )   DROP 0 E@ BREAK ;                                  \ { break }: its loop's number captured
+: BREAK-BLK-IN ( --- )   DROP 0 E@ BREAK ;                                  \ { break }: its loop's number captured
+: BREAK-BLK ( --- )   ['] BREAK-BLK-IN BLK-GUARD ;   \ guarded, as the compiler guards a block a transfer may leave (931)
 : F-BODY ( --- )   2 LS@ D>N 1 = IF 3 LS@ 1 ['] BREAK-BLK BLK-NEW BLK-RUN0 THEN  I. ;
 : F ( --- )   0-1-2 1 LS!  1 2 3 ['] F-BODY C-FOR  ." after" ;
 .( break through a block: ) 3 ' F DEF-RUN CR
 
 \ def c { for i [0 1 2] { if (( $i == 1 )) { continue }; echo $i }; echo after }
-: CONT-BLK ( --- )   DROP 0 E@ CONTINUE ;
+: CONT-BLK-IN ( --- )   DROP 0 E@ CONTINUE ;
+: CONT-BLK ( --- )   ['] CONT-BLK-IN BLK-GUARD ;   \ guarded, as the compiler guards a block a transfer may leave (931)
 : C-BODY ( --- )   2 LS@ D>N 1 = IF 3 LS@ 1 ['] CONT-BLK BLK-NEW BLK-RUN0 THEN  I. ;
 : C ( --- )   0-1-2 1 LS!  1 2 3 ['] C-BODY C-FOR  ." after" ;
 .( continue through a block: ) 3 ' C DEF-RUN CR
 
 \ def g { for i [0 1 2] { if (( $i == 1 )) { return }; echo $i }; echo unreachable }; g; echo back
-: RET-BLK ( --- )   DROP 0 0 E@ RETURN ;                                 \ { return }: its def's number captured
+: RET-BLK-IN ( --- )   DROP 0 0 E@ RETURN ;                                 \ { return }: its def's number captured
+: RET-BLK ( --- )   ['] RET-BLK-IN BLK-GUARD ;   \ guarded, as the compiler guards a block a transfer may leave (931)
 : G-BODY ( --- )   2 LS@ D>N 1 = IF 0 LS@ 1 ['] RET-BLK BLK-NEW BLK-RUN0 THEN  I. ;
 : G ( --- )   0-1-2 1 LS!  1 2 3 ['] G-BODY C-FOR  ." unreachable" ;
 .( return through a loop and a block: ) 3 ' G DEF-RUN .( back) CR
@@ -51,7 +54,8 @@ VARIABLE N  VARIABLE R-XT
 .( recursion, each return to its own activation: ) 3 N !  1 ' R-BODY DEF-RUN CR
 
 \ an error passing through a block, a loop and a def: every stack as it was
-: BOOM-BLK ( --- )   DROP S" cm: boom" R-FAIL ;
+: BOOM-IN ( --- )   DROP S" cm: boom" R-FAIL ;
+: BOOM-BLK ( --- )   ['] BOOM-IN BLK-GUARD ;   \ guarded, as a block with break or continue in it is (931): a throw through it puts back
 : E-BODY ( --- )   0 ['] BOOM-BLK BLK-NEW BLK-RUN0 ;
 : E ( --- )   0-1-2 1 LS!  1 2 3 ['] E-BODY C-FOR ;
 .( an error through a block, a loop and a def: ) 3 ' E ' DEF-RUN CATCH . 2DROP
