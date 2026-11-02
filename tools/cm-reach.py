@@ -48,7 +48,7 @@ topwords = [t.upper() for t in top]
 roots = set(t for t in topwords if t not in hooked and t not in hooks) | {'R-BOOT'}
 for f in glob.glob('cm/*.4') + glob.glob('tests/cm/*.4') + ['shell/edit.4']:
     roots |= set(t.upper() for t in blank(open(f).read()).split())
-    roots |= set(t.upper() for s in re.findall(r'S" ([^"]*)"', open(f).read()) for t in s.split())   # the Forth cmc.4 makes
+    roots |= set(t.upper() for s in re.findall(r'[ST]" ([^"]*)"', open(f).read()) for t in s.split())   # the code cmc.4 makes: T" since 926
 reach, todo = set(), [r for r in roots if r in defs or r in data]
 while todo:
     n = todo.pop()

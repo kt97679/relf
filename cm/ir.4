@@ -1,0 +1,113 @@
+\ cm/ir.4 - rill3's code as tokens, laid straight into bytecode (926; docs/BYTECODE.md). The front end
+\ had written Forth source text and EVALUATEd it; it now writes tokens - each a word already found, a
+\ number, a text - which INSTALL lays down with COMPILE, and LIT, as the text interpreter would have, with
+\ no text read and no name looked up. Tokens are bytes, so the front end's ++, SEQ+ and CAT join them as
+\ they joined text; a blank between two is passed over. A word's token holds its offset from START, three
+\ bytes, as CALL, does - the image is saved and reloaded. The words the front end makes for itself - a
+\ loop's body, a block, a def's body, the script's main - are numbered per compile (GEN), not named.
+\   X  word: compiled, or run outside a definition       I  word: run - IF, THEN and their kind, [
+\   N  number: a literal, or pushed outside a definition  S  text: as S" lays it, or its address, length
+\   G  made word: a call to it, or run                    Q  made word: its xt, a literal or pushed
+\   T  word: its xt, a literal or pushed - [']            D  a made word begins: its number   F  it ends
+1 CONSTANT TK-X  2 CONSTANT TK-I  3 CONSTANT TK-N  4 CONSTANT TK-S  5 CONSTANT TK-G
+6 CONSTANT TK-Q  7 CONSTANT TK-T  8 CONSTANT TK-D  9 CONSTANT TK-F
+
+\ ---- making tokens: into TKB, then copied where the front end keeps its strings (S| - cm/cmc.4's)
+CREATE TKB 512 ALLOT  VARIABLE TK#
+: TK0 ( --- )   0 TK# ! ;
+: TK-C ( c --- )   TKB TK# @ + C!  1 TK# +! ;
+: TK-3 ( u --- )   DUP 16 RSHIFT 255 AND TK-C  DUP 8 RSHIFT 255 AND TK-C  255 AND TK-C ;
+: TK-CELL ( x --- )   8 0 DO  DUP 255 AND TK-C  8 RSHIFT  LOOP DROP ;
+: TK-XT ( xt tag --- )   TK-C  START @ - TK-3 ;
+: TK$ ( --- c-addr u )   TKB TK# @ ;
+
+\ ---- T" words..." : a fragment of code, found when cm/cmc.4 is loaded - its words, numbers, ticked words
+VARIABLE TK-TICK  VARIABLE TK-NEG
+: TK-NUM? ( c-addr u --- n f )   \ -?[0-9]+
+  OVER C@ [CHAR] - = DUP TK-NEG ! IF 1 /STRING THEN  DUP 0= IF 2DROP 0 0 EXIT THEN
+  0 ROT ROT 0 ?DO  DUP I + C@ [CHAR] 0 - DUP 10 U< 0= IF 2DROP DROP 0 0 UNLOOP EXIT THEN  ROT 10 * + SWAP  LOOP
+  DROP TK-NEG @ IF NEGATE THEN -1 ;
+: TK-TICK? ( c-addr u --- f )   \ a tick, either form - by its characters: the lint takes the word for one
+  DUP 1 = IF DROP C@ 39 = EXIT THEN
+  3 = IF DUP C@ 91 = OVER 1+ C@ 39 = AND SWAP 2 + C@ 93 = AND EXIT THEN  DROP 0 ;
+: TK-WORD ( c-addr u --- )   \ one word of a fragment: its token
+  2DUP TK-TICK? IF 2DROP -1 TK-TICK ! EXIT THEN
+  2DUP TK-NUM? IF NIP NIP TK-N TK-C TK-CELL EXIT THEN DROP
+  DUP 31 > ABORT" T: a word too long"  PAD PLACE  PAD FIND
+  DUP 0= IF DROP COUNT TYPE TRUE ABORT"  - T: no such word" THEN
+  TK-TICK @ IF DROP 0 TK-TICK !  TK-T TK-XT EXIT THEN
+  0> IF TK-I ELSE TK-X THEN TK-XT ;
+: TK-TEXT ( c-addr u --- )   \ a fragment's words, one by one
+  0 TK-TICK !
+  BEGIN  BL SKIP  DUP WHILE
+    2DUP 0 >R  BEGIN DUP IF OVER C@ BL <> ELSE 0 THEN WHILE 1 /STRING R> 1+ >R REPEAT 2DROP
+    OVER R@ TK-WORD  R> /STRING
+  REPEAT 2DROP ;
+: T" ( "ccc<quote>" --- )   \ like S", its text made tokens: ( --- c-addr u ) when the word runs
+  TK0  [CHAR] " PARSE TK-TEXT  POSTPONE (S")  TK$ STRING, ; IMMEDIATE
+
+\ ---- tokens made as the front end runs: numbers, texts, made words, words found by a name it built
+DEFER TK-KEEP ( c-addr u --- c-addr2 u )   \ the tokens copied where the front end keeps strings: cmc.4's S|
+: T# ( n --- c-addr u )   TK0 TK-N TK-C TK-CELL TK$ TK-KEEP ;
+: T-STR ( c-addr u --- c-addr2 u2 )   \ a text, 255 bytes at most
+  TK0 TK-S TK-C DUP TK-C  TKB TK# @ + SWAP DUP TK# +! MOVE  TK$ TK-KEEP ;
+: T-CALL ( i --- c-addr u )   TK0 TK-G TK-C TK-3 TK$ TK-KEEP ;
+: T-TICK ( i --- c-addr u )   TK0 TK-Q TK-C TK-3 TK$ TK-KEEP ;
+: T-BEGIN ( i --- c-addr u )   TK0 TK-D TK-C TK-3 TK$ TK-KEEP ;
+: T-END ( --- c-addr u )   TK0 TK-F TK-C TK$ TK-KEEP ;
+: T-NAMED ( c-addr u --- c-addr2 u2 )   \ a runtime word the front end names as it runs: count -> COUNT-OF
+  TK0 0 TK-TICK ! TK-WORD TK$ TK-KEEP ;
+
+\ ---- the made words, by number: their xts, as INSTALL lays them
+VARIABLE GEN  VARIABLE GEN-CAP  VARIABLE GEN-N
+: GEN0 ( --- )   0 GEN-N ! ;
+: GEN-NEW ( --- i )   GEN-N @  1 GEN-N +! ;
+: GEN-SET ( xt i --- )
+  DUP GEN-CAP @ < 0= IF  DUP 2* 64 MAX DUP GEN-CAP !  CELLS GEN @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW GEN !  THEN
+  CELLS GEN @ + ! ;
+: GEN@ ( i --- xt )   CELLS GEN @ + @ ;
+
+\ ---- INSTALL: the tokens laid down - compiled inside a made word, run outside one, as the text
+\ interpreter would have done with the text they stand for
+VARIABLE IP  VARIABLE IE  VARIABLE IN-DEF
+VARIABLE XT-SQ   ' (S") XT-SQ !XT
+: IN-C ( --- c )   IP @ C@  1 IP +! ;
+: IN-3 ( --- u )   IN-C 16 LSHIFT  IN-C 8 LSHIFT OR  IN-C OR ;
+: IN-CELL ( --- x )   0  8 0 DO  IN-C I 8 * LSHIFT OR  LOOP ;
+: IN-XT ( --- xt )   IN-3 START @ + ;
+: INSTALL ( c-addr u --- )
+  OVER + IE ! IP !
+  BEGIN IP @ IE @ < WHILE
+    IN-C CASE
+      32 OF ENDOF
+      TK-X OF IN-XT STATE @ IF COMPILE, ELSE EXECUTE THEN ENDOF
+      TK-I OF IN-XT EXECUTE ENDOF
+      TK-N OF IN-CELL STATE @ IF LIT, THEN ENDOF
+      TK-S OF IN-C IP @ SWAP DUP IP +!  STATE @ IF XT-SQ @XT COMPILE, STRING, THEN ENDOF
+      TK-G OF IN-3 GEN@ STATE @ IF CALL, ELSE EXECUTE THEN ENDOF
+      TK-Q OF IN-3 GEN@ STATE @ IF LIT, THEN ENDOF
+      TK-T OF IN-XT STATE @ IF LIT, THEN ENDOF
+      TK-D OF IN-3 IN-DEF !  HERE ] ENDOF
+      TK-F OF EXIT, 0 STATE !  IN-DEF @ GEN-SET ENDOF   \ ;'s work but REVEAL: no name made, LAST may be the saved image's
+      TRUE ABORT" cm: a token unknown"
+    ENDCASE
+  REPEAT ;
+
+\ ---- IR. : the tokens shown as the Forth they stand for - CM-SHOW's, for reading what a script became
+: TK-TICK. ( --- )   91 EMIT 39 EMIT 93 EMIT SPACE ;   \ the tick, as text
+: IR. ( c-addr u --- )
+  OVER + IE ! IP !
+  BEGIN IP @ IE @ < WHILE
+    IN-C CASE
+      32 OF ENDOF
+      TK-X OF IN-XT >NAME COUNT 31 AND TYPE SPACE ENDOF
+      TK-I OF IN-XT >NAME COUNT 31 AND TYPE SPACE ENDOF
+      TK-N OF IN-CELL . ENDOF
+      TK-S OF IN-C IP @ SWAP DUP IP +!  ." S" [CHAR] " EMIT SPACE TYPE [CHAR] " EMIT SPACE ENDOF
+      TK-G OF ." G" IN-3 . ENDOF
+      TK-Q OF TK-TICK. ." G" IN-3 . ENDOF
+      TK-T OF TK-TICK. IN-XT >NAME COUNT 31 AND TYPE SPACE ENDOF
+      TK-D OF ." : G" IN-3 . ENDOF
+      TK-F OF ." ; " ENDOF
+    ENDCASE
+  REPEAT ;

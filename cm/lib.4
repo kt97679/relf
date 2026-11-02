@@ -169,10 +169,15 @@ CREATE CALLING 2 CELLS ALLOT                      \ the def a call with @ binds,
   0 ?DO  DUP I ARGN  2 PICK 1 I LSHIFT AND IF UPV-NEW THEN  I 1+ LS!  LOOP 2DROP ;
 : BIND-S ( a1 .. ak k mask --- )   \ slots k..1 from the stack's top down - in an upvalue where mask's bit is set (868)
   SWAP BEGIN ?DUP WHILE  >R  DUP 1 R@ 1- LSHIFT AND IF SWAP UPV-NEW ELSE SWAP THEN  R@ LS!  R> 1-  REPEAT DROP ;
-: DEF-CALL-S ( a1 .. ak k n mask xt --- )   >R >R  1+ FRAME  ACT-PUSH D-NUM 0 LS!  R> BIND-S  R> DEF-TAIL ;
-: DEF-CALL-P ( a1 .. ak k n mask xt --- )   \ a def with no return in it (878): no activation, no CATCH - an
-  >R >R  1+ FRAME  R> BIND-S  R> EXECUTE  UNFRAME ;   \ error goes on up, and what catches it puts the frames back
-: DEF-CALL-M ( args k n mask xt --- )   >R >R  1+ FRAME  ACT-PUSH D-NUM 0 LS!  R> BIND-M  R> DEF-TAIL ;
+: DEF-SET ( xt n mask rec --- )   >R  R@ 2 CELLS + !  R@ CELL+ !  R> ! ;   \ a def's record: [xt][frame][mask] (926)
+\ A def's call: its record read at each one - made again at the prompt, it holds the new body. The record
+\ rides the return stack, not the body's xt, which R-WHERE would have taken for a return into the def's
+\ own lines - an error binding its arguments said the def's line, not the call's (926)
+: DEF-R ( k rec --- k n mask )   DUP CELL+ @ SWAP 2 CELLS + @ ;
+: DEF-R-S ( a1 .. ak k rec --- )   DUP >R DEF-R >R  1+ FRAME  ACT-PUSH D-NUM 0 LS!  R> BIND-S  R> @ DEF-TAIL ;
+: DEF-R-P ( a1 .. ak k rec --- )   \ a def with no return in it (878): no activation, no CATCH - an
+  DUP >R DEF-R >R  1+ FRAME  R> BIND-S  R> @ EXECUTE  UNFRAME ;   \ error goes on up, and what catches it puts the frames back
+: DEF-R-M ( args k rec --- )   DUP >R DEF-R >R  1+ FRAME  ACT-PUSH D-NUM 0 LS!  R> BIND-M  R> @ DEF-TAIL ;
 DEFER RUN-NAMED ( args text --- )   \ the program a text names: below, once PSTAGE is
 : CALL-VALUE ( args item --- )   \ rule 11: a value as a command's first word
   DUP D-KIND K-BLOCK = IF BLK-CALL EXIT THEN
@@ -204,14 +209,6 @@ DEFER RUN-NAMED ( args text --- )   \ the program a text names: below, once PSTA
     R> 1+ OVER MIN  TUCK - >R + R>                                      ( list c-addr' u' )
   REPEAT 2DROP ;
 : PIPE-LINES ( --- list )   PIPE-TEXT CELL+ @ R-T@  ARGL ROT ROT LINES+ ;   \ @( ): a program's lines, each a text
-
-\ ---- the words a script's Forth defines (909): a word list of their own, 256 threads - the kernel's has 32,
-\ and its hash is a name's length and first two characters, so thousands of defs' words went down a few
-\ threads each and loading 4,000 defs took 3.8 s. FORTH first in the search order, these second.
-: WORDLIST-N ( n --- wid )   >R  ALIGN WORDLISTS @ ,  HERE DUP START @ - WORDLISTS !  R@ ,  HERE R> CELLS DUP ALLOT 0 FILL ;
-VARIABLE CM-WID-O   256 WORDLIST-N START @ - CM-WID-O !     \ an offset: the image is saved and reloaded
-: CM-WID ( --- wid )   CM-WID-O @ START @ + ;
-: CM-WORDS ( --- )   CM-WID CURRENT !  2 #ORDER !  FORTH-WORDLIST CONTEXT !  CM-WID CONTEXT CELL+ ! ;
 
 \ ---- trap { block } [EXIT INT TERM HUP] (910): the block run when the script ends - normally, by exit, by an
 \ error, or by a signal it names, which then ends it, status 128 + the signal - as sh's trap is mostly used, to

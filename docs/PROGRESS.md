@@ -949,6 +949,7 @@ do not trust the absence of a line below.
 - 923 — the suite on both engines in the verify; Rill's JSON, decimals and dead words out (-4.4 KB); long literals in $(( )) checked
 - 924 — forth words values... (Forth from rill3); source once, a bare name from $RILL3_PATH; names kept
 - 925 — the suite passes with busybox's tools too, and the verify runs it so
+- 926 — compiled to bytecode directly: tokens installed, no Forth text; start-up halved, 4,000 defs 4x faster
 
 ### Not tied to an iteration
 

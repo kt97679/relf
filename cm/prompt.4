@@ -31,7 +31,7 @@ VARIABLE CL-HAVE                                   \ the session frame's slots: 
 : CL-GROW ( need --- )   \ between lines the session's frame is LS's top: more slots at its end, cleared
   CL-HAVE @ - DUP 0> 0= IF DROP EXIT THEN  LS# @ OVER + 1+ LS-CAP @ > IF LS# @ OVER + 1+ LS-GROW THEN
   LS LS# @ CELLS + OVER CELLS ERASE  DUP LS# +!  CL-HAVE +!  LS# @ CL-LS# ! ;
-: CL-RUN ( --- )   CL-BUF @ CL# @ CM-COMPILE  MAIN-FR @ CELL+ @ CL-GROW  R-BLANKS EVALUATE ;
+: CL-RUN ( --- )   CL-BUF @ CL# @ CM-COMPILE  MAIN-FR @ CELL+ @ CL-GROW  INSTALL ;   \ tokens, not text (926)
 VARIABLE CL-RUN-XT   ' CL-RUN CL-RUN-XT !XT
 : CL-BACK ( --- )   \ after an error: the session's frame and nothing deeper, nothing captured, nothing compiling
   CL-FP @ FP !  CL-LS# @ LS# !  CL-CTL# @ CTL# !  0 SINK# !  0 IN# !  0 ENV# !  0 STATE !  R-OUT-BACK  0 CT-ON !  0 CT-LEN !  0 HELD ! ;

@@ -1,4 +1,4 @@
-# rill3 to bytecode directly (923, the owner's decision)
+# rill3 to bytecode directly (923, the owner's decision; done 926)
 
 ## Today
 
@@ -44,3 +44,23 @@ instead, for debugging).
 Checks throughout: tests/cm/run on both engines and under GC stress - the oracle is outputs, as Q40
 said (no decompiler); a script's start-up time and the image's size measured at each stage; calls.cm
 and loop.cm against the text compiler's, which must not slow - the bytecode is the same.
+
+## Done (926)
+
+Not in two passes over the tree, as Stage 1 planned: the front end's out-of-order joining of strings
+stays, and only what it joins changed - tokens, not text. cm/ir.4: a token is a word already found (its
+offset from START, three bytes, as CALL, keeps one), a number, a text, a made word's call or xt by its
+number, or a made word's start and end. T" ..." makes a fragment's tokens when cm/cmc.4 is loaded, so
+the runtime's words are found then, once; INSTALL lays the tokens down - COMPILE, and LIT, inside a made
+word, EXECUTE outside one, the control words run - as the text interpreter would have, with no text read
+and nothing looked up. A made word is numbered per compile, its xt HERE when it begins; it ends with
+EXIT, and STATE 0 - not `;`, whose REVEAL read LAST, stale in a reloaded image until a word is named. A
+def is a record, [xt][frame][mask], that DEF-SET fills and each call reads - so a def made again at the
+prompt is the one called, as its DEFER was; the record, not the body's xt, rides the return stack while
+its arguments are bound, or R-WHERE took the xt for a return into the def's lines. Gone with the text: the
+made words' names, DNAME, the 256-thread word list (909), the DEFER and two VARIABLEs a def had. CM-SHOW
+prints the tokens as the Forth they stand for - for one script the same, line for line, as the text was.
+
+Measured against 925's image: a 2,001-line script starts in 145-197 ms against 285-358; 4,000 defs load
+in 266-288 ms against 1,106-1,177; calls.cm and loop.cm the same - the bytecode is. The image 83,312
+bytes against 83,512, with the installer and the reader of tokens in it.
