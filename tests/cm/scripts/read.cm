@@ -1,6 +1,6 @@
 # read name (886): a line of stdin into a variable, a byte at a time, so what follows is left for the next
 # reader; status 1 at the end - while read line. Here a def's stdin, its input from a pipe (882)
-def asker {
+var asker {
     echo "your name?"
     var name ""
     read name

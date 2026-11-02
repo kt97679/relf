@@ -1,13 +1,14 @@
 \ tests/cm/closures.4 - the command model's prototype, step 1 (855): the draft's own examples built by
 \ hand on cm/rt-cm.4, and the collector run at every awkward moment. No front end yet: each word below
 \ is what a compiler would make of the line in its comment.
+: BLK-RUN0 ( block --- )   0 SWAP BLK-RUN ;   \ a block run with no arguments: their count first, 0 (930)
 : KEY$ ( c-addr u --- item )   R-TEXT K-TEXT R-BOX ;
 : N. ( item --- )   D>N . ;
-: CALL-AT ( map c-addr u --- i*x )   KEY$ D-AT BLK-CALL ;
+: CALL-AT ( map c-addr u --- i*x )   KEY$ D-AT BLK-RUN0 ;
 
 \ def counter {|start| var n $start; put [inc: { set n $(( $n + 1 )) }  get: { put $n }] }
-: CTR-INC ( --- )   0 E@  DUP UPV@ D>N 1+ D-NUM  SWAP UPV! ;
-: CTR-GET ( --- item )   0 E@ UPV@ ;
+: CTR-INC ( --- )   DROP 0 E@  DUP UPV@ D>N 1+ D-NUM  SWAP UPV! ;
+: CTR-GET ( --- item )   DROP 0 E@ UPV@ ;
 : COUNTER ( start --- map )   \ slot 0: n, captured - its upvalue; slot 1: the map being made
   2 FRAME  UPV-NEW 0 LS!  R-NEW-RECORD K-REC R-BOX 1 LS!
   R-GC                                          \ a collection inside the def: its frame must hold
@@ -20,13 +21,13 @@ C1 @ S" inc" CALL-AT  R-GC   C1 @ S" inc" CALL-AT  R-GC   C2 @ S" inc" CALL-AT  
 .( two counters, two n's: ) C1 @ S" get" CALL-AT N.  C2 @ S" get" CALL-AT N. CR
 
 \ a collection while a block runs: its captures reached through the blocks running
-: CTR-INC-GC ( --- )   R-GC  0 E@  DUP UPV@ D>N 1+ D-NUM  SWAP UPV! ;
+: CTR-INC-GC ( --- )   DROP R-GC  0 E@  DUP UPV@ D>N 1+ D-NUM  SWAP UPV! ;
 C1 @ S" bump" KEY$  C1 @ S" get" KEY$ D-AT CELL+ @ 2 CELLS + @ 1 ' CTR-INC-GC BLK-NEW  D-SET
 C1 @ S" bump" CALL-AT  R-GC
 .( a collection inside a block: ) C1 @ S" get" CALL-AT N. CR
 
 \ def make {|| var self [:]; set self[me] { put $self }; put $self } - a map, a block, an upvalue, a cycle
-: SELF-ME ( --- item )   0 E@ UPV@ ;
+: SELF-ME ( --- item )   DROP 0 E@ UPV@ ;
 : MAKE-CYCLE ( --- map )
   1 FRAME  0 UPV-NEW 0 LS!  R-NEW-RECORD K-REC R-BOX 0 LS@ UPV!
   0 LS@ UPV@ S" me" KEY$  0 LS@ 1 ['] SELF-ME BLK-NEW  D-SET

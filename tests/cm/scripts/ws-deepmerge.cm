@@ -1,6 +1,6 @@
 # a whole script (916), as one would write it
 # merge nested maps: b's values over a's, maps merged all the way down
-def deep {|a b|
+var deep {|a b|
     var out [:]
     for k @(keys $a) { set out[$k] $a[$k] }
     for k @(keys $b) {

@@ -1,7 +1,7 @@
 # a whole script (903), as one would write it
 # an RPN calculator: tokens from stdin, a list as the stack
 var stack []
-def pop {
+var pop {
     var n $(count $stack)
     if $(( $n == 0 )) { echo stack empty >&2; exit 1 }
     var top $stack[-1]
@@ -10,7 +10,7 @@ def pop {
     set stack $rest
     put $top
 }
-def calc {
+var calc {
   var line ''
   while read line {
     for tok @(split $line ' ') {

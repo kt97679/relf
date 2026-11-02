@@ -16,5 +16,5 @@ set env[CM907] again
 sh -c 'echo set again: $CM907'
 for i @(range 40) { set env["CM907_$i"] $i }
 sh -c 'echo 40 names: $CM907_39'
-def two {|a b| echo $a $b }
+var two {|a b| echo $a $b }
 var l [1]

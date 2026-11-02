@@ -5,7 +5,7 @@ var level [@(split $line ' ')][1]
 echo $level
 echo [a b c][-1] [k: v  j: w][j] [[1 2] [3 4]][1][0]
 echo $(printf 'hello') $(printf 'hello')[0] "quoted"[1] 'single'[0]
-def pairs { put [1 2] [3 4] }
+var pairs { put [1 2] [3 4] }
 echo @(split 'a,b,c' ,)[2] @(pairs)[1] [@(pairs)][0]
 var m [list: [p q r]]
 echo $m[list][1]

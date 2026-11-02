@@ -1,6 +1,6 @@
 # case value { patterns... { ... } } (910): the first arm a pattern of which matches runs, as sh's case - a plain
 # word the pattern as written, not globbed; patterns in variables too; arms a line each or several on one; none, status 0
-def kind-of {|f|
+var kind-of {|f|
     case $f {
         *.txt *.md { put text }
         *.png *.jpg { put image }

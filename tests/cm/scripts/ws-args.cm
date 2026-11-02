@@ -1,6 +1,6 @@
 # a whole script (901): options parsed into a map - a list inside "..." had printed as a b, a map as {k: "v"}; now as echo shows them
 # parse options: --name=value, -v flags, the rest positional
-def parse {|argv|
+var parse {|argv|
     var opts [verbose: false]
     var rest []
     for a @argv {

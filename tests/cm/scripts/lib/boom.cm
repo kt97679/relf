@@ -1,5 +1,5 @@
 # a def that fails as it runs - sourced at the prompt by prompt/source-later.in (a library, not a test)
-def boom {
+var boom {
   var l [1]
   echo $l[5]
 }

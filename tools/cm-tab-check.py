@@ -2,7 +2,7 @@
 """tools/cm-tab-check.py [IMAGE] - TAB at the command model's prompt, through a pseudo-terminal (911).
 
 Keystroke sessions against bin/cm's prompt: a builtin's name completed (ech -> echo), a file whose
-name holds a blank put in '...' (the language's quoting, not sh's backslashes), a def made at the prompt
+name holds a blank put in '...' (the language's quoting, not sh's backslashes), a function made at the prompt
 completed by name, two TABs listing a directory, and a $name completed - in "..." too (914). Each checks what the line ran or showed. Exits 1 if
 any fails. tests/cm/run runs it.
 """
@@ -37,7 +37,7 @@ def run(keys):
 checks = [
     ('a builtin completed', ['ech\t', 'tab-completed\r'], '\r\ntab-completed\r\n'),
     ("a name with a blank put in '...'", ['echo %s/my\t' % d, '\r'], "\r\n%s/my notes.txt\r\n" % d),   # echo: GNU ls quotes at a terminal (925)
-    ('a def completed', ['def greetings { echo hey from a def }\r', 'gree\t', '\r'], '\r\nhey from a def\r\n'),
+    ('a function completed', ['var greetings { echo hey from a function }\r', 'gree\t', '\r'], '\r\nhey from a function\r\n'),
     ('two TABs list', ['ls %s/\t\t' % d, '\x03'], 'my notes.txt  other.txt'),
     ('a $name completed', ['var greeting hello\r', 'echo $gree\t', '\r'], '\r\nhello\r\n'),
     ('a $name in quotes', ['var greeting hi\r', 'echo "say $gree\t!"\r'], '\r\nsay hi!\r\n'),

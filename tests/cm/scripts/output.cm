@@ -1,9 +1,9 @@
 # values put and captured by @( ); $( ) is what is printed, one text - echo's bytes and the values (896)
 put 42 "hello world" [a "b c" [1 2]] [name: ada  tags: [x y]] [:] { }
-def three { put 1; put 2; put 3 }
+var three { put 1; put 2; put 3 }
 var all [@(three)]
 echo all: $all count: $(count $all)
-def noisy { echo noise; put 7 }
+var noisy { echo noise; put 7 }
 var seven $(noisy)
 echo seven: $seven
 var only @(noisy)

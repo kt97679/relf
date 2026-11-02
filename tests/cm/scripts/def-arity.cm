@@ -1,4 +1,4 @@
-# a def given its words, none an @, has their count checked when the script is read (879): an error naming it
-def sq {|n| put $(( $n * $n )) }
+# a function given the wrong number of words says so when it is called - its name and the call's line (930: a def's count had been checked when the script was read, 879)
+var sq {|n| put $(( $n * $n )) }
 echo $(sq 3)
 echo $(sq 3 4)

@@ -1,5 +1,8 @@
 # The command model (850; the language since 867; working name rill3 since 918)
 
+*Since 930 there is no `def`: a function is a block written to a variable, called by its name (929-930,
+docs/progress/0900-0999.md). What this file says of defs is their history.*
+
 **Status: the language (867).** Drafted at 850 as Q46's option C, a base for further development; at
 867, the owner having handed the choice over, chosen over A.4 by the owner's criteria - the smallest
 binary and image, good speed, short scripts, a consistent and friendly syntax, and exactly one way to

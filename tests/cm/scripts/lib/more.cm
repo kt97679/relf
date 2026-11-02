@@ -1,1 +1,1 @@
-def more { echo more, from lib/more.cm }
+var more { echo more, from lib/more.cm }

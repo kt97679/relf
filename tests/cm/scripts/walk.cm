@@ -5,7 +5,7 @@ mkdir -p "$top/a/b" "$top/c"
 printf 12345 > "$top/a/one"
 printf 123 > "$top/a/b/two"
 printf 1234567 > "$top/c/three"
-def walk {|dir| for f @(glob "$dir/*") { if test -d $f { walk $f } else { put $f } } }
+var walk {|dir| for f @(glob "$dir/*") { if test -d $f { walk $f } else { put $f } } }
 var total 0
 for f @(walk $top) {
     var size $(wc -c < $f)

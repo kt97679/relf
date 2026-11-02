@@ -1,6 +1,6 @@
 # a whole script (916), as one would write it
 # a menu answered from stdin: each choice handled, q quits
-def menu {
+var menu {
     var choice ''
     var items [:]
     while read choice {

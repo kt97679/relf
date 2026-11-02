@@ -6,12 +6,12 @@ mkdir -p $dir
 echo 'a' > "$dir/a.txt"
 echo 'b' > "$dir/b.txt"
 var rules [out.txt: [a.txt b.txt]]
-def stale {|target sources|
+var stale {|target sources|
     if ! test -e "$dir/$target" { return 0 }
     for s @sources { if test "$dir/$s" -nt "$dir/$target" { return 0 } }
     return 1
 }
-def build {|target|
+var build {|target|
     if stale $target $rules[$target] {
         cat @(for s @rules[$target] { put "$dir/$s" }) > "$dir/$target"
         echo "built $target"

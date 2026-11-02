@@ -1,6 +1,6 @@
 # a size that had a most (891) - recursion through $( ) stopped 64 deep, a def with return 256 deep
-def down {|n| if $(( $n > 0 )) { put $(down $(( $n - 1 ))) } else { put bottom } }
+var down {|n| if $(( $n > 0 )) { put $(down $(( $n - 1 ))) } else { put bottom } }
 echo $(down 300)
-def back {|n| if $(( $n > 0 )) { back $(( $n - 1 )); return 0 } }
+var back {|n| if $(( $n > 0 )) { back $(( $n - 1 )); return 0 } }
 back 400
 echo back from 400

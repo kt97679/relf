@@ -1,4 +1,4 @@
 # a def sees the script's top-level variables, wherever they are declared (929: before, only those declared before it, 884)
-def later { echo $y }
+var later { echo $y }
 var y 1
 later

@@ -3,7 +3,7 @@
 var t 'naïve 日本語 😀👍 Ωmega'
 echo $(count $t) characters
 echo $(slice $t 6 9) $(slice $t 10 12) $(slice $t -5)
-def rev {|s| var r ''; for i @(range $(count $s)) { set r "$(slice $s $i $(( $i + 1 )))$r" }; put $r }
+var rev {|s| var r ''; for i @(range $(count $s)) { set r "$(slice $s $i $(( $i + 1 )))$r" }; put $r }
 echo $(rev $t)
 echo $(upper $t) $(lower 'ΣΟΦΊΑ ΩMEGA')
 echo [@(split $t ' ')][2] $t[2]

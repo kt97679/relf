@@ -1,5 +1,5 @@
 # objects: methods calling each other through a captured self - the draft's account, as written
-def account {|owner|
+var account {|owner|
     var balance 0
     var self [:]
     set self[deposit] {|amount| set balance $(( $balance + $amount )) }
@@ -12,11 +12,11 @@ $a[twice] 50
 $a[report]
 
 # inheritance by filling a given map: an inherited method reaches the override through self
-def animal {|self name|
+var animal {|self name|
     set self[speak] { echo $name makes a sound }
     set self[greet] { echo hello; $self[speak] }
 }
-def dog {|self name|
+var dog {|self name|
     animal $self $name
     set self[speak] { echo $name barks }
 }

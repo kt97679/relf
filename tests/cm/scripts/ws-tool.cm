@@ -1,17 +1,17 @@
 # a whole script (912), as one would write it
 # a command-line tool with subcommands
-def usage { echo 'usage: tool add NAME | list | remove NAME' >&2; exit 2 }
+var usage { echo 'usage: tool add NAME | list | remove NAME' >&2; exit 2 }
 var db /tmp/cm-ws4-tool.db
 touch $db
-def cmd-add {|name| echo $name >> $db; echo "added $name" }
-def cmd-list { var n 0; for line @(cat $db) { set n $(( $n + 1 )); echo "$n. $line" } }
-def cmd-remove {|name|
+var cmd-add {|name| echo $name >> $db; echo "added $name" }
+var cmd-list { var n 0; for line @(cat $db) { set n $(( $n + 1 )); echo "$n. $line" } }
+var cmd-remove {|name|
     var kept []
     for line @(cat $db) { if $(( $line != $name )) { append kept $line } }
     printf '%s\n' @kept > $db
     echo "removed $name"
 }
-def run {|argv|
+var run {|argv|
     if $(( $(count $argv) == 0 )) { usage }
     var sub $argv[0]
     case $sub {

@@ -2,7 +2,7 @@
 # records checked, every problem collected, a summary at the end however the script ends
 var problems []
 trap { echo "$(count $problems) problems"; for p @problems { echo " - $p" } } EXIT
-def check {|rec|
+var check {|rec|
     var ok true
     if ! has $rec name { append problems "a record with no name"; set ok false }
     if has $rec age && ! match $rec[age] '[0-9]*' { append problems "$rec[name]: age is not a number"; set ok false }

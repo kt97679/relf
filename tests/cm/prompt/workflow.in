@@ -1,11 +1,11 @@
-def square {|x|
+var square {|x|
     put $(( $x * $x ))
 }
 echo $(square 7)
 var total 0
 for i @(range 4) { set total $(( $total + $(square $i) )) }
 echo total $total
-def square {|x| put $(( $x * $x * 1 )) }
+var square {|x| put $(( $x * $x * 1 )) }
 echo redefined $(square 3)
 var l [3 1 2]
 echo [@(slice $l 1)][0] $l[-1]

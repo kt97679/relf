@@ -1,5 +1,5 @@
 # a runtime error in a sourced file says that file's line
-def pick {|i|
+var pick {|i|
     var l [a b]
     put $l[$i]
 }

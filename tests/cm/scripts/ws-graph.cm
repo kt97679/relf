@@ -1,7 +1,7 @@
 # a whole script (901), as one would write it in 899's syntax
 # breadth-first search over a graph kept as a map of lists; the path found
 var g [a: [b c]  b: [d]  c: [d e]  d: [f]  e: [f]  f: []]
-def bfs {|start goal|
+var bfs {|start goal|
     var seen [:]
     set seen[$start] true
     var queue [$start]

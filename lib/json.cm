@@ -9,7 +9,7 @@
 
 var cr $(printf '\r')   # rill3 writes no carriage return in a text but by a program
 
-def json-str {|t|
+var json-str {|t|
     var s $(join '\\' @(split $t '\'))
     set s $(join '\"' @(split $s '"'))
     set s $(join '\n' @(split $s "\n"))
@@ -18,7 +18,7 @@ def json-str {|t|
     put "\"$s\""
 }
 
-def to-json {|v|
+var to-json {|v|
     case $(kind $v) {
         map { var parts []; for k @(keys $v) { append parts "$(json-str $k):$(to-json $v[$k])" }; put "{$(join , @parts)}" }
         list { var parts []; for x @v { append parts $(to-json $x) }; put "[$(join , @parts)]" }
@@ -34,17 +34,17 @@ var jn 0
 forth ': JSON-U8 ( cp --- ) DUP 128 < IF EMIT EXIT THEN DUP 2048 < IF DUP 6 RSHIFT 192 OR EMIT 63 AND 128 OR EMIT EXIT THEN DUP 12 RSHIFT 224 OR EMIT DUP 6 RSHIFT 63 AND 128 OR EMIT 63 AND 128 OR EMIT ;'
 forth ': JSON-HEX ( c-addr u --- n ) BASE @ >R HEX 0 0 2SWAP >NUMBER 2DROP DROP R> BASE ! ;'   # its digits upper case: the kernel's
 
-def j-fail {|what| echo "from-json: $what at character $ji" >&2; exit 2 }
-def j-ws { while $(( $ji < $jn )) { case $jt[$ji] { ' ' "\n" "\t" "\r" { set ji $(( $ji + 1 )) } * { break } } } }
-def j-take {|c|
+var j-fail {|what| echo "from-json: $what at character $ji" >&2; exit 2 }
+var j-ws { while $(( $ji < $jn )) { case $jt[$ji] { ' ' "\n" "\t" "\r" { set ji $(( $ji + 1 )) } * { break } } } }
+var j-take {|c|
     j-ws
     if $(( $ji >= $jn )) || ! match $jt[$ji] $c { j-fail "$c expected" }
     set ji $(( $ji + 1 ))
 }
-def j-word {|w|
+var j-word {|w|
     if match $(slice $jt $ji $(( $ji + $(count $w) ))) $w { set ji $(( $ji + $(count $w) )) } else { j-fail "$w expected" }
 }
-def j-string {
+var j-string {
     j-take '"'
     var s ''
     while true {
@@ -70,14 +70,14 @@ def j-string {
     }
     put $s
 }
-def j-number {
+var j-number {
     var start $ji
     while $(( $ji < $jn )) && match $jt[$ji] '[-+0-9.eE]' { set ji $(( $ji + 1 )) }
     var t $(slice $jt $start $ji)
     if match $t '-[0-9]*' || match $t '[0-9]*' { if ! match $t '*[.eE+]*' { put $(( $t + 0 )); return 0 } }
     put $t
 }
-def j-value {
+var j-value {
     j-ws
     if $(( $ji >= $jn )) { j-fail 'a value expected' }
     case $jt[$ji] {
@@ -117,7 +117,7 @@ def j-value {
         * { put @(j-number) }
     }
 }
-def from-json {|text|
+var from-json {|text|
     set jt $text
     set ji 0
     set jn $(count $text)

@@ -1,6 +1,6 @@
 # a whole script (908), as one would write it
 # fill {{name}} placeholders from a map
-def render {|text vars|
+var render {|text vars|
     var out $text
     for k @(keys $vars) { set out $(join $vars[$k] @(split $out "{{$k}}")) }
     put $out

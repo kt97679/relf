@@ -1,6 +1,6 @@
 # a whole script (916), as one would write it
 # matrices as lists of rows: transpose and multiply
-def transpose {|m|
+var transpose {|m|
     var t []
     for j @(range $(count $m[0])) {
         var row []
@@ -9,7 +9,7 @@ def transpose {|m|
     }
     put $t
 }
-def mul {|a b|
+var mul {|a b|
     var bt @(transpose $b)
     var out []
     for r @a {

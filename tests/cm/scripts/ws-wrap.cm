@@ -1,6 +1,6 @@
 # a whole script (908), as one would write it
 # wrap a paragraph at a width
-def wrap {|text width|
+var wrap {|text width|
     var line ''
     for w @(split $text ' ') {
         if $(( $(count $line) == 0 )) { set line $w }

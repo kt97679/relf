@@ -1,4 +1,4 @@
 # a pipeline ending in a function: its printed values, one text (896)
-def two { put a b }
+var two { put a b }
 echo before
 echo "[$(two | each {|x| put $x })]"

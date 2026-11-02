@@ -2,14 +2,14 @@
 # and a block made in it captures them as any block does
 var count 0
 var name relf
-def bump { set count $(( $count + 1 )) }
-def greet {|who| echo hello $who from $name }
+var bump { set count $(( $count + 1 )) }
+var greet {|who| echo hello $who from $name }
 bump
 bump
 echo count $count
 greet Ada
 var n 10
-def mk { put { echo n is $n } }
+var mk { put { echo n is $n } }
 var b @(mk)
 $b
 set n 11

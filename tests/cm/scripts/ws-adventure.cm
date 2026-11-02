@@ -5,8 +5,8 @@ var rooms [hall: [desc: 'a cold hall'  north: library  east: kitchen]
            kitchen: [desc: 'a smell of bread'  west: hall  item: key]]
 var here hall
 var bag []
-def look { echo "You are in $rooms[$here][desc]."; if has $rooms[$here] item { echo "There is a $rooms[$here][item] here." } }
-def play {
+var look { echo "You are in $rooms[$here][desc]."; if has $rooms[$here] item { echo "There is a $rooms[$here][item] here." } }
+var play {
     var cmd ''
     look
     while read cmd {

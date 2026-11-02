@@ -1,7 +1,7 @@
 var n 1
 echo $n
 set n $(( $n + 1 ))
-def sq {|x| put $(( $x * $x )) }
+var sq {|x| put $(( $x * $x )) }
 echo $(sq $n)
 var c { echo from a block: $n }
 set n 5
@@ -20,7 +20,7 @@ c]
 echo $l
 echo ${x}
 echo the prompt goes on: $n
-def sq {|x| put $(( $x * $x * $x )) }
+var sq {|x| put $(( $x * $x * $x )) }
 echo $(sq 2)
 var m [k: 1]
 set m[k] $(( $m[k] + 1 ))

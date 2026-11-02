@@ -6,7 +6,7 @@ false || echo or-ed
 false && echo never
 ! true
 echo after negation $status
-def f { false; echo "in f, its false tested by the if that called it" }
+var f { false; echo "in f, its false tested by the if that called it" }
 if f { echo f ok } else { echo f failed, tested }
 trap { echo trap runs } EXIT
 var x $(sh -c "exit 3")

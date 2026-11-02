@@ -2,7 +2,7 @@
 # merge a user's config over defaults, both key=value files; print the result sorted by key
 printf '%s\n' 'color=blue' 'size=10' '# a comment' 'mode=fast' > /tmp/cm-ws3-defaults.conf
 printf '%s\n' 'size=12' 'name=ada' '' > /tmp/cm-ws3-user.conf
-def load {|file|
+var load {|file|
     var conf [:]
     for line @(cat $file) {
         if match $line '#*' { continue }

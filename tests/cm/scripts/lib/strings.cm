@@ -1,4 +1,4 @@
 # string helpers - repeat, pad-left, upper - sourced by ws-report.cm (a library, not a test)
-def repeat {|text n| var s ''; for i @(range $n) { set s "$s$text" }; put $s }
-def pad-left {|text w| var s "$text"; while $(( $(count $s) < $w )) { set s " $s" }; put $s }
-def upper {|text| put $(printf '%s' $text | tr a-z A-Z) }
+var repeat {|text n| var s ''; for i @(range $n) { set s "$s$text" }; put $s }
+var pad-left {|text w| var s "$text"; while $(( $(count $s) < $w )) { set s " $s" }; put $s }
+var upper {|text| put $(printf '%s' $text | tr a-z A-Z) }

@@ -1,6 +1,6 @@
 # a whole script (915), as one would write it
 # start workers, collect each status, print a padded table
-def pad {|text width| var s "$text"; while $(( $(count $s) < $width )) { set s "$s " }; put $s }
+var pad {|text width| var s "$text"; while $(( $(count $s) < $width )) { set s "$s " }; put $s }
 var jobs [:]
 for name alpha beta gamma {
     case $name {

@@ -12,7 +12,7 @@ VARIABLE IN-CAP  IN-MAX IN-CAP !   ' INS >BODY START @ - CONSTANT INS'   \ grown
 : IN-PUSH ( list --- )
   IN# @ IN-CAP @ < 0= IF  INS' BODY-OF BUF-GROW  IN-CAP @ 2* IN-CAP !  THEN  INS IN# @ CELLS + !  1 IN# +! ;
 VARIABLE HELD                                      \ runtime words holding the arena by hand while user code runs (918)
-: EACH-RUN ( block input --- )   DUP #ARGS 0 ?DO  ARGL OVER I ARGN ARG  2 PICK BLK-CALL  LOOP 2DROP ;
+: EACH-RUN ( block input --- )   DUP #ARGS 0 ?DO  DUP I ARGN 1  3 PICK BLK-RUN  LOOP 2DROP ;   \ one argument, on the stack (930)
 VARIABLE XT-EACH-RUN   ' EACH-RUN XT-EACH-RUN !XT
 : EACH-OF ( args --- )   \ each {|x| ... }: the block, run with each value of the function's input - its block
   DUP #ARGS 1 <> IF S" cm: each takes one block" R-FAIL THEN  0 ARGN  INPUT     \ and input held on the stack

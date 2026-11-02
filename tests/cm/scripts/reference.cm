@@ -27,21 +27,21 @@ while $(( $n < 3 )) { set n $(( $n + 1 )) }
 case report.md { *.txt *.md { echo text } * { echo other } }
 echo n $n
 # -- functions
-def greet {|who| echo hello $who }
-def sq {|x| put $(( $x * $x )) }
-def pair { put a b }
+var greet {|who| echo hello $who }
+var sq {|x| put $(( $x * $x )) }
+var pair { put a b }
 greet world
 echo $(sq 7) [@(pair)] $(count [@(pair)])
 var both [@(pair)]
 var one @(sq 3)
 echo $both $one $(kind $one)
-def find {|x| for v @l { if $(( $v == $x )) { return 0 } }; return 1 }
+var find {|x| for v @l { if $(( $v == $x )) { return 0 } }; return 1 }
 if find 4 { echo 4 is in l }
 find 9 || echo 9 is not
 # -- blocks
 var twice {|f x| $f $($f $x) }
 echo $($twice { |v| put $(( $v * 2 )) } 5)
-def counter {|start| var c $start; put [inc: { set c $(( $c + 1 )); put $c }] }
+var counter {|start| var c $start; put [inc: { set c $(( $c + 1 )); put $c }] }
 var ctr @(counter 10)
 $ctr[inc]; $ctr[inc]
 echo counter at $($ctr[inc])

@@ -1,7 +1,7 @@
 # a whole script (915), as one would write it
 # a map as JSON, its texts escaped
-def esc {|t| put $(join '\"' @(split $(join '\\' @(split $t '\')) '"')) }
-def json {|m|
+var esc {|t| put $(join '\"' @(split $(join '\\' @(split $t '\')) '"')) }
+var json {|m|
     var parts []
     for k @(keys $m) {
         var v $m[$k]

@@ -1,5 +1,5 @@
 # break, continue and return through blocks, each to its own loop or def
-def f {
+var f {
     for i 0 1 2 {
         var b { break }
         if $(( $i == 1 )) { $b }
@@ -8,7 +8,7 @@ def f {
     echo f after
 }
 f
-def g {
+var g {
     for i 0 1 2 {
         if $(( $i == 1 )) { continue }
         echo g $i

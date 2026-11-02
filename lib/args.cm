@@ -5,9 +5,9 @@
 #                          --name value or --name=value. --help not in spec prints the options and exits 0;
 #                          an option not in spec, or a value missing, prints them and exits 2.
 #   usage spec             the options and their defaults, to stderr
-def usage {|spec| echo 'options:' >&2; for k @(keys $spec) { echo "  --$k (default: $spec[$k])" >&2 } }
+var usage {|spec| echo 'options:' >&2; for k @(keys $spec) { echo "  --$k (default: $spec[$k])" >&2 } }
 
-def parse-args {|spec argv|
+var parse-args {|spec argv|
     var out [:]
     for k @(keys $spec) { set out[$k] $spec[$k] }
     var rest []

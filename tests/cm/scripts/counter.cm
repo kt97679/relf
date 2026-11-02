@@ -1,5 +1,5 @@
 # closures: two counters made by separate calls keep two n's - the draft's example, as written
-def counter {|start|
+var counter {|start|
     var n $start
     put [inc: { set n $(( $n + 1 )) }  get: { put $n }]
 }

@@ -6,7 +6,7 @@ mkdir -p "$root/a/b" "$root/c"
 printf 1234567890 > "$root/a/f1"
 printf 12345 > "$root/a/b/f2"
 printf 123 > "$root/c/f3"
-def size {|dir|
+var size {|dir|
     var total 0
     for f @(glob "$dir/*") {
         if test -d $f { set total $(( $total + $(size $f) )) } else { set total $(( $total + $(wc -c < $f) )) }

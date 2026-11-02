@@ -24,19 +24,19 @@ an eleventh.
    number if written as one, `true` and `false`, a glob with `*` or `?`.
 3. A word ends where its form does; only index keys may follow a value. Operators - `|` `&&` `||` `&`
    and the redirections - are words of their own.
-4. A command's first word says what runs: a builtin, a def, a value (a block runs, a boolean is a
+4. A command's first word says what runs: a builtin, a function, a value (a block runs, a boolean is a
    status, a text names a program), or else the program of that name.
 5. Values are texts, whole 64-bit numbers, booleans, lists, maps and blocks; a value is one word,
    never split or globbed - `@` spreads a list into words.
 6. `$(cmd)` is the text cmd printed, `@(cmd)` its values one by one, `$(( ))` arithmetic and
    comparison.
-7. `var` makes a variable in its block, `set` changes one, `del` takes from one; a block and a def see
+7. `var` makes a variable in its block, `set` changes one, `del` takes from one; a block sees
    the variables made before them, and keep them.
 8. Every command has a status; `if`, `while`, `&&`, `||` and `!` test it. In a script, a command that
    fails and is not tested ends it, with its status.
 9. `|` carries bytes between programs and values between functions; `>` `>>` `<` `2>` `&>` `2>&1`
    redirect as sh's.
-10. The rest are builtins (the table below): control (`if` `for` `while` `case` `def` `return`
+10. The rest are builtins (the table below): control (`if` `for` `while` `case` `return`
    `break` `continue`), values (`put` `count` `split` `slice` ...), the script (`source` `trap`
    `exit` `forth`).
 
@@ -82,7 +82,7 @@ after a `\` that is a word of its own at a line's end:
 
 Numbers are whole, 64-bit - -9223372036854775808 to 9223372036854775807, past which arithmetic is an
 error; wherever one is wanted - `$(( ))`, an index, `range`, `slice`, `exit` - a
-text that reads as one does, as `$(f)` gives a def's number back. Lists and maps are held by reference: two variables can hold one list.
+text that reads as one does, as `$(f)` gives a function's number back. Lists and maps are held by reference: two variables can hold one list.
 `$l[-1]` is a list's last item. An index may follow any value written in one word - a list or map, a
 text, a capture - as it follows a variable; `@(cmd)[k]` is the k-th of cmd's values, spread if a list:
 
@@ -102,8 +102,9 @@ use one printed form - a list as `[a b]`, a map as `[k: v]`, a block as `<block>
     echo $name $l $l[0] $l[-1] $m[born] $(count $l) $(count $m) $(count $name)
     # grace [3 1 2 4 5] 3 5 1906 5 2 5
 
-Scope is lexical. A def sees its parameters, its own variables, and the script's variables declared
-before it. A loop's variable is a new one each time round, so a block made in a loop keeps that time's
+Scope is lexical. A function - a block - sees its parameters, its own variables, the variables around
+it, and the script's top-level variables wherever they are declared: those are known from the script's
+start, though one read before its `var` has run is not yet set. A loop's variable is a new one each time round, so a block made in a loop keeps that time's
 value. `$env[HOME]` reads the environment, `set env[NAME] value` sets it for programs run after, and
 `del env[NAME]` takes it away;
 `$args` is the script's arguments, a list; `$status` the last command's status; `$job` the last job `&`
@@ -121,7 +122,7 @@ texts too. A comparison gives a boolean.
 
 ## Control
 
-`if`, `while`, `for` and `def` are commands that take blocks. A condition is a command: its status
+`if`, `while` and `for` are commands that take blocks. A condition is a command: its status
 says - or a value: a boolean, as `$(( ))` gives, or a block, run, its status saying.
 
     for i @(range 4) { if $(( $i == 1 )) { continue } elif $(( $i == 3 )) { break } else { echo i $i } }
@@ -144,18 +145,23 @@ pattern as written, not globbed:
 
 ## Functions
 
-    def greet {|who| echo hello $who }
-    def sq {|x| put $(( $x * $x )) }
-    def pair { put a b }
+A function is a block written to a variable, and called by the variable's name; `$name` is the block
+itself, a value to pass on. Only a variable a block was written to is called so - `var date $(date)`
+leaves the `date` program alone. A name may hold a `-` between letters: `run-task`.
+
+    var greet {|who| echo hello $who }
+    var sq {|x| put $(( $x * $x )) }
+    var pair { put a b }
     greet world                         # hello world
     echo $(sq 7) [@(pair)] $(count [@(pair)])
     # 49 [a b] 2
 
 A function is a command: its arguments are its words, given in the number its parameters name.
 `echo` writes bytes; `put` writes values, one by one. `return n` ends the function with status n,
-from inside any blocks; `break` and `continue` end or skip a loop's turn the same way.
+from inside its `if` and loop bodies; inside a block called as a function - a callback - it ends that
+block. `break` and `continue` end or skip a loop's turn.
 
-    def find {|x| for v @l { if $(( $v == $x )) { return 0 } }; return 1 }
+    var find {|x| for v @l { if $(( $v == $x )) { return 0 } }; return 1 }
     if find 4 { echo 4 is in l }
     find 9 || echo 9 is not
 
@@ -164,7 +170,7 @@ status; a text names a program to run, as `$EDITOR file` does: `var ed vi; $ed n
 
     var twice {|f x| $f $($f $x) }
     echo $($twice { |v| put $(( $v * 2 )) } 5)          # 20
-    def counter {|start| var c $start; put [inc: { set c $(( $c + 1 )); put $c }] }
+    var counter {|start| var c $start; put [inc: { set c $(( $c + 1 )); put $c }] }
     var ctr @(counter 10)
 
 ## Output, and taking it
@@ -187,7 +193,7 @@ number and is about three times faster.
 
 ## Pipes, programs and redirections
 
-A word that names no builtin and no def runs a program, found on PATH. Between functions a pipe carries
+A word that names no builtin and no function runs a program, found on PATH. Between functions a pipe carries
 values, and function stages stream; from a program to a function, lines; from a function to a program,
 its values' printed forms, a line each.
 
@@ -213,7 +219,7 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 | `put values...` | write values |
 | `echo words...` | write the words' printed forms, a blank between, a newline after |
 | `if c {..} elif c {..} else {..}`, `while c {..}`, `for x values... {..}` | control |
-| `def name {|params| ..}`, `return [n]`, `break`, `continue` | functions and loops |
+| `var name {|params| ..}`, `return [n]`, `break`, `continue` | functions and loops |
 | `count v` | a list's or map's items, a text's characters (UTF-8) |
 | `range n` | 0 to n-1, put one by one |
 | `split text sep`, `join sep values...` | a text's parts put; values joined into one text |
@@ -240,7 +246,7 @@ An error found when the script is read stops it before anything runs; one found 
 there. Both say the message, then where: `cm: index 2 past a list of 2 (line 4)` - in a sourced file,
 that file's name and line. Either ends the script with status 2.
 Recursion is bounded by the engine's return stack: about 2,500 calls deep, 1,000 through `$( )`, 700 in a
-def that uses `return` - past it, `recursion too deep for the stacks`.
+function that uses `return` - past it, `recursion too deep for the stacks`.
 
 ## For sh users
 

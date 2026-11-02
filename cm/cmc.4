@@ -99,7 +99,9 @@ VARIABLE IN-TEXT  VARIABLE IN-LEN  VARIABLE IN-POS           \ the text, its len
 : T, ( c --- )   TXP @ C!  1 TXP +! ;
 : T) ( --- )   TXP @ TXS @ - ?DUP IF TXS @ SWAP N-TX N, THEN  T0 ;   \ the text read, a leaf - if any
 DEFER CMDS ( close closer --- )   DEFER WORD-P ( closer --- )   DEFER ARITH-P ( --- )
-: NAME-P ( --- c-addr u )   HERE-IN  BEGIN CUR NAMEC? WHILE GET DROP REPEAT  HERE-IN OVER - ;
+: LETTER? ( c --- f )   32 OR [CHAR] a [CHAR] z 1+ WITHIN ;
+: NAME-P ( --- c-addr u )   \ a name's characters - and a - between letters, kebab-case, as a def's name had (930)
+  HERE-IN  BEGIN CUR NAMEC?  CUR [CHAR] - = 1 PK LETTER? AND  OR WHILE GET DROP REPEAT  HERE-IN OVER - ;
 : VAR-P ( --- )   \ name[key]...: a N-VR, its keys words
   NAME-P N-VR N,
   BEGIN CUR [CHAR] [ = WHILE  GET DROP 0 SKIP-WS [CHAR] ] WORD-P 0 SKIP-WS
@@ -343,7 +345,7 @@ VARIABLE FR  VARIABLE SC                           \ the frame and the scope bei
   FR @ 2 CELLS + @ 0 ?DO  FR @ I CAP@ OVER = IF DROP I UNLOOP EXIT THEN  LOOP
   FR @ 2 CELLS + @ FR @ 4 CELLS + @ = IF CAPS-GROW THEN
   FR @ 2 CELLS + @ TUCK CELLS FR @ 3 CELLS + @ + !  1 FR @ 2 CELLS + +! ;
-VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ the prompt's session (869)
+VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   \ the prompt's session (869)
 : MAIN-V? ( v --- f )   \ the script's variable, seen from a def (884) - or a top-level one, from anywhere (929)
   DUP 3 CELLS + @ MAIN-FR @ =  SWAP 6 CELLS + @  FR @ @ 1 = OR  AND ;
 : REF ( v --- c-addr u )   \ v's cell - its value, unboxed: in this frame's slots, the main frame's, or this block's captures
@@ -356,30 +358,6 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   VARIABLE DEFS-SAID   \ 
   2DUP S" args" COMPARE 0= IF 2DROP T" SCRIPT-ARGS" EXIT THEN     \ the script's arguments, a list (870)
   2DUP S" job" COMPARE 0= IF 2DROP T" JOB @ D-NUM" EXIT THEN       \ the last job & started, for wait $job (905)
   S" no variable $" S| 2SWAP CAT S" - var makes one" ++ G-ERR ;
-VARIABLE DEFS  VARIABLE DEFS#  VARIABLE DEFS-CAP   \ the script's defs, in the heap, grown as they come (891; 64 at most
-                                                   \ before): [name][length][parameters][plain] each
-VARIABLE DH  VARIABLE DH-CAP      \ the defs' hash table (909): each slot an index + 1, 0 empty - DEF-FIND had compared
-                                   \ every def's name, and 4,000 defs took a second to compile
-: NAME-H ( c-addr u --- h )   2166136261 ROT ROT OVER + SWAP ?DO  I C@ XOR 16777619 *  LOOP ;
-: DH-SLOT ( c-addr u --- addr )   \ the slot holding the name's index + 1, or the empty one it would take
-  2DUP NAME-H DH-CAP @ 1- AND
-  BEGIN  DUP CELLS DH @ + @ ?DUP WHILE
-    1- 5 * CELLS DEFS @ +  DUP @ SWAP CELL+ @  4 PICK 4 PICK COMPARE 0= IF  CELLS DH @ + NIP NIP EXIT  THEN
-    1+ DH-CAP @ 1- AND  REPEAT
-  CELLS DH @ + NIP NIP ;
-: DH-ADD ( i --- )   DUP 5 * CELLS DEFS @ + DUP @ SWAP CELL+ @ DH-SLOT  SWAP 1+ SWAP ! ;
-: DH-BUILD ( --- )   \ twice as many slots as defs at least, every def put back
-  DH-CAP @ 2* 64 MAX  BEGIN DUP DEFS# @ 2* < WHILE 2* REPEAT  DUP DH-CAP !
-  CELLS DH @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW DH !  DH @ DH-CAP @ CELLS ERASE
-  DEFS# @ 0 ?DO  I DH-ADD  LOOP ;
-: DEF-FIND ( c-addr u --- entry | 0 )
-  DH @ 0= IF 2DROP 0 EXIT THEN  DH-SLOT @ ?DUP IF 1- 5 * CELLS DEFS @ + ELSE 0 THEN ;
-: DEF-ADD ( c-addr u n plain --- )   \ [name][length][parameters][no return in it: called plain (878)]
-  >R >R 2DUP DEF-FIND ?DUP IF NIP NIP R> OVER 2 CELLS + !  R> SWAP 3 CELLS + ! EXIT THEN
-  DEFS# @ DEFS-CAP @ = IF  DEFS-CAP @ 2* 16 MAX DUP DEFS-CAP !  5 * CELLS  DEFS @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW DEFS !  THEN
-  RH$ DEFS @ DEFS# @ 5 * CELLS +  TUCK CELL+ !  TUCK !  R> OVER 2 CELLS + !  R> OVER 3 CELLS + !
-  3 CELLS ALLOCATE THROW DUP 3 CELLS ERASE  SWAP 4 CELLS + !  1 DEFS# +!     \ its record, kept: calls read it (926)
-  DEFS# @ 2* DH-CAP @ > IF DH-BUILD ELSE DEFS# @ 1- DH-ADD THEN ;
 : OUT+ ( c-addr u --- )   \ to the output, a blank after it
   DUP OUP @ + 1+ OUE @ > IF TOO-BIG THEN  OUP @ SWAP DUP >R MOVE  R> OUP +!  BL OUP @ C!  1 OUP +! ;
 : TK-IDX ( c-addr u --- i )   DROP 1+ DUP C@ 16 LSHIFT OVER 1+ C@ 8 LSHIFT OR SWAP 2 + C@ OR ;   \ a made word's number, from its call
@@ -419,15 +397,15 @@ VARIABLE DH  VARIABLE DH-CAP      \ the defs' hash table (909): each slot an ind
   2DUP S" export" COMPARE 0= IF S" set env[NAME] value" SH-SAYS THEN
   2DUP S" local declare typeset" IN-LIST? IF S" var name value - a def's variables are its own" SH-SAYS THEN
   2DUP S" unset" COMPARE 0= IF S" del name[key], del env[NAME]" SH-SAYS THEN
-  2DUP S" function alias" IN-LIST? IF S" def name { ... }" SH-SAYS THEN
+  2DUP S" function alias" IN-LIST? IF S" var name {|params| ... }" SH-SAYS THEN
   2DUP S" then fi do done esac" IN-LIST? IF S" blocks: if cond { }, while cond { }, for x values { }, case v { }" SH-SAYS THEN
   2DUP [CHAR] = SCAN NIP IF  2DUP 2DUP [CHAR] = SCAN NIP - HABIT-NAME? IF S" var x 5 makes a variable, set x 5 changes one, set env[X] 5 the environment" SH-SAYS THEN THEN
   2DROP ;
 : FIND-FN ( c-addr u --- f )   FIND-VAR DUP IF 7 CELLS + @ 0<> THEN ;   \ a variable a block was written to: a function (929)
 : PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program - unless it is sh's (916)
   DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
-  2DUP S" var set put echo append if for while def break continue return count range merge true false each has split join keys cd exit wait match read kind source glob del slice case trap upper lower forth" IN-LIST?
-  >R 2DUP DEF-FIND R> OR IF 2DROP 0 EXIT THEN  2DUP FIND-FN IF 2DROP 0 EXIT THEN  SH-HABIT -1 ;
+  2DUP S" var set put echo append if for while break continue return count range merge true false each has split join keys cd exit wait match read kind source glob del slice case trap upper lower forth" IN-LIST?
+  IF 2DROP 0 EXIT THEN  2DUP FIND-FN IF 2DROP 0 EXIT THEN  SH-HABIT -1 ;
 : CHAIN-ANDOR ( from to --- w )   \ in if's or while's command: && and || in a condition are the condition's (914)
   SWAP -1 >R
   BEGIN 2DUP <> WHILE
@@ -516,11 +494,11 @@ VARIABLE SCAN-BK
   DUP SCAN-BK !  DUP NSKIP SWAP N+                 \ parameters (929): a nested block's use of one is scanned there
   BEGIN 2DUP <> WHILE
     DUP @ N-VR = IF DUP @A OVER @B 2DUP SCAN-BK @ OWN-PARAM? IF 2DROP ELSE CAPS+ THEN THEN
-  N+ REPEAT 2DROP ;
+    DUP @ N-CMD = IF DUP N+ DUP BARE? IF BARE$ 2DUP HABIT-NAME? IF CAPS+ ELSE 2DROP THEN ELSE DROP THEN THEN   \ a function called by
+  N+ REPEAT 2DROP ;                               \ its name is a use of its variable too (930): a local one calling itself
 : MARK ( w --- )   N+ DUP @ N-BK = IF 1 SWAP 2 CELLS + ! ELSE DROP THEN ;   \ a body made in place, or in its own frame
 : MARK-CMD ( cmd --- )   \ if's, elif's and else's bodies, a loop's, a def's: no value, nothing captured
   N+ DUP S" if" BARE= IF  BEGIN DUP @ WHILE DUP MARK NSKIP REPEAT DROP EXIT THEN
-  DUP S" def" BARE= IF  NSKIP DUP @ IF NSKIP DUP @ IF MARK EXIT THEN THEN DROP EXIT THEN
   DUP S" while" BARE= OVER S" for" BARE= OR IF  DUP WORDS-END LAST-W MARK EXIT THEN  DROP ;
 : SCAN-CAPS ( --- )   0 CAPS# !
   ND0 @ BEGIN DUP NDP @ U< WHILE DUP @ N-CMD = IF DUP MARK-CMD THEN N+ REPEAT DROP
@@ -537,7 +515,7 @@ VARIABLE SCAN-BK
   2 PICK S" return" BARE-IN? IF  S" B" FRESH 2SWAP 2OVER 2SWAP T-DEF OUT+
     T-TICK$ T" BLK-TAIL" ++  T" ACT-PUSH D-NUM 0 LS!" 2SWAP ++  THEN
   ROT @A >R  2OVER TK-IDX T-BEGIN  T" [ 0 R-MARK ]" ++  FR @ CELL+ @ T#++ T" FRAME" ++   \ its binding no line: the call's said
-  R> ?DUP IF T# R> T#++ T" BIND-M" ++ ELSE R> DROP T" DROP" THEN ++  2SWAP ++ T" UNFRAME" ++ T-END ++ OUT+
+  R> T# R> T#++ T" BIND-K" ++ ++  2SWAP ++ T" UNFRAME" ++ T-END ++ OUT+   \ its arguments on the stack (930)
   FR @ )SCOPE R> FR !
   0 0 TOP$ 2 PICK 2 CELLS + @ 0 ?DO  2 PICK I CAP@ REF SEQ+  LOOP
   ROT 2 CELLS + @ T#++ 2SWAP T-TICK$ ++ T" BLK-NEW" ++ ;
@@ -636,17 +614,9 @@ VARIABLE ARM-1ST
   0 0 LOOP-BODY DROP
   ?DUP 0= IF  >R >R T" BEGIN" 2SWAP ++ T" WHILE" ++ R> R> ++ T" REPEAT" ++ OK$ EXIT THEN   \ plain: compiled in place
   T#  5 ROLL 5 ROLL T-TICK$ ++  2SWAP T-TICK$ ++ T" C-WHILE" ++ OK$ ;
-: DEF-ERR ( --- )   S" def name { ... }" G-ERR ;
-: DEF-CMD ( from to --- c-addr u )   \ def name { |params| ... }: CM.D.name, a deferred word - its frame of its own
-  FR @ @ SC @ @ OR IF S" def is for the script's top level (v0)" G-ERR THEN
-  OVER SWAP TWO? 0= IF DEF-ERR THEN  DUP BARE? 0= IF DEF-ERR THEN
-  DUP NSKIP N+ DUP @ N-BK <> IF DEF-ERR THEN
-  SWAP BARE$ ROT  FR @ >R SC @ >R  1 NEW-FRAME FR !  SCOPE(  S" %def" 0 0 VAR+ DROP   \ its scope's parent the script's (884)
-  N+ PARAMS >R  BODY-CODE
-  S" D" FRESH 2SWAP 2OVER 2SWAP T-DEF 2SWAP T-TICK$ ++     \ its body a made word, its record set to it (926)
-  FR @ CELL+ @ 1- T#++  R> T#++  2SWAP DEF-FIND 4 CELLS + @ T#++  T" DEF-SET" ++ OUT+
-  R> SC ! R> FR !  0 0 ;
-: NAME? ( c-addr u --- f )   DUP 0= IF 2DROP 0 EXIT THEN  OVER C@ NAME0? ROT ROT 0 ?DO DUP I + C@ NAMEC? ROT AND SWAP LOOP DROP ;
+: NAME? ( c-addr u --- f )   \ a name: a letter or _ first; letters, digits, _, and - inside, not last (930: -, kebab-case)
+  DUP 0= IF 2DROP 0 EXIT THEN  OVER C@ NAME0? 0= IF 2DROP 0 EXIT THEN  2DUP + 1- C@ [CHAR] - = IF 2DROP 0 EXIT THEN
+  -1 ROT ROT 0 ?DO  DUP I + C@ DUP NAMEC? SWAP [CHAR] - = OR  ROT AND SWAP  LOOP DROP ;
 : BIND ( from to --- name value )   \ var name value, set name value: their two words
   2DUP TWO? 0= IF S" var name value, set name value" G-ERR THEN  DROP DUP NSKIP ;
 : IN-SCOPE? ( c-addr u --- f )   \ the name declared in this scope itself
@@ -657,8 +627,17 @@ VARIABLE ARM-1ST
   SC @ CELL+ @ BEGIN ?DUP WHILE  >R 2DUP R@ CELL+ @ R@ 2 CELLS + @ COMPARE 0=
     IF 2DROP R@ 6 CELLS + @ -1 = IF R> EXIT THEN R> DROP 0 EXIT THEN  R> @ REPEAT 2DROP 0 ;
 VARIABLE FN-NEXT   \ the var being made has a block written as its value: a function (929)
+: VAR-FN ( nw vw --- c-addr u )   \ var f { ... } below the top level: f declared before its block is made, so
+  SWAP BARE$                                      \ the block can call itself (930) - in its box, made first
+  2DUP NAME? 0= IF S" var: a name, not" S| 2SWAP ++ G-ERR THEN
+  2DUP IN-SCOPE? SESSION @ 0= AND IF S| S" is declared here already - set changes it" ++ G-ERR THEN
+  2DUP CAPTURED? DUP >R DECLARE  -1 OVER 7 CELLS + !  V-SLOT  R> IF                                ( vw slot )
+    DUP >R T" 0 UPV-NEW" ROT T#++ T" LS!" ++  ROT VALUE-CODE ++  R> T#++ T" LS@ UPV!" ++ EXIT THEN
+  >R VALUE-CODE R> T#++ T" LS!" ++ ;
 : VAR-CMD ( from to --- c-addr u )   \ var name value
-  BIND OVER BARE? 0= IF S" var: a name first" G-ERR THEN  DUP N+ @ N-BK = >R  VALUE-CODE ROT BARE$  R> FN-NEXT !
+  BIND OVER BARE? 0= IF S" var: a name first" G-ERR THEN
+  DUP N+ @ N-BK = IF OVER BARE$ HOISTED 0= IF VAR-FN EXIT THEN THEN
+  DUP N+ @ N-BK = >R  VALUE-CODE ROT BARE$  R> FN-NEXT !
   2DUP HOISTED ?DUP IF NIP NIP 1 OVER 6 CELLS + !  V-SLOT T#++ T" LS!" ++ EXIT THEN   \ its slot, set now
   2DUP NAME? 0= IF S" var: a name, not" S| 2SWAP ++ G-ERR THEN
   2DUP IN-SCOPE? SESSION @ 0= AND IF S| S" is declared here already - set changes it" ++ G-ERR THEN   \ (879)
@@ -687,12 +666,8 @@ VARIABLE FN-NEXT   \ the var being made has a block written as its value: a func
   BIND SWAP TARGET >R VALUE-CODE R> SET-TO ;           \ so a key any word: $k too (881)
 : READ-CMD ( from to --- c-addr u )   \ read name: a line of stdin into it - status 1 at the end (886)
   OVER NSKIP <> IF S" read takes one name" G-ERR THEN  TARGET T" STDIN-LINE" ROT SET-TO ;
-: ARITY-CHECK ( c-addr u from to k --- c-addr u )   \ a def given its words, none an @: their count checked here (879)
-  >R  0 ROT ROT SWAP BEGIN 2DUP <> WHILE  DUP N+ @ N-SP = IF 2DROP DROP R> DROP EXIT THEN  ROT 1+ ROT ROT NSKIP REPEAT 2DROP
-  DUP R@ = IF DROP R> DROP EXIT THEN
-  >R 2DUP S| S" wants" ++ R> R> SWAP >R #++ S" , given" CAT R> #++ G-ERR ;
-: PLAIN-ARGS? ( from to k --- f )   \ k words, none an @ spread: a def's arguments go on the stack
-  >R BEGIN 2DUP <> WHILE  OVER N+ @ N-SP = IF 2DROP R> DROP 0 EXIT THEN  R> 1- >R  SWAP NSKIP SWAP  REPEAT 2DROP R> 0= ;
+: WORDS# ( from to --- n )   0 ROT ROT BEGIN 2DUP <> WHILE SWAP NSKIP SWAP ROT 1+ ROT ROT REPEAT 2DROP ;
+: PLAIN-ARGS0? ( from to x --- f )   DROP BEGIN 2DUP <> WHILE  OVER N+ @ N-SP = IF 2DROP 0 EXIT THEN  SWAP NSKIP SWAP  REPEAT 2DROP -1 ;   \ no spread
 : STACK-CODE ( from to --- c-addr u )   \ each word's value, in order
   >R >R 0 0 TOP$  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R WORD-CODE SEQ+ REPEAT  R> R> 2DROP ;
 : APPEND-ERR ( --- )   S" append name values - name a list's variable, name[key] too" G-ERR ;
@@ -724,14 +699,10 @@ VARIABLE FN-NEXT   \ the var being made has a block written as its value: a func
     2OVER 2DUP = IF 2DROP 0 ELSE LAST-W N+ DUP @ N-BK = SWAP @A 0= AND THEN
     0= IF S" ... { body } - a block with no parameters" ++ G-ERR THEN
     S" for" COMPARE 0= IF FOR-CMD ELSE WHILE-CMD THEN EXIT THEN
-  S" def" NAMED? IF 2DROP DEF-CMD EXIT THEN
+  S" def" NAMED? IF S" def is gone (930) - var name {|params| ... } makes a function" G-ERR THEN
   S" source" NAMED? IF S" source is for the script's top level" G-ERR THEN    \ (890)
-  2DUP FIND-FN IF  2SWAP ARGS-CODE  2SWAP 2DUP >R >R READ$ ++  R> R> SQ$ ++  T" CALL-NAMED" ++ EXIT THEN   \ a function (929)
-  2DUP DEF-FIND ?DUP IF >R 2SWAP                    \ a def: its arguments on the stack when they are its k words, no @ (868)
-    2OVER 2OVER R@ 2 CELLS + @ ARITY-CHECK 2DROP
-    2DUP R@ 2 CELLS + @ PLAIN-ARGS? DUP >R IF STACK-CODE ELSE ARGS-CODE THEN  R> R@ 2 CELLS + @ SWAP >R T#++
-    2SWAP 2DROP  R> R@ 4 CELLS + @ SWAP >R T#++                       \ the def's record (926)
-    R> IF R@ 3 CELLS + @ IF T" DEF-R-P" ELSE T" DEF-R-S" THEN ELSE R@ DUP @ SWAP CELL+ @ SQ$ T" CALLING 2! DEF-R-M" ++ THEN ++ R> DROP EXIT THEN
+  2DUP FIND-FN IF  2SWAP 2DUP 999999 PLAIN-ARGS0? IF  2DUP WORDS# >R STACK-CODE R> T#++  2SWAP 2DUP >R >R READ$ ++  R> R> SQ$ ++  T" CALL-NAMED-S" ++ EXIT THEN
+    ARGS-CODE  2SWAP 2DUP >R >R READ$ ++  R> R> SQ$ ++  T" CALL-NAMED" ++ EXIT THEN   \ a function (929): its arguments on the stack (930)
   S" : no such command" CAT G-ERR ;
 
 \ ---- pipelines (859, 862): programs side by side an OS pipeline, a function's stage run to its end
@@ -832,15 +803,9 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
 ' CMD-RANGE' IS CMD-RANGE
 
 \ ---- a script
-: PLAIN-DEF? ( bk --- f )   \ a def with no return in it, in a script: called with no activation and no CATCH (878)
-  SESSION @ IF DROP 0 EXIT THEN  S" return" BARE-IN? 0= ;
-: DEF-LINE? ( cmd --- w bk -1 | 0 )   \ def name { ... }, exactly
-  N+ DUP S" def" BARE= 0= IF DROP 0 EXIT THEN  NSKIP DUP @ 0= IF DROP 0 EXIT THEN  DUP BARE? 0= IF DROP 0 EXIT THEN
-  DUP NSKIP DUP @ 0= IF 2DROP 0 EXIT THEN  DUP NSKIP @ IF 2DROP 0 EXIT THEN
-  N+ DUP @ N-BK <> IF 2DROP 0 EXIT THEN  -1 ;
 255 CONSTANT SESSION-SLOTS
 : NAMES-NEW ( --- )   \ no names yet: a script's, or a session's start
-  0 DEFS# !  0 DEFS-SAID !  0 CAPS !  0 CAPS-CAP !  DH @ IF DH @ DH-CAP @ CELLS ERASE THEN
+  0 CAPS !  0 CAPS-CAP !
   0 NEW-FRAME FR !  0 SC !  SCOPE(  S" %def" 0 0 VAR+ DROP  FR @ MAIN-FR !  SC @ MAIN-SC ! ;
 : SCRIPT$ ( --- c-addr u )   SESSION @ SYS-ARGC 1 < OR IF S" " ELSE 0 SYS-ARG DUP CSTRLEN THEN ;
 : SF-START ( c-addr u --- )   \ the script's, or a prompt line's: texts freed - their words are made; a script's files
@@ -864,8 +829,7 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
   SESSION @ RH0 @ 0<> AND IF DROP ELSE  16 * 4096 + CELLS  1 20 LSHIFT SESSION @ AND MAX  RH0 RHP RHE AREA  NAMES-NEW  THEN
   MAIN-FR @ FR !  MAIN-SC @ SC !  0 PL !  0 AP !     \ a session's line after an error: back at the top
   ND0 @  0 0 CMDS N)  GEN0
-  DUP BEGIN DUP @ WHILE  DUP DEF-LINE? IF DUP PLAIN-DEF? >R @A >R BARE$ R> R> DEF-ADD THEN  NSKIP REPEAT DROP   \ defs known before their first call
-  DEFS# @ DEFS-SAID !  SCAN-CAPS
+  SCAN-CAPS
   SESSION @ 0= IF DUP BEGIN DUP @ WHILE  DUP HOIST  NSKIP REPEAT DROP THEN   \ (929) - the prompt's lines are compiled one by one
   0 0 TOP$ ROT BEGIN DUP @ WHILE  DUP >R CMD-CODE DUP IF T" R-GC?" 2SWAP ++ THEN SEQ+  R> NSKIP REPEAT DROP
   SESSION @ IF

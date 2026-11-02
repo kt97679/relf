@@ -14,7 +14,7 @@ for line @(cat $file) {
 }
 echo $conf
 echo port plus one: $(( $conf[port] + 1 ))
-def shout { tr a-z A-Z }
+var shout { tr a-z A-Z }
 echo $conf[name] | shout
 rm $file
 var tries 0

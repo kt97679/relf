@@ -953,6 +953,7 @@ do not trust the absence of a line below.
 - 927 — 926 reviewed by its code; lib/json.cm and lib/args.cm in rill3; $t[$i] linear, not quadratic; size budget in the verify
 - 928 — a failure untested ends a script (the owner's yes); closures stay
 - 929 — functions as blocks in variables, called by name; top-level variables known from the start; a block's return its own
+- 930 — def gone: functions are blocks in variables, called as fast; kebab-case names; += left out
 
 ### Not tied to an iteration
 

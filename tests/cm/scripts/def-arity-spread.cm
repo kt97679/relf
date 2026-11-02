@@ -1,5 +1,5 @@
 # a def given a list by @: the count checked when it is called (868) - after what ran before it
-def sq {|n| put $(( $n * $n )) }
+var sq {|n| put $(( $n * $n )) }
 echo $(sq 3)
 var l [3 4]
 echo $(sq @l)

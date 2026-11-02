@@ -1,6 +1,6 @@
 # a whole script (916), as one would write it
 # quicksort over a list of numbers, recursively
-def qsort {|l|
+var qsort {|l|
     if $(( $(count $l) <= 1 )) { put $l; return 0 }
     var pivot $l[0]
     var less []

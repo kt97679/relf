@@ -1,6 +1,6 @@
 # a function that puts two values and echoes between them: $( ) takes all it prints, in order, one text;
 # @( ) takes its values; var takes one value - @( ) of two is an error there (896)
-def two { put 1; echo between; put 2; echo after }
+var two { put 1; echo between; put 2; echo after }
 var x $(two)
 echo "[$x]" $(count $x)
 var l [@(two)]

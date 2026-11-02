@@ -1,6 +1,6 @@
 # a whole script (917), as one would write it
 # CSV with quoted fields: commas and quotes inside quotes
-def fields {|line|
+var fields {|line|
     var out []
     var cur ''
     var inq false

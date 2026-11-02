@@ -4,8 +4,8 @@ var root /tmp/cm-ws5-tree
 rm -rf $root
 mkdir -p "$root/src/lib" "$root/docs"
 touch "$root/README" "$root/src/main.cm" "$root/src/lib/util.cm" "$root/docs/guide.md"
-def base {|path| put [@(split $path /)][-1] }
-def show {|dir indent|
+var base {|path| put [@(split $path /)][-1] }
+var show {|dir indent|
     for p @(glob "$dir/*") {
         if test -d $p { echo "$indent$(base $p)/"; show $p "$indent  " } else { echo "$indent$(base $p)" }
     }

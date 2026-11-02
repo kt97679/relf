@@ -1,6 +1,6 @@
 # a whole script (914), as one would write it
 # compare and sort version numbers
-def newer {|a b|
+var newer {|a b|
     var x [@(split $a .)]
     var y [@(split $b .)]
     for i @(range 3) {

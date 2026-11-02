@@ -3,10 +3,10 @@
 echo hello > /tmp/cm-875.txt
 echo more >> /tmp/cm-875.txt
 cat /tmp/cm-875.txt
-def greet {|who| echo hi $who; put done }
+var greet {|who| echo hi $who; put done }
 greet ada > /tmp/cm-875.txt
 cat /tmp/cm-875.txt
-def outer { echo inner > /tmp/cm-875-in.txt; echo outer }
+var outer { echo inner > /tmp/cm-875-in.txt; echo outer }
 outer > /tmp/cm-875-out.txt
 cat /tmp/cm-875-in.txt /tmp/cm-875-out.txt
 echo said on stderr, here on stdout 2>&1 >&2

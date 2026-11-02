@@ -1,6 +1,6 @@
 # a whole script (915), as one would write it
 # number the lines of what comes in, as nl does, skipping blank ones
-def number {
+var number {
     var n 0
     var line ''
     while read line {

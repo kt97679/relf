@@ -63,7 +63,7 @@ Each names the aim it serves; those marked (owner) change the language and need 
 2. **Done (924).** **Modules: `source` once, by name.** A second `source` of a file does nothing (an error now); a
    name with no `/` is looked for in a library path (next to the script, then `$env[RILL3_PATH]`).
    The same word, not a new one - kbool, Elvish, YSH. Aims: one way; shorter scripts.
-3. **(owner) Counting.** 23 increments and 5 map counts in 714 lines. One form for it - `set n +=
+3. **Left out (930), the owner's word: to be added if needed.** **(owner) Counting.** 23 increments and 5 map counts in 714 lines. One form for it - `set n +=
    1`, or a missing key read as 0 in `$(( ))` - or none, keeping one way. Decide with the numbers.
 4. **Done (927).** **A library in rill3 itself, not the binary:** `lib/json.cm` (to and from JSON - Elvish, Murex,
    YSH have it built in), `lib/args.cm` (options and `--help` - Amber's users' wish; ws-args is the
@@ -72,7 +72,7 @@ Each names the aim it serves; those marked (owner) change the language and need 
 5. **The owner's yes (928): closures for now, to see whether something else is needed.** **(owner) OOP stays closures.** No classes, no `$obj.method` - a second way to call; es, Elvish
    and Hush have no user types either. The reference shows the pattern: an object a map of blocks,
    `inherited` by keeping the parent's block before overriding.
-6. **(owner) One kind of function, as es has it.** `def f {|x| }` the same as a block in a
+6. **Done (929-930), the owner's yes.** **(owner) One kind of function, as es has it.** `def f {|x| }` the same as a block in a
    variable, called by name - the defs table and its lookup gone. Aims: one way; a smaller front end.
 7. **Done (925).** **The rules, numbered and few.** The reference's syntax as a short list, as Tcl's twelve; each
    feature placed under one, a new rule argued for. Aim: simple syntax, kept so.

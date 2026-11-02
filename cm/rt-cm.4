@@ -46,8 +46,8 @@ VARIABLE MFP                                       \ the main frame's, a script'
 ENV-MAX CELLS BUFFER: ENVS   VARIABLE ENV#
 VARIABLE ENV-CAP  ENV-MAX ENV-CAP !   ' ENVS >BODY START @ - CONSTANT ENVS'   \ grown when full (891)
 : E@ ( i --- item )   ENVS ENV# @ 1- CELLS + @  2 CELLS +  SWAP CELLS + @ ;
-: BLK-CALL ( i*x block --- j*x )   \ rule 11's block: run it
-  DUP D-KIND K-BLOCK <> IF S" cm: not a block" R-FAIL THEN
+: BLK-RUN ( a1 .. ak k block --- )   \ rule 11's block run, its arguments on the stack and their count (930):
+  DUP D-KIND K-BLOCK <> IF S" cm: not a block" R-FAIL THEN      \ its word binds them itself (BIND-K)
   CELL+ @  R-DEEP?  ENV# @ ENV-CAP @ < 0= IF  ENVS' BODY-OF BUF-GROW  ENV-CAP @ 2* ENV-CAP !  THEN
   DUP ENVS ENV# @ CELLS + !  1 ENV# +!
   LS# @ >R  FP @ >R  @ CATCH  R> R> ROT                    \ a block with a frame of its own (858):

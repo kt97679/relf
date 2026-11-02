@@ -1,8 +1,8 @@
 # a whole script (903), as one would write it
 # a memoised function: results kept in a map a closure holds
-def memoize {|f| var seen [:]; put {|n| if has $seen $n { put $seen[$n] } else { var v @($f $n); set seen[$n] $v; put $v } } }
+var memoize {|f| var seen [:]; put {|n| if has $seen $n { put $seen[$n] } else { var v @($f $n); set seen[$n] $v; put $v } } }
 var calls 0
-def slow-square {|n| set calls $(( $calls + 1 )); put $(( $n * $n )) }
+var slow-square {|n| set calls $(( $calls + 1 )); put $(( $n * $n )) }
 var fast @(memoize { |n| slow-square $n })
 for n @(range 3) { $fast $n }
 for n @(range 3) { $fast $n }

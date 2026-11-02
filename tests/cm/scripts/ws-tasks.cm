@@ -3,7 +3,7 @@
 var deps [build: [compile assets]  compile: [fetch]  assets: [fetch]  fetch: []  test: [build]]
 var cmds [fetch: 'echo fetching'  compile: 'echo compiling'  assets: 'echo bundling assets'  build: 'echo linking'  test: 'echo testing']
 var done [:]
-def run-task {|name|
+var run-task {|name|
     if has $done $name { return 0 }
     if ! has $deps $name { echo "no task $name" >&2; return 1 }
     for d @deps[$name] { run-task $d || return 1 }

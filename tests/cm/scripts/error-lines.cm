@@ -1,6 +1,6 @@
 # a runtime error says its line (887): each command's code is marked with its line as it is compiled - no
 # cost when it runs - and the error finds the innermost mark under it: in a def, the def's line
-def half {|n| put $(( $n / 2 )) }
+var half {|n| put $(( $n / 2 )) }
 echo $(half 10)
 var items [a b]
 for i @(range 2) {

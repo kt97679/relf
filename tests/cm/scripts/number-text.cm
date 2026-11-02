@@ -6,7 +6,7 @@ echo range: @(range $n)
 var l [a b c d]
 echo index: $l[$n]
 echo slice: @(slice $l 1 $n)
-def two { return $n }
+var two { return $n }
 two || echo return: $status
 sh -c 'exit 4' &
 var j $(put $job)
