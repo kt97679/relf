@@ -1,0 +1,11 @@
+# a text read a character at a time by $t[$i] (927): each had started from the text's start and counted the
+# whole - 20,000 characters took 18 s; now on from the last one found, and an ASCII text's byte is its character
+var t $(printf '%050000d' 0)
+var n 0
+for i @(range $(count $t)) { if match $t[$i] 0 { set n $(( $n + 1 )) } }
+echo $n zeros
+var u "$(printf '%01000d' 0)é$(printf '%01000d' 0)日"
+var w ''
+for i @(range 11) { set w "$w$u[$(( 995 + $i ))]" }
+echo $w $u[-1] $u[1000] $(count $u)
+for i @(range 3) { echo $u[$(( 1001 - $i ))] }

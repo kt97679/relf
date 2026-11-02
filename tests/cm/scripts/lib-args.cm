@@ -1,0 +1,9 @@
+# lib/args.cm (927): options from a spec of defaults - flags, --name value, --name=value, the rest, an unknown one
+source ../../../lib/args.cm
+var spec [verbose: false  out: result.txt  count: 3]
+var o @(parse-args $spec [--verbose --out=x.txt file1 --count 5 file2])
+echo $o
+echo verbose: $o[verbose] out: $o[out] count: $(( $o[count] * 2 )) rest: $o[rest]
+var d @(parse-args $spec [only])
+echo $d
+parse-args $spec [--nope]

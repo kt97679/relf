@@ -15,4 +15,5 @@ for src in "$root"/cm/*.4 "$root/rill/rt.4" "$root/shell/edit.4"; do
         break
     fi
 done
+RILL3_PATH=${RILL3_PATH:+$RILL3_PATH:}$root/lib; export RILL3_PATH   # rill3's own library, last (927)
 exec "$root/relf64" "$img" "$@"

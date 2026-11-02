@@ -950,6 +950,7 @@ do not trust the absence of a line below.
 - 924 — forth words values... (Forth from rill3); source once, a bare name from $RILL3_PATH; names kept
 - 925 — the suite passes with busybox's tools too, and the verify runs it so
 - 926 — compiled to bytecode directly: tokens installed, no Forth text; start-up halved, 4,000 defs 4x faster
+- 927 — 926 reviewed by its code; lib/json.cm and lib/args.cm in rill3; $t[$i] linear, not quadratic; size budget in the verify
 
 ### Not tied to an iteration
 

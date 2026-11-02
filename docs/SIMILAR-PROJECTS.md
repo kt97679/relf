@@ -65,7 +65,7 @@ Each names the aim it serves; those marked (owner) change the language and need 
    The same word, not a new one - kbool, Elvish, YSH. Aims: one way; shorter scripts.
 3. **(owner) Counting.** 23 increments and 5 map counts in 714 lines. One form for it - `set n +=
    1`, or a missing key read as 0 in `$(( ))` - or none, keeping one way. Decide with the numbers.
-4. **A library in rill3 itself, not the binary:** `lib/json.cm` (to and from JSON - Elvish, Murex,
+4. **Done (927).** **A library in rill3 itself, not the binary:** `lib/json.cm` (to and from JSON - Elvish, Murex,
    YSH have it built in), `lib/args.cm` (options and `--help` - Amber's users' wish; ws-args is the
    start). Shipped beside the binary, loaded by item 2. Aims: small binary; the language tested by its
    own library.
@@ -76,11 +76,13 @@ Each names the aim it serves; those marked (owner) change the language and need 
    variable, called by name - the defs table and its lookup gone. Aims: one way; a smaller front end.
 7. **Done (925).** **The rules, numbered and few.** The reference's syntax as a short list, as Tcl's twelve; each
    feature placed under one, a new rule argued for. Aim: simple syntax, kept so.
-8. **A size budget.** 132 KB now, as dash. Each feature priced when added (as 909-919 were); the
+8. **Done (927): the verify records rill3's image, size:image-rill3.** **A size budget.** 132 KB now, as dash. Each feature priced when added (as 909-919 were); the
    front end's ~1 KB (901); TAB completion's 3.5 KB only for the prompt. Aim: small binary.
-9. **Move builtins that rill3 can write into the library** where speed allows - measured one by
+9. **Measured (927), nothing moved: the builtins are small - merge, the likeliest, is 152 bytes - and the
+   image's bulk is the front end, the runtime, the editor and its widths, TAB, the case tables.** **Move builtins that rill3 can write into the library** where speed allows - measured one by
    one. Aim: small binary.
-10. **An independent review** of core changes - the collector, the parser - by a fresh session
+10. **Done for 926 (927): tools/cm-code-diff.py compares the code two images make of every test script.**
+    **An independent review** of core changes - the collector, the parser - by a fresh session
     without the change's context, before it is committed (kbool's critic). Aim: fewer faults like 919's.
 11. **Done (925).** **Tests that do not need GNU tools.** The whole scripts call `date -d`, `seq` and GNU awk; run
     the suite with busybox's tools too, or keep tests to POSIX options. Aim: rill3 runs where sh does.

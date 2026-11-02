@@ -71,11 +71,24 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
   DUP D-KIND K-TEXT = IF D-TEXT SWAP D-TEXT R-CONTAINS D-BOOL EXIT THEN
   D-LIST DUP R-LEN 0 ?DO 2DUP I R-AT D-ITEM D== D-TRUE? IF 2DROP TRUE-BOX UNLOOP EXIT THEN LOOP  2DROP FALSE-BOX ;
 : D-IDX ( n len --- n' )   OVER 0< IF + ELSE DROP THEN ;          \ a negative index from the end
-: U-COUNT ( c-addr u --- n )   0 ROT ROT OVER + SWAP ?DO I C@ CONT? 0= - LOOP ;   \ a text's characters, UTF-8 (879)
-: U-START ( c-addr u i --- off )   \ the byte where character i starts, or u
-  >R 0 BEGIN DUP 2 PICK < WHILE
+: U-COUNT0 ( c-addr u --- n )   0 ROT ROT OVER + SWAP ?DO I C@ CONT? 0= - LOOP ;   \ a text's characters, UTF-8 (879)
+: U-FROM ( c-addr u off k --- off' )   \ from byte off, a character's start, k characters on: where the next starts, or u
+  >R BEGIN DUP 2 PICK < WHILE
     2 PICK OVER + C@ CONT? 0= IF R@ 0= IF NIP NIP R> DROP EXIT THEN R> 1- >R THEN  1+
   REPEAT NIP NIP R> DROP ;
+\ The last text counted or indexed, kept (927): its characters' count, and the last character found and its
+\ byte - so $t[$i] in a loop goes on from where the last one stopped, and an ASCII text's byte is its
+\ character. 20,000 characters read one by one had taken 18 s, each from the text's start, each counting
+\ the whole. Kept by the text's address and length, and the collector's count: a collection moves texts
+VARIABLE UC-A  VARIABLE UC-U  VARIABLE UC-N  VARIABLE UC-I  VARIABLE UC-B  VARIABLE UC-G
+: UC? ( c-addr u --- f )   UC-U @ = SWAP UC-A @ = AND  G-RUNS @ UC-G @ = AND ;
+: UC! ( c-addr u --- )   2DUP U-COUNT0 UC-N !  UC-U ! UC-A !  G-RUNS @ UC-G !  0 UC-I !  0 UC-B ! ;
+: U-COUNT ( c-addr u --- n )   2DUP UC? 0= IF 2DUP UC! THEN 2DROP UC-N @ ;
+: U-START ( c-addr u i --- off )   \ the byte where character i starts, or u
+  >R  2DUP UC? 0= IF 2DUP UC! THEN
+  UC-N @ UC-U @ = IF NIP R> MIN EXIT THEN                   \ ASCII: the byte is the character
+  R@ UC-I @ < IF 0 UC-I ! 0 UC-B ! THEN
+  UC-B @ R@ UC-I @ - U-FROM  DUP UC-B !  R> UC-I ! ;
 : T-CHAR ( t i --- t2 )   >R DUP R-T@ R@ U-START  OVER R-T@ R> 1+ U-START  R-TSLICE ;   \ character i, its bytes
 : D-AT ( a i --- item )   \ a list's item, a text's character, a record's value
   OVER D-KIND K-REC = IF D-TEXT SWAP D-REC R-GET D-ITEM EXIT THEN

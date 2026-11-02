@@ -1,0 +1,38 @@
+# lib/args.cm - a script's options, in rill3 itself (927): `source args.cm`.
+#   parse-args spec argv   puts a map: each option's value - its default unless given - and rest: a list
+#                          of the words that are no options. spec is a map, option to default: a default
+#                          true or false makes a flag (--name sets it true); any other a value, given as
+#                          --name value or --name=value. --help not in spec prints the options and exits 0;
+#                          an option not in spec, or a value missing, prints them and exits 2.
+#   usage spec             the options and their defaults, to stderr
+def usage {|spec| echo 'options:' >&2; for k @(keys $spec) { echo "  --$k (default: $spec[$k])" >&2 } }
+
+def parse-args {|spec argv|
+    var out [:]
+    for k @(keys $spec) { set out[$k] $spec[$k] }
+    var rest []
+    var i 0
+    var n $(count $argv)
+    while $(( $i < $n )) {
+        var a $argv[$i]
+        set i $(( $i + 1 ))
+        if ! match $a '--?*' { append rest $a; continue }
+        var name $(slice $a 2)
+        var value ''
+        var given false
+        if match $name '*=*' { var kv [@(split $name =)]; set name $kv[0]; set value $(join = @(slice $kv 1)); set given true }
+        if ! has $spec $name {
+            if match $name help { usage $spec; exit 0 }
+            echo "unknown option --$name" >&2; usage $spec; exit 2
+        }
+        if match $(kind $spec[$name]) bool { set out[$name] true; continue }
+        if ! $given {
+            if $(( $i >= $n )) { echo "--$name wants a value" >&2; usage $spec; exit 2 }
+            set value $argv[$i]
+            set i $(( $i + 1 ))
+        }
+        set out[$name] $value
+    }
+    set out[rest] $rest
+    put $out
+}

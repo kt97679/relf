@@ -1,0 +1,9 @@
+[verbose: true  out: x.txt  count: 5  rest: [file1 file2]]
+verbose: true out: x.txt count: 10 rest: [file1 file2]
+[verbose: false  out: result.txt  count: 3  rest: [only]]
+unknown option --nope
+options:
+  --verbose (default: false)
+  --out (default: result.txt)
+  --count (default: 3)
+status 2

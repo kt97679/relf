@@ -644,6 +644,9 @@ emit size:image-x86_64       "$([ -f kernel64-shell.img ] && wc -c < kernel64-sh
 # i386 half is skipped wherever there is no 32-bit toolchain, and that
 # is a normal state, not a broken one (Iteration 394).
 emit size:image-i386         "$([ -f kernel32-shell.img ] && wc -c < kernel32-shell.img | tr -d ' ' || echo missing)"
+# rill3's image (927): its size budget - every byte it grows or shrinks is a line of this file's diff, priced
+# in the commit that moves it (SIMILAR-PROJECTS.md item 8)
+emit size:image-rill3        "$([ -f kernel64-cm.img ] && wc -c < kernel64-cm.img | tr -d ' ' || echo missing)"
 
 # ---------------------------------------------------------------
 # The scaffolding (Iteration 391)

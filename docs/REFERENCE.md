@@ -227,6 +227,7 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 | `read name` | a line of stdin into name; status 1 at the end |
 | `source file` | another script read in where the line stands, once - its path from this file's directory; a name with no `/` not there, from the directories of `$env[RILL3_PATH]`; at the prompt, a later line's source reloads |
 | `forth words values...` | Forth run in rill3's own image: the values onto its stack (a number a cell, a text its address and length), the words run, what they leave put as numbers |
+| `source json.cm`, `source args.cm` | rill3's own library, written in rill3, in `lib/` - `bin/cm` puts it last on `$env[RILL3_PATH]`: `to-json value`, `from-json text`; `parse-args spec argv` (a map of option defaults: a boolean a flag, else a value; `--help` lists them), `usage spec` |
 | `wait`, `wait $job` | wait for every job `&` started, the status the last ended with - or for that one job, its status |
 | `cd [dir]`, `exit [n]` | as sh's |
 | `trap { block } [EXIT INT TERM HUP]` | the block run when the script ends - at its end, by `exit`, by an error, or by a signal named, which then ends it with status 128 + the signal |

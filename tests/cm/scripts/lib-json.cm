@@ -1,0 +1,9 @@
+# lib/json.cm (927): to-json and from-json, written in rill3 - a round trip, escapes, \u, null, a fraction kept as text
+source ../../../lib/json.cm
+var doc [name: 'Ada "the first"'  langs: [forth rill3]  age: 36  ok: true  path: 'C:\temp'  note: "two\nlines"  empty: []  nested: [k: [:]]]
+var text $(to-json $doc)
+echo $text
+var back @(from-json $text)
+echo $back
+echo $(to-json $back)
+echo @(from-json '{"a": [1, 2, {"b": null}], "s": "caf\u00e9 \u65e5", "f": 1.5, "n": -42, "t": false}')
