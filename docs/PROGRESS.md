@@ -954,6 +954,7 @@ do not trust the absence of a line below.
 - 928 — a failure untested ends a script (the owner's yes); closures stay
 - 929 — functions as blocks in variables, called by name; top-level variables known from the start; a block's return its own
 - 930 — def gone: functions are blocks in variables, called as fast; kebab-case names; += left out
+- 931 — a round of whole scripts in the new language: all worked
 
 ### Not tied to an iteration
 

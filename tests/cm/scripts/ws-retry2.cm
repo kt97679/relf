@@ -1,0 +1,13 @@
+# a whole script (931), in the language as 928-930 left it: failures stop it, functions are blocks
+# retry a command until it succeeds, a function taking a block
+var attempts 0
+var flaky {|| set attempts $(( $attempts + 1 )); test $attempts -ge 3 }
+var retry {|times f|
+    for i @(range $times) {
+        if $f { echo "succeeded on try $(( $i + 1 ))"; return 0 }
+        echo "try $(( $i + 1 )) failed"
+    }
+    return 1
+}
+retry 5 $flaky
+retry 2 { false } || echo "gave up"

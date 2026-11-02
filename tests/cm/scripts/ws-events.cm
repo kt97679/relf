@@ -1,0 +1,12 @@
+# a whole script (931), in the language as 928-930 left it: failures stop it, functions are blocks
+# an event bus: handlers kept in a map of lists, functions as values
+var handlers [:]
+var on {|event f| if ! has $handlers $event { set handlers[$event] [] }; append handlers[$event] $f }
+var emit {|event data| if has $handlers $event { for h @handlers[$event] { $h $data } } }
+var log-it {|d| echo "log: $d" }
+on save $log-it
+on save {|d| echo "saved $d" }
+on quit {|d| echo bye }
+emit save report.txt
+emit quit ''
+emit unknown x

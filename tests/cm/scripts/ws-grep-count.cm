@@ -1,0 +1,10 @@
+# a whole script (931), in the language as 928-930 left it: failures stop it, functions are blocks
+# count matches per file - grep's status 1 (no match) is an answer here, not a failure
+printf 'apple\nbanana\n' > /tmp/cm-ws15-a.txt
+printf 'cherry\n' > /tmp/cm-ws15-b.txt
+var count-in {|pattern file|
+    var n $(grep -c $pattern $file || true)
+    put $n
+}
+for f @(glob '/tmp/cm-ws15-*.txt') { echo "$(slice $f -9): $(count-in an $f)" }
+rm /tmp/cm-ws15-a.txt /tmp/cm-ws15-b.txt

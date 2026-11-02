@@ -251,6 +251,8 @@ function that uses `return` - past it, `recursion too deep for the stacks`.
 ## For sh users
 
 - Values are never split or globbed: `"$x"` and `$x` are the same word. Quote to join: `"$dir/file"`.
+- A command that fails stops the script, as `set -e` would - tested ones aside (`if`, `while`, `&&`, `||`,
+  `!`). `cmd || true` lets one fail: `var n $(grep -c x f || true)`.
 - sh's forms are errors that name this language's way, when the script is read: `x=5`, `$1`,
   `for i in ...`, `name() { }`, `then`/`fi`/`do`/`done`, `export`, `local`, `unset`, backticks. A
   program not found says `cm: name: no such program`.
