@@ -1,9 +1,7 @@
-# every command sets a status (869): a builtin 0 - after a failure, && sees the builtin, not the failure
-false
-echo a && echo b
-false
-var x 1 && echo after var
-false
+# every command sets a status (869): a builtin 0. A failure untested ends a script (927); tested by || and
+# &&, it goes on - and what follows sees its own command's status, not the failure's
+false || echo a && echo b
+false || var x 1 && echo after var
 if false { echo no }
 echo if with no branch taken: $status
 true

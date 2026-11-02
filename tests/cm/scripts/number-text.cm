@@ -7,9 +7,9 @@ var l [a b c d]
 echo index: $l[$n]
 echo slice: @(slice $l 1 $n)
 def two { return $n }
-two; echo return: $status
+two || echo return: $status
 sh -c 'exit 4' &
 var j $(put $job)
-wait $j; echo wait: $status
+wait $j || echo wait: $status
 for i @(range $(count $l)) { echo i $i }
 exit $n

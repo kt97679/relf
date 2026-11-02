@@ -15,8 +15,7 @@ var dir /tmp
 ls $dir > /dev/null
 var n $(printf 'a\nb\n' | wc -l)
 echo "lines $n"
-false
-if $(( $status != 0 )) { echo failed }
+false || if $(( $status != 0 )) { echo failed }
 echo $(( -7 / 2 )) $(( -7 % 2 )) $(( 7 / 2 ))
 var c 0
 set c $(( $c + 1 ))

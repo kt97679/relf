@@ -1,11 +1,8 @@
 # var and set give the status of the command in their value (897): $( ) - or @( ) - the last one run, as sh's
 # x=$(cmd); a value with none, 0. It had been always 0, var's own - the program's failure lost
-var x $(grep x /no/such/file 2> /dev/null)
-echo grep: $status
-var y $(false)
-echo false: $status
-set y "a $(true) b $(false)"
-echo the last of two: $status
+var x $(grep x /no/such/file 2> /dev/null) || echo grep: $status
+var y $(false) || echo false: $status
+set y "a $(true) b $(false)" || echo the last of two: $status
 var z 5
 echo no capture: $status
 var w @(printf 'p\n')

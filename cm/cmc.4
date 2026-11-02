@@ -550,20 +550,27 @@ VARIABLE CAPS  VARIABLE CAPS#  VARIABLE CAPS-CAP   \ the names some block refers
     S" @ spreads into a command's words or a list - not here" G-ERR
   ENDCASE ;
 ' PIECE' IS PIECE
+VARIABLE CHK   \ compiling a statement's commands, not a condition's: ?FAIL after them (927)
 : CMD-CODE ( cmd --- c-addr u )   \ its code after [ line R-MARK ]: an error in it says its line (887)
-  DUP @A LN !  T" [" LN @ T#++ T" R-MARK ]" ++  ROT N+ DUP WORDS-END CMD-RANGE ++ ;
+  CHK @ >R -1 CHK !  DUP @A LN !  T" [" LN @ T#++ T" R-MARK ]" ++  ROT N+ DUP WORDS-END CMD-RANGE ++  R> CHK ! ;
 : BODY-CODE' ( cmd --- c-addr u )   \ each command's Forth, to the END
   LN @ >R  0 0 TOP$ ROT BEGIN DUP @ WHILE DUP >R CMD-CODE SEQ+ R> NSKIP REPEAT DROP  R> LN ! ;
 ' BODY-CODE' IS BODY-CODE
 
 \ ---- commands
 : OK$ ( c-addr u --- c-addr2 u2 )   T" 0 STATUS !" ++ ;   \ a builtin done: status 0, as every command sets one (869)
-: FLAG ( from to --- c-addr u )   \ a condition: ! ..., a value alone, or a command's status (859)
+: FLAG0 ( from to --- c-addr u )   \ a condition: ! ..., a value alone, or a command's status (859)
   2DUP = IF S" a condition was expected" G-ERR THEN
   2DUP TO-ANDOR OVER <> IF CMD-RANGE T" STATUS @ 0=" ++ EXIT THEN     \ a && b, ! a || b: the chain's status (914)
   OVER S" !" BARE= IF SWAP NSKIP SWAP RECURSE T" 0=" ++ EXIT THEN
   OVER NSKIP OVER = 2 PICK N+ @ N-TX <> AND IF DROP WORD-CODE T" D-COND" ++ EXIT THEN     \ true or false only (876)
   CMD-RANGE T" STATUS @ 0=" ++ ;
+\ A command that fails ends a script (927, the owner's): after a statement's command - the last of a chain
+\ of && and ||, if it ran - ?FAIL. Not when its status is tested: a condition of if, elif or while, a
+\ chain's commands but its last, a ! command - and what they call, as long as they run (TESTING, counted at
+\ run time). CHK: compiling a statement's commands, not a condition's. At the prompt nothing ends.
+\ (CHK: above CMD-CODE)
+: FLAG ( from to --- c-addr u )   CHK @ >R 0 CHK !  FLAG0  R> CHK !  T" TESTING+" 2SWAP ++ T" TESTING-" ++ ;
 : INLINE ( w --- c-addr u )   \ a block with no parameters, its commands made in place
   N+ DUP @ N-BK <> OVER @A OR IF S" a block with no parameters was expected" G-ERR THEN  SCOPE( N+ BODY-CODE )SCOPE ;
 : ELSE-ERR ( --- )   S" else { ... }" G-ERR ;
@@ -798,11 +805,14 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
 : NEG-SEGMENT ( from to --- c-addr u )   \ ! cmd: its status turned, as sh's ! (914) - had run a program named !
   OVER S" !" BARE= IF  SWAP NSKIP SWAP  2DUP = IF S" ! wants a command" G-ERR THEN
     SEGMENT T" STATUS @ 0= 1 AND STATUS !" ++ EXIT THEN  SEGMENT ;
+: SEG-CODE ( from to last? --- c-addr u )   \ a chain's command: checked if it is the last, tested if not
+  >R OVER S" !" BARE= IF R> DROP NEG-SEGMENT T" TESTING+" 2SWAP ++ T" TESTING-" ++ EXIT THEN
+  R> IF NEG-SEGMENT CHK @ IF T" STATUS @ IF ?FAIL THEN" ++ THEN ELSE NEG-SEGMENT T" TESTING+" 2SWAP ++ T" TESTING-" ++ THEN ;
 : CMD-RANGE' ( from to --- c-addr u )   \ a && b || c, as sh chains them (859)
-  TUCK OVER SWAP TO-ANDOR TUCK  2DUP = IF ERR-ANDOR THEN  NEG-SEGMENT
+  TUCK OVER SWAP TO-ANDOR TUCK  2DUP = IF ERR-ANDOR THEN  3 PICK OVER = SEG-CODE
   BEGIN 3 PICK 3 PICK <> WHILE
     2 PICK S" &&" BARE= IF T" STATUS @ 0= IF" ELSE T" STATUS @ IF" THEN ++
-    ROT NSKIP DUP 4 PICK TO-ANDOR 2DUP = IF ERR-ANDOR THEN  DUP >R NEG-SEGMENT ++ T" THEN" ++ R> ROT ROT
+    ROT NSKIP DUP 4 PICK TO-ANDOR 2DUP = IF ERR-ANDOR THEN  DUP >R DUP 5 PICK = SEG-CODE ++ T" THEN" ++ R> ROT ROT
   REPEAT  2SWAP 2DROP ;
 ' CMD-RANGE' IS CMD-RANGE
 

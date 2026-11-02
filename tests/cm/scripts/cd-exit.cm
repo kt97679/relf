@@ -1,8 +1,7 @@
 # cd and exit (873): cd's failure said, status 1, the script going on; exit ends it with its status
 cd /tmp
 pwd
-cd /no/such/dir
-echo cd failed: $status
+cd /no/such/dir || echo cd failed: $status
 cd /
 pwd
 exit 3

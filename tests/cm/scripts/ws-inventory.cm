@@ -8,7 +8,7 @@ def sell {|item n|
     if $(( $left == 0 )) { del stock[$item]; echo "$item sold out" } else { set stock[$item] $left }
 }
 sell pears 1
-sell apples 5
+sell apples 5 || echo "(not sold)"
 sell plums 2
-sell kiwis 1
+sell kiwis 1 || echo "(not sold)"
 echo left: $stock

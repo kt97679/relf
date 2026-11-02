@@ -169,6 +169,10 @@ CREATE CALLING 2 CELLS ALLOT                      \ the def a call with @ binds,
   0 ?DO  DUP I ARGN  2 PICK 1 I LSHIFT AND IF UPV-NEW THEN  I 1+ LS!  LOOP 2DROP ;
 : BIND-S ( a1 .. ak k mask --- )   \ slots k..1 from the stack's top down - in an upvalue where mask's bit is set (868)
   SWAP BEGIN ?DUP WHILE  >R  DUP 1 R@ 1- LSHIFT AND IF SWAP UPV-NEW ELSE SWAP THEN  R@ LS!  R> 1-  REPEAT DROP ;
+: TESTING+ ( --- )   1 TESTING +! ;   : TESTING- ( --- )   -1 TESTING +! ;
+: ?FAIL ( --- )   \ a statement's command failed, its status untested: the script ends there, with it (927)
+  FAIL-ON @ 0= TESTING @ OR IF EXIT THEN
+  STATUS @ R-STATUS !  R-ERR> ." cm: status " STATUS @ . ." - the script stops" R-ERR-NL  -4000 THROW ;
 : DEF-SET ( xt n mask rec --- )   >R  R@ 2 CELLS + !  R@ CELL+ !  R> ! ;   \ a def's record: [xt][frame][mask] (926)
 \ A def's call: its record read at each one - made again at the prompt, it holds the new body. The record
 \ rides the return stack, not the body's xt, which R-WHERE would have taken for a return into the def's

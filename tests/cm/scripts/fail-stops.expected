@@ -1,0 +1,9 @@
+start
+tested false
+or-ed
+after negation 1
+in f, its false tested by the if that called it
+f ok
+cm: status 3 - the script stops (line 12)
+trap runs
+status 3

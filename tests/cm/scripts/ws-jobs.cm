@@ -4,5 +4,4 @@ var dir /tmp/cm-ws2-jobs
 rm -rf $dir
 mkdir -p $dir
 for n @(range 4) { sh -c "sleep 0.$n; exit $n" > "$dir/$n.out" & }
-wait
-echo last status $status
+wait || echo last status $status

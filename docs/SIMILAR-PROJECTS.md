@@ -56,7 +56,7 @@ the simpler the syntax and the shorter the scripts, the better; ideally one way 
 
 Each names the aim it serves; those marked (owner) change the language and need the owner's word.
 
-1. **(owner) Failure stops the script.** A command that fails outside a condition - `if`, `while`,
+1. **Done (928), the owner's yes.** **(owner) Failure stops the script.** A command that fails outside a condition - `if`, `while`,
    `&&`, `||`, `!` - ends the script with its status and the line, as Elvish, NGS and Amber do; `cmd
    || true` to go on. One rule, no try/catch. Aims: safer and shorter scripts. The corpus has only 2 `||
    exit`, so the gain is safety more than length.
@@ -69,7 +69,7 @@ Each names the aim it serves; those marked (owner) change the language and need 
    YSH have it built in), `lib/args.cm` (options and `--help` - Amber's users' wish; ws-args is the
    start). Shipped beside the binary, loaded by item 2. Aims: small binary; the language tested by its
    own library.
-5. **(owner) OOP stays closures.** No classes, no `$obj.method` - a second way to call; es, Elvish
+5. **The owner's yes (928): closures for now, to see whether something else is needed.** **(owner) OOP stays closures.** No classes, no `$obj.method` - a second way to call; es, Elvish
    and Hush have no user types either. The reference shows the pattern: an object a map of blocks,
    `inherited` by keeping the parent's block before overriding.
 6. **(owner) One kind of function, as es has it.** `def f {|x| }` the same as a block in a

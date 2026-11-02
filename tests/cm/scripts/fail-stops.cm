@@ -1,0 +1,13 @@
+# a command that fails ends a script, with its status (927, the owner's): not when tested - if, while, the && || chain's
+# commands but its last, ! - nor what they call; a trap still runs; at the prompt nothing ends
+echo start
+if false { echo no } else { echo tested false }
+false || echo or-ed
+false && echo never
+! true
+echo after negation $status
+def f { false; echo "in f, its false tested by the if that called it" }
+if f { echo f ok } else { echo f failed, tested }
+trap { echo trap runs } EXIT
+var x $(sh -c "exit 3")
+echo not reached

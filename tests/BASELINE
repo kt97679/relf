@@ -10,11 +10,11 @@ asm:shell 1
 asm:shell-image reproduces
 bundle:pullable 1
 cm-asm:failed 0
-cm-asm:passed 184
+cm-asm:passed 186
 cm-busybox:failed 0
-cm-busybox:passed 184
+cm-busybox:passed 186
 cm:failed 0
-cm:passed 184
+cm:passed 186
 core:4byte 1
 core:8byte 1
 core:okmarkers 2136
@@ -115,7 +115,7 @@ size:engine-code-i386 21766
 size:engine-code-x86_64 26519
 size:i386 150936
 size:image-i386 120596
-size:image-rill3 83616
+size:image-rill3 84005
 size:image-x86_64 129028
 size:x86_64 168164
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0

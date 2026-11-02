@@ -11,8 +11,8 @@ for name alpha beta gamma {
 }
 echo "$(pad NAME 8)STATUS"
 for name @(keys $jobs) {
-    wait $jobs[$name]
-    var s $status
+    var s 0
+    wait $jobs[$name] || set s $status
     var word ok
     if $(( $s != 0 )) { set word "failed ($s)" }
     echo "$(pad $name 8)$word"

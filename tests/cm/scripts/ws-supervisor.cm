@@ -7,8 +7,8 @@ for name fast slow broken {
 }
 var failed 0
 for name @(keys $jobs) {
-    wait $jobs[$name]
-    var s $status
+    var s 0
+    wait $jobs[$name] || set s $status
     if $(( $s == 0 )) { echo "$name: ok" } else { echo "$name: failed with $s"; set failed $(( $failed + 1 )) }
 }
 echo "$failed failed"

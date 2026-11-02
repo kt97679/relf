@@ -4,13 +4,9 @@ sh -c 'exit 3' &
 var a $job
 sh -c 'sleep 0.1; exit 5' &
 var b $job
-wait $b
-echo b status $status
-wait $a
-echo a status $status
+wait $b || echo b status $status
+wait $a || echo a status $status
 sh -c 'exit 7' &
 var c $job
-wait
-echo all status $status
-wait $c
-echo c after a plain wait: $status
+wait || echo all status $status
+wait $c || echo c after a plain wait: $status

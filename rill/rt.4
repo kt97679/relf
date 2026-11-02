@@ -461,6 +461,7 @@ VARIABLE R-RET   VARIABLE R-RETV   \ return, from such a body: R-RET set, R-RETV
   2DUP 0 ?DO  DUP I + C@ 32 < IF  32 OVER I + C!  THEN  LOOP DROP ;
 DEFER R-COMPILE ( c-addr u --- c-addr2 u2 )   \ a script's text to tokens: cm/cmc.4's CM-COMPILE (926: to Forth text before)
 DEFER R-INSTALL ( c-addr u --- )   \ the tokens laid down and run: cm/ir.4's INSTALL (926)
+VARIABLE FAIL-ON   VARIABLE TESTING   \ a script, not the prompt: a command that fails ends it (927); a tested status
 DEFER R-REPL-D   \ the prompt, `rill` with no script (824): rill/compile.4 sets it
 DEFER R-SUFFIX ( --- c-addr u )   \ a script's ending: .rill - rill2's image makes it .r2 (834)
 : R-SUFFIX-RILL ( --- c-addr u )   S" .rill" ;   ' R-SUFFIX-RILL IS R-SUFFIX
@@ -471,7 +472,7 @@ DEFER R-SUFFIX ( --- c-addr u )   \ a script's ending: .rill - rill2's image mak
   \ to read from, and INCLUDED says "Error reading file" there; the
   \ program is read whole, its line ends made blanks, and EVALUATEd.
   SYS-ARGC 1 < IF R-REPL-D EXIT THEN                         \ no script: the prompt (824)
-  0 SYS-ARG DUP CSTRLEN 2DUP R-RILL? >R R-SLURP 2DUP R-SHEBANG? R> OR IF R-COMPILE R-INSTALL ELSE R-BLANKS EVALUATE THEN ;   \ a .4: Forth
+  0 SYS-ARG DUP CSTRLEN 2DUP R-RILL? >R R-SLURP 2DUP R-SHEBANG? R> OR IF -1 FAIL-ON ! 0 TESTING ! R-COMPILE R-INSTALL ELSE R-BLANKS EVALUATE THEN ;   \ a .4: Forth
 : R-INIT ( --- )
   \ What WARM and QUIT set before the interpreter reads - a boot word runs
   \ ahead of both, with the search order the build left (its wordlists'

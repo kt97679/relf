@@ -13,7 +13,6 @@ def asker {
     }
     echo the sum is $sum
     echo "what is left:" $(cat)
-    read line
-    echo "read at the end: status $status, [$line]"
+    read line || echo "read at the end: status $status, [$line]"
 }
 printf 'Ada\n3\n4\n\n9\n' | asker

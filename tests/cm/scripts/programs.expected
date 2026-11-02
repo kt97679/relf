@@ -12,5 +12,5 @@ after false
 after true
 grep failed: 2
 a missing program: 127
-cm: a list, map or block given to a program - @ spreads a list's items (line 22)
+cm: a list, map or block given to a program - @ spreads a list's items (line 21)
 status 2

@@ -65,8 +65,7 @@ cat /tmp/cm-ref.txt
 sleep 0 & 
 wait
 echo waited, status $status
-var out $(grep x /no/such 2>&1)
-echo var status $status
+var out $(grep x /no/such 2>&1) || echo var status $status
 # -- the environment and arguments
 set env[CM_REF] hello
 sh -c 'echo program sees $CM_REF'

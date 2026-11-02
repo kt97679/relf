@@ -1,0 +1,4 @@
+false
+echo the prompt goes on, status $status
+sh -c "exit 4"
+echo $status

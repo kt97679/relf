@@ -32,7 +32,8 @@ an eleventh.
    comparison.
 7. `var` makes a variable in its block, `set` changes one, `del` takes from one; a block and a def see
    the variables made before them, and keep them.
-8. Every command has a status; `if`, `while`, `&&`, `||` and `!` test it.
+8. Every command has a status; `if`, `while`, `&&`, `||` and `!` test it. In a script, a command that
+   fails and is not tested ends it, with its status.
 9. `|` carries bytes between programs and values between functions; `>` `>>` `<` `2>` `&>` `2>&1`
    redirect as sh's.
 10. The rest are builtins (the table below): control (`if` `for` `while` `case` `def` `return`
@@ -178,7 +179,7 @@ status; a text names a program to run, as `$EDITOR file` does: `var ed vi; $ed n
         var both [@(pair)]                  # [a b]
         var one @(sq 3)                     # the number 9
         echo $(range 3) @(range 3)          # "0\n1\n2" as one word, then 0 1 2
-        var out $(grep x /no/such 2>&1)         # $status 2
+        var out $(grep x /no/such 2>&1) || echo var status $status   # var status 2
 
 A function whose number of results varies is taken with `[@(f)]` - always a list - or `for x @(f)`.
 A number taken with `$(f)` is printed and read back as text; in a hot loop, `var x @(f)` keeps it a
