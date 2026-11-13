@@ -65,7 +65,6 @@ out=$("$THIS_SH" "$TMP_SCRIPT" 2>&1)
 assert_output_contains "a top-level return (outside any function) is diagnosed, not fatal" "not in a function" "$out"
 assert_output_contains "script execution continues normally after a top-level return" "after-toplevel-return123" "$out"
 
-rm -f "$TMP_SCRIPT"
 # A "return" inside a loop inside a function must end the loop, not
 # just the body line - "while :" would otherwise spin forever.
 printf 'f() {\n  echo start\n  while :\n  do\n    echo loop\n    return\n    echo never\n  done\n  echo post\n}\nf\necho "st=$?"\necho done\n' > "$TMP_SCRIPT"
@@ -83,4 +82,5 @@ assert_output_contains "return inside for: status kept"   "st=4" "$out"
 TESTS_RUN=$((TESTS_RUN + 1))
 case "$out" in *i=2*) TESTS_FAILED=$((TESTS_FAILED+1)); echo "FAIL: for loop continued past the return";; esac
 
+rm -f "$TMP_SCRIPT"
 report

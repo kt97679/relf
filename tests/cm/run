@@ -17,8 +17,6 @@ if python3 tools/reference-check.py > /tmp/cm-out.$$ 2>&1; then pass=$((pass + 1
 else fail=$((fail + 1)); echo "FAIL tools/reference-check.py"; cat /tmp/cm-out.$$; fi
 if python3 tools/reference-check.py docs/TUTORIAL.md tests/cm/scripts/tutorial.cm > /tmp/cm-out.$$ 2>&1; then pass=$((pass + 1))   # the tutorial's (932)
 else fail=$((fail + 1)); echo "FAIL tools/reference-check.py docs/TUTORIAL.md"; cat /tmp/cm-out.$$; fi
-if python3 tools/cm-tab-check.py > /tmp/cm-out.$$ 2>&1; then pass=$((pass + 1))    # TAB at the prompt, in a terminal (911)
-else fail=$((fail + 1)); echo "FAIL tools/cm-tab-check.py"; cat /tmp/cm-out.$$; fi
 if sh tools/build-cm-image.sh "$E" forth/kernel64.img /tmp/cm.$$.img > /dev/null 2>&1; then
     for t in tests/cm/*.4; do                                           # the runtime, driven from Forth (855-857)
         printf 'S" %s" INCLUDED\n' "$t" > /tmp/cm-run.$$.4
@@ -36,6 +34,8 @@ if sh tools/build-cm-image.sh "$E" forth/kernel64.img /tmp/cm.$$.img > /dev/null
         if cmp -s /tmp/cm-out.$$ "${t%.in}.expected"; then pass=$((pass + 1))
         else fail=$((fail + 1)); echo "FAIL $t"; diff "${t%.in}.expected" /tmp/cm-out.$$ | head -5; fi
     done
+    if python3 tools/cm-tab-check.py /tmp/cm.$$.img > /tmp/cm-out.$$ 2>&1; then pass=$((pass + 1))    # TAB at the prompt, in a terminal (911) - on the image built here (933)
+    else fail=$((fail + 1)); echo "FAIL tools/cm-tab-check.py"; cat /tmp/cm-out.$$; fi
 else fail=$((fail + 1)); echo "FAIL tools/build-cm-image.sh"; fi
 rm -f /tmp/cm.$$.img /tmp/cm-run.$$.4 /tmp/cm-out.$$
 echo "$pass passed, $fail failed (tests/cm)"

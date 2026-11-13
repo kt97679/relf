@@ -956,6 +956,7 @@ do not trust the absence of a line below.
 - 930 — def gone: functions are blocks in variables, called as fast; kebab-case names; += left out
 - 931 — a round of whole scripts in the new language: all worked
 - 932 — block calls without a CATCH (guarded only if break/continue); a round; echo -n said; docs/TUTORIAL.md
+- 933 — forth-vm-evolution's handoff read; its test patch applied; make builds the rill3 image
 
 ### Not tied to an iteration
 
