@@ -961,6 +961,7 @@ do not trust the absence of a line below.
 - 935 — dskew measured: nothing on this VM, reverted; (DO), UNLOOP left (0.1 %); `LIT n -` as ADDI -n
 - 936 — PICK an escaped primitive (-1.51 % dispatches; rill3 loops 5-6 % faster); cv8.c's layout penalty measured, -falign-labels the cure at a size cost
 - 937 — AArch64 and RISC-V under qemu: CORE as x86's, rill3 197/197; tools/xarch-check.sh
+- 938 — portable-knee on relf's workloads: its sets 2.6 % (shell) and 3.5 % (rill3) of dispatches; level with relf's engines on calls and branches; tools/knee-model.py
 
 ### Not tied to an iteration
 
