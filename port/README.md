@@ -21,12 +21,12 @@ from the process that saved it). Everything else is Forth:
 | file | what |
 | --- | --- |
 | relf.4 | extend.4's and safety.4's words a host lacks: NIP TUCK CASE ... ENVIRONMENT?, @XT !XT, the hooks |
-| strings.4 | CSTRLEN COMPARE and relf's SCAN: the design's C SCAN where it means relf's, COMPARE a byte loop (the lab only; gforth has its own, and CSTRLEN from relfsys.c) |
+| strings.4 | CSTRLEN COMPARE STR-EQ? and relf's SCAN: the design's C SCAN where it means relf's, COMPARE a cell at a time while the strings agree (the lab only; gforth has its own, and CSTRLEN from relfsys.c) |
 | alloc.4 | ALLOCATE FREE RESIZE as a C library's: size classes on 64 KB chunks - a design's own are an mmap and a munmap a block (the lab only) |
 | os.4 | the primitives over SYSCALL, relf's stack effects and result codes: files, processes, pipes, the terminal, directories, limits, time, the environment table, signals (a signalfd), TCP |
 | kernel-io.4 | kernel.4's file and terminal words over those, verbatim, and its ABORT" |
-| shadow.4 | shadow.4's SHADOW{ locals: the variable and a run-time word where relf has one opcode |
-| lab/ | a design's kernel (relf's of long ago): its search order, interpreter, JIT headers, the save |
+| shadow.4 | shadow.4's SHADOW{ locals: each local's save and restore inline, where relf has one opcode |
+| lab/ | a design's kernel (relf's of long ago): its search order, interpreter, JIT headers, the save; and a front end for its compiler (below) |
 | gforth/ | gforth's differences: a case-sensitive word list, relf's kernel cells, the boot |
 
 Signals are the one real difference in kind. relf catches a signal with a handler in the engine that
@@ -57,9 +57,9 @@ gives $0 as relf's engine does (RELF_ARGV0).
 ## What differs from relfsh
 
 tests/shell, 93 files and 1128 assertions: against the knee's build (portable-knee) 10 fail, against
-gforth-fast's 20, every one in the forth command's own Forth or in the layout; fastest-x86-64's (a JIT
-design) fails what the knee's does, but its run-forth-errors never ends - the JIT makes `: X RECURSE ;`
-a jump, so the runaway recursion it tests loops instead of overflowing:
+gforth-fast's 20, every one in the forth command's own Forth or in the layout; the JIT designs' fail
+what the knee's does (a forth command's words are interpreted there, so `: X RECURSE ;` overflows as on
+the knee - the JIT made it a jump, and run-forth-errors never ended, before Iteration 942):
 
 - A script without `#!` is run as `ENGINE IMAGE script` - the engine and image are two files, as relf's
   were before Iteration 506 (run-noshebang, 1).
@@ -70,8 +70,45 @@ a jump, so the runaway recursion it tests loops instead of overflowing:
   relf's "Undefined word XYZ"), its search-order words, its [COMPILE]; a fault there fails the command
   only, as in relf (run-forth-errors and run-coverage-gaps, 19).
 
-And speed. The shell's sources are compiled by the host's own compiler, which for a lab design is the
-kernel's simple one: a variable, a constant and every small word a call, where relf's has VAR@ and its
-slots, folded returns, superinstructions and an inliner. loop.sh is 56.9 million dispatches on the
-knee's build, 10.4 million of them calls, against relf's 15.1 million - so the designs, faster than relf
-on the lab's own benchmarks, run the shell 1.9-3.0 times slower than relfsh64 (docs/progress, Iteration 941).
+## Speed on a design: the front end
+
+A design runs the lab's Forth benchmarks faster than relf, and ran relfsh 1.9-3.0 times slower (Iteration
+941). Two reasons, both in what compiles the shell, not in the engines:
+
+- **The compiler.** The shell is compiled at build time by the design's kernel compiler, which calls every
+  word but its primitives: a variable is a call to DOVAR, a constant a call, CELLS or 2DUP or `-` a call to
+  a colon word. The lab's converter (tools/layout.py), which gives the kernel its slot opcodes, folds and
+  superinstructions, never sees the shell. loop.sh was 57.4 million dispatches on the knee, 10.4 million
+  of them calls, against relf's 15.1 million - the lab's benchmarks are mostly primitives; the shell is
+  variables, constants, small words and locals, which relf's compiler and instruction set were made for.
+- **The JIT took almost nothing.** A JIT design translates a word only if it can translate every word
+  below it. A few words it has no stencil for - the kernel's variables (a NOOP and DOVAR), the system
+  call, the kernel's SCAN, HERE and PAD (a variable's slot) - and calls of them left every word above
+  interpreted: fastest-x86-64 interpreted 32.8 million dispatches of loop.sh.
+
+lab/compile.4 is a front end for the kernel's COMPILE, (interp.4's INTERPRET calls it): variables, the
+kernel's too, and constants as literals (every absolute address recorded and moved at boot, as the image
+loads elsewhere each run - RELOCATE, PORT-BOOT's first); the kernel's small words inline; words of up to four tokens inline; POSTPONE
+through it. On a JIT design with the gene jitexec, a call of a word the JIT refuses goes through
+EXECUTE - native code runs a refused word in the interpreter - when that word cannot throw, and so does a
+call that would make a word deeper than the JIT's sixteen levels; the primitives its JIT lacks are
+found by probes. lab/jitwords.4 has the string words, HERE, PAD and the pictured numbers as the JIT takes
+them; lab/again.4 compiles again the words of the files the kernel's interpreter read. build.sh's VARLIT
+chooses the variables compiled as literals: 0 none (an interpreted design's default: its LIT64 reads
+its bytes one at a time, which costs what the call saved), 1 all, 2 the kernel's (a JIT design's: its
+JIT makes a call of our variables a literal itself, not of the kernel's).
+
+The JIT's THROW is a limit to respect: a THROW from interpreted code that native code called unwinds the
+return stack but not the machine's, and the catching code goes on in the innermost interpreter - the
+native caller's continuation is lost, and a later return through an outer interpreter lands in the
+wrong frame (on the bare design: `: T2 ABORT ; : T3 ['] T2 CATCH . ; : T5 ['] T3 EXECUTE 5 . ; T5` prints
+`-1` and not `5`). A word that calls THROW is never translated, nor any word that calls it, so the
+shell's parser, the interpreter and a forth command stay interpreted from their CATCH to their THROW;
+the front end keeps it so - no call through EXECUTE of a word that may throw, a forth command's own
+words left to the interpreter, PORT-BOOT too (its callees would be translated before RELOCATE ran).
+The port's fatal errors (out of memory, the locals' save stack) still go through it, as a fault does.
+
+Measured (Iteration 942, docs/progress has the table): fastest-x86-64 runs the shell in 0.25-0.28 of
+relfsh64's time (941: 2.4-2.7 times it), fastest-x86-32 0.33-0.40, best-all-round 0.48-0.55, small-jit
+1.50-1.63; the interpreted designs 1.6-2.7 (941: 1.8-3.3). The JIT designs' images are a quarter larger,
+their memory 924-944 KB at peak, their start 1.2-1.5 of relfsh64's.

@@ -7,8 +7,9 @@
 \ relf prints "Undefined word BAD" or "Stack error DROP" and the shell's
 \ forth command leaves the reporting to it (BUILTIN-FAILED). Words compiled
 \ by the kernel itself keep their own (":"'s "name too long" is one).
-\ Loaded after port/kernel-io.4, whose ABORT" these use; from here on the
-\ build's own files are read by this INTERPRET.
+\ Loaded right after port/lab/compile.4, whose inliner INTERPRET tells of
+\ each token; from here on the build's own files are read by this INTERPRET,
+\ and compiled by compile.4's COMPILE,. Its ABORT"s are port/relf.4's.
 
 BASE @  DECIMAL
 
@@ -34,14 +35,15 @@ VARIABLE CO-LIST   0 CO-LIST !     \ [next][xt], both offsets from START
    IF
     -1 = STATE @ AND
     IF
-     COMPILE,
+     INL-XT COMPILE,                       \ compile.4's inliner told each token
     ELSE
+     STATE @ IF INL-IMM THEN
      STATE @ 0= IF DUP CO? ABORT" compile only" THEN
      EXECUTE
     THEN
    ELSE DROP
     NUMBER? 0= ABORT" Undefined word" DROP
-    STATE @ IF POSTPONE LITERAL THEN
+    STATE @ IF INL-LIT POSTPONE LITERAL THEN
    THEN  ?STACK
   REPEAT   DROP ;
 

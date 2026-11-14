@@ -2,6 +2,7 @@
 \ word: loaded after the shell's sources, as relf's save-system.4 is.
 
 BASE @  DECIMAL
+0 REL-ON !   \ compile.4's front end off: this file's words run before RELOCATE has
 \ ---- saving: the design's header is written by build.sh, this writes the image ----
 VARIABLE SS-FID  VARIABLE SS-LEN  VARIABLE SS-BUF
 : SS>COPY ( live-addr --- copy-addr )  START @ - SS-BUF @ + ;
@@ -9,6 +10,7 @@ VARIABLE SS-FID  VARIABLE SS-LEN  VARIABLE SS-BUF
 : SS-ZERO ( live-addr --- )  SS>COPY 0 SWAP ! ;
 : SAVE-BODY ( c-addr u --- )   \ START to HERE, as COLD expects to find it
   RESET-BUFFERS
+  RS-WRITE                                               \ compile.4's address literals
   HERE START @ - SS-LEN !
   SS-LEN @ ALLOCATE ABORT" save: out of memory" SS-BUF !
   START @ SS-BUF @ SS-LEN @ MOVE
@@ -28,10 +30,12 @@ VARIABLE SS-FID  VARIABLE SS-LEN  VARIABLE SS-BUF
 : WL-RELOCATE ( a-addr --- )  START @ SWAP +! ;
 VARIABLE WL-RELOCATE-XT   ' WL-RELOCATE WL-RELOCATE-XT !XT   \ not ['], absolute
 : PORT-BOOT ( --- )
+  RELOCATE COMPILE-OFF                             \ compile.4's: first, before any word with a site runs
   AL-RESET                                         \ alloc.4's lists: the saver's, not ours
   WL-RELOCATE-XT @XT WORDLISTS-DO
   0 ENV-V !  0 SIG-CAUGHT !  0 SIG-SEEN !  -1 SIG-FD !  LSAVE-INIT
   0 TIO-SAVED? !  -1 RAW-FD !  0 HANDLER !  SP@ DSTACK-TOP !
   ARGV0-DEFAULT                                    \ os.4's
   MAIN ;
+JIT-NEVER       \ interpreted: a JIT would translate MAIN and the rest before RELOCATE ran
 BASE !

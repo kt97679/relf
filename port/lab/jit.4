@@ -16,9 +16,15 @@ VARIABLE JH-N   0 JH-N !
   DUP C@  OVER 1 + C@ 8 LSHIFT OR  OVER 2 + C@ 16 LSHIFT OR  SWAP 3 + C@ 24 LSHIFT OR ;
 : ; ( --- )
   JIT-AT @ >R  POSTPONE ;  R>
-  ?DUP IF JH-TAB @ 0= 0= JH-N @ JH-MAX < AND IF   \ not after boot: JH-TAB is 0 there
-    DUP JH-TAB @ JH-N @ 2 * CELLS + !  JH@ JH-TAB @ JH-N @ 2 * 1 + CELLS + !  JH-N @ 1 + JH-N !
-  ELSE DROP THEN THEN ; IMMEDIATE
+  ?DUP IF JH-TAB @ IF                             \ the build's: JH-TAB is 0 after boot
+    JH-N @ JH-MAX < IF
+      DUP JH-TAB @ JH-N @ 2 * CELLS + !  JH@ JH-TAB @ JH-N @ 2 * 1 + CELLS + !  JH-N @ 1 + JH-N !
+    ELSE DROP THEN
+  ELSE 4 0 DO 0 OVER I + C! LOOP DROP THEN THEN ; IMMEDIATE
+\ After boot a word - a forth command's - is left to the interpreter: its
+\ header 0, as the JIT leaves a word it refused. The JIT's THROW cannot
+\ unwind native code, and a forth command's words ABORT and THROW to the
+\ command's CATCH (compile.4's depth tells more).
 VARIABLE PRE-SAVE-XT   \ save.4 runs it on the copy: ( copy-of --- ) with an address converter
 : JH-RESTORE ( xt --- )   \ xt: ( live-addr --- copy-addr )
   JH-N @ 0 ?DO
@@ -53,3 +59,7 @@ VARIABLE JX
   \ a forth command defines after boot records nothing
   DUP JH-TAB SWAP EXECUTE 0 SWAP !  JO-BUF SWAP EXECUTE 0 SWAP ! ;
 ' JIT-UNRUN PRE-SAVE-XT !
+\ JIT-NEVER: the word just defined is saved as one the JIT refused - left
+\ to the interpreter (save.4's PORT-BOOT: the JIT translates a word's
+\ callees with it, and before RELOCATE has run their literals are wrong)
+: JIT-NEVER ( --- )  JH-N @ IF  0 JH-TAB @ JH-N @ 1 - 2 * 1 + CELLS + !  THEN ;

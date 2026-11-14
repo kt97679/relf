@@ -56,11 +56,13 @@ VARIABLE ALLOCATE-ZEROES   0 ALLOCATE-ZEROES !    \ the host sets it
 \ NUL-terminated names, width bytes apart, that is c-addr's
 : CT-EQ ( a b --- f )
   BEGIN OVER C@ OVER C@ = WHILE OVER C@ 0= IF 2DROP -1 EXIT THEN 1+ SWAP 1+ SWAP REPEAT 2DROP 0 ;
-: CTABLE-FIND ( c-addr table count width --- i | -1 )
-  SWAP 0 ?DO                              ( c-addr table width )
-    2 PICK 2 PICK CT-EQ IF 2DROP DROP I UNLOOP EXIT THEN
-    TUCK + SWAP
-  LOOP 2DROP DROP -1 ;
+VARIABLE CT-NAME   VARIABLE CT-C0
+: CTABLE-FIND ( c-addr table count width --- i | -1 )   \ a first byte that differs: no CT-EQ
+  >R ROT DUP CT-NAME ! C@ CT-C0 !  R> ROT ROT     ( width table count )
+  0 ?DO
+    DUP C@ CT-C0 @ = IF CT-NAME @ OVER CT-EQ IF 2DROP I UNLOOP EXIT THEN THEN
+    OVER +
+  LOOP 2DROP -1 ;
 
 \ ---- reading and writing ---------------------------------------------
 : READ ( c-addr u fd --- n )    ROT ROT 0 SC3 ;

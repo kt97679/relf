@@ -1,0 +1,407 @@
+\ port/lab/compile.4 - a front end for a design's compiler: relf's shell
+\ compiled the way relf's own compiler compiles it.
+\
+\ Why. A design runs the lab's Forth benchmarks faster than relf, and relfsh
+\ two to three times slower (Iteration 941). Counted on the knee's loop.sh:
+\ 57.4 million dispatches to relf's 15.2 million, 10.4 million of them calls
+\ to relf's 0.97 million. A design's speed is in its image: the lab's
+\ converter (tools/layout.py) specialises the kernel's call sites, gives
+\ variables their slot opcodes, folds and fuses. Code compiled at run time
+\ gets none of that - the kernel's compiler calls every word but its thirty
+\ primitives: a variable is a call to DOVAR (4.1 million on loop.sh), a
+\ constant a call to LIT EXIT, CELLS or 2DUP or - or +! a call to a colon
+\ word (2.9 million). The benchmarks are mostly primitives; the shell is not.
+\ relf's compiler has VAR@, constants as literals, its primitives inline.
+\
+\ So COMPILE, here, which the interpreter (interp.4) calls:
+\   - a variable or a CREATEd word (its code DOVAR): its address, a literal;
+\   - a constant: its value, a literal;
+\   - a kernel word that is a few primitives (CELLS, -, 2DUP, +!, ...): those
+\     primitives, inline - the kernel's own definitions, copied;
+\   - words registered later (after.4): BUFFER:'s and DEFER's children.
+\ An address literal is an absolute address, and a saved image loads
+\ elsewhere each run (START moves): every such site is recorded, the save
+\ keeps the list (lab/save.4), and PORT-BOOT moves each by START's change
+\ before anything else runs. After boot this is off - a forth command's
+\ definitions are the kernel compiler's, as before.
+\   - and a colon word of at most INL-MAX tokens, none of them immediate
+\     or the return stack's: its tokens, compiled again in its place (as
+\     relf's inliner does its small words).
+\ Nothing here knows a design's encoding: the DOVAR byte and where a
+\ literal's cell lies are found by compiling probes. Loaded right after
+\ port/relf.4; interp.4's INTERPRET calls this COMPILE, from again.4 on (the
+\ files up to there are read by the kernel's interpreter, and compiled by
+\ the kernel's COMPILE,).
+\
+\ And on a design with the JIT (PORT-JIT, build.sh's): its JIT translates a
+\ word only if it can translate every word below it, and on the shell it
+\ took almost nothing - fastest-x86-64 interpreted 32.8 million dispatches
+\ of loop.sh. A few words it has no stencil for (the kernel's variables,
+\ the system call, its SCAN, HERE, PAD) left every word above them
+\ interpreted. So, below: the kernel's variables as literals too; a call
+\ through EXECUTE (the gene jitexec) of a word the JIT refuses but which
+\ does not throw, and of a word too deep for it; PORT-BOOT left to the
+\ interpreter. jitwords.4 has the string words and the rest as the JIT takes
+\ them.
+
+BASE @  DECIMAL
+
+: OLD-COMPILE, ( xt --- )  COMPILE, ;            \ the kernel's
+
+\ ---- the probes -----------------------------------------------------
+VARIABLE PROBE-V
+' PROBE-V C@ CONSTANT DOVAR-BYTE                 \ a variable's first code byte
+VARIABLE REL-OK   0 REL-OK !
+: PROBE-LIT [ PROBE-V ] LITERAL [ HERE 1 CELLS - @ PROBE-V = REL-OK ! ] ;   \ a cell, at the end
+1 CELLS 4 / 1+ CONSTANT CELL-SHIFT              \ CELLS's: 3, or 2 on a 32-bit design
+
+\ ---- the build's memory: one block of the host's, not saved ----------
+VARIABLE SP-HP   0 SP-HP !   VARIABLE SP-END   0 SP-END !
+: SP-ALLOT ( u --- a-addr )
+  SP-HP @ SWAP SP-HP +!  SP-HP @ SP-END @ U> ABORT" compile.4: its memory is full" ;
+
+\ ---- the sites ------------------------------------------------------
+VARIABLE REL-ON    0 REL-ON !                    \ this front end at work
+VARIABLE REL-REC   0 REL-REC !                   \ recording sites (the build)
+VARIABLE VAR-LIT   0 VAR-LIT !                   \ variables as literals (RELOCATE's own: not)
+VARIABLE RS-TAB    0 RS-TAB !                    \ the sites: START offsets, a cell each
+VARIABLE RS-N      0 RS-N !
+262144 CONSTANT RS-MAX
+: RS-ADD ( a-addr --- )
+  RS-N @ RS-MAX < 0= ABORT" compile.4: too many address literals"
+  START @ -  RS-TAB @ RS-N @ CELLS + !  1 RS-N +! ;
+16777216 CONSTANT IMAGE-SPAN                     \ an address within START and this is the image's
+: IN-IMAGE? ( x --- f )  START @ - IMAGE-SPAN U< ;
+: REL-LITERAL ( x --- )   \ a literal; an address in the image, a site
+  DUP POSTPONE LITERAL
+  DUP IN-IMAGE? REL-REC @ AND IF
+    HERE 1 CELLS - @ OVER = 0= ABORT" compile.4: a literal's bytes are not where the probe found them"
+    HERE 1 CELLS - RS-ADD
+  THEN DROP ;
+
+\ The image's list (lab/save.4 writes it): the count, then each site's
+\ distance from the one before, seven bits a byte, the top bit set on
+\ every byte but a number's last.
+VARIABLE RS-IMG    0 RS-IMG !                     \ its START offset, 0 for none
+VARIABLE RS-START  0 RS-START !                   \ START when it was saved
+: RS-VARINT, ( u --- )
+  BEGIN DUP 127 U> WHILE DUP 127 AND 128 OR C, 7 RSHIFT REPEAT C, ;
+: RS-WRITE ( --- )    \ into the dictionary, before the save
+  HERE START @ - RS-IMG !  START @ RS-START !
+  RS-N @ ,  0                                     ( prev )
+  RS-N @ 0 ?DO
+    RS-TAB @ I CELLS + @  DUP ROT - RS-VARINT,
+  LOOP DROP ;
+
+\ ---- the special words ----------------------------------------------
+\ xt -> handler ( arg --- ), compiling the word's code in its place; at
+\ the build only.
+1024 CONSTANT SP-BUCKETS
+VARIABLE SP-TAB   0 SP-TAB !
+: SP-BUCKET ( xt --- a-addr )  3 RSHIFT SP-BUCKETS 1- AND CELLS SP-TAB @ + ;
+: SPECIAL ( xt handler arg --- )                  \ [next][xt][handler][arg]
+  SP-TAB @ 0= IF 2DROP DROP EXIT THEN
+  4 CELLS SP-ALLOT                                ( xt h arg e )
+  TUCK 3 CELLS + !  TUCK 2 CELLS + !              ( xt e )
+  2DUP CELL+ !  SWAP SP-BUCKET  2DUP @ SWAP !  ! ;
+: SPECIAL? ( xt --- entry | 0 )
+  SP-TAB @ 0= IF DROP 0 EXIT THEN
+  DUP SP-BUCKET @
+  BEGIN DUP WHILE  2DUP CELL+ @ = IF NIP EXIT THEN  @  REPEAT NIP ;
+
+: NOOPS> ( c-addr --- c-addr' )  8 0 DO DUP C@ IF LEAVE THEN 1+ LOOP ;
+' START NOOPS> C@ CONSTANT DOVAR-OP              \ a kernel variable's: DOVAR, after its NOOPs
+: DOVAR? ( xt --- 0 | 1 | 2 )   \ a variable's code: ours 1, the kernel's 2 - DOVAR after the
+  \ NOOPs where the converter aligned it (on a JIT design ours begin with the JIT's header instead)
+  DUP C@ DOVAR-BYTE = IF DROP 1 EXIT THEN  NOOPS> C@ DOVAR-OP = 2 AND ;
+\ A call through EXECUTE (I-EXEC): for a design whose JIT (the gene
+\ jitexec) translates a word only if it translates every word the word
+\ calls, and runs EXECUTE's word from native code - native if it could
+\ translate it, the interpreter if not; the call site keeps it in a cache.
+: I-EXEC ( xt --- )  REL-LITERAL ['] EXECUTE OLD-COMPILE, ;
+
+\ ---- the JIT's depth (PORT-JIT 2) -------------------------------------
+\ The JIT translates a word with every word below it, depth first, and gives
+\ up 16 calls down (jit.c's JIT_DEPTH) - the word at the top then for good:
+\ $(( )) is 21 calls deep from XE-TRY, and the five words above AE-EVAL
+\ stayed interpreted. So each word's depth is kept, and a call that would
+\ make a word deeper than DEP-MAX is made through EXECUTE instead: its word
+\ is translated when it first runs, from the top. The kernel's words are
+\ taken as 3 deep.
+\   But not a call of a word that may THROW out of itself (a THROW in it, or
+\ in a word it calls - not through EXECUTE or CATCH): the JIT's THROW in the
+\ interpreter cannot unwind native code - it goes on in the innermost
+\ interpreter, and the next return from a nested one lands in the wrong
+\ frame. A word that calls THROW is never translated (THROW's own operations
+\ have no stencils), nor is every word that calls it: so the parser's words,
+\ the interpreter's, a forth command's stay interpreted from their CATCH to
+\ their THROW - unless a call through EXECUTE made one above it native. Nor a
+\ word that reads its caller's return address (an R> or R@ before any >R):
+\ under EXECUTE it would find the JIT's.
+12 CONSTANT DEP-MAX
+VARIABLE DEP-TAB   0 DEP-TAB !                   \ buckets of [next][xt][depth][flags]
+VARIABLE DEP-CUR                                 \ the definition's deepest callee so far
+VARIABLE DEP-R                                   \ 1 its first R operation a >R, -1 an R> or R@
+VARIABLE DEP-THR                                 \ it calls a word that may throw
+\ flags: 1 may throw out of it, 2 reads its caller's return address
+: DEP-BUCKET ( xt --- a-addr )  3 RSHIFT SP-BUCKETS 1- AND CELLS DEP-TAB @ + ;
+: DEP-ENTRY ( xt --- entry | 0 )
+  DUP DEP-BUCKET @
+  BEGIN DUP WHILE  2DUP CELL+ @ = IF NIP EXIT THEN  @  REPEAT NIP ;
+: DEP@ ( xt --- depth flags )
+  DUP DEP-ENTRY ?DUP IF  NIP DUP 2 CELLS + @ SWAP 3 CELLS + @ EXIT  THEN
+  PRIMITIVE? IF 0 ELSE 3 THEN 0 ;
+: DEP! ( depth flags xt --- )
+  4 CELLS SP-ALLOT  TUCK CELL+ !  TUCK 3 CELLS + !  TUCK 2 CELLS + !
+  DUP CELL+ @ DEP-BUCKET  2DUP @ SWAP !  ! ;
+: DEP-THROWS ( xt --- )  3 1 ROT DEP! ;          \ a seed: the kernel's THROW, ABORT ...
+VARIABLE DEP-TOR   VARIABLE DEP-FROMR   VARIABLE DEP-RFETCH   \ the xts of >R R> R@
+: DEP-RSTACK ( xt --- )   \ an R> or R@ before any >R: the caller's return address
+  DEP-R @ IF DROP EXIT THEN                       \ decided
+  DUP DEP-TOR @ = IF DROP 1 DEP-R ! EXIT THEN
+  DUP DEP-FROMR @ =  SWAP DEP-RFETCH @ =  OR IF -1 DEP-R ! THEN ;
+: DEP-CALL ( xt --- )   \ compile a call - or a primitive - minding the depth
+  DUP PRIMITIVE? IF DUP DEP-RSTACK OLD-COMPILE, EXIT THEN
+  DUP DEP@                                        ( xt d f )
+  DUP 1 AND IF 1 DEP-THR ! THEN
+  0= OVER DEP-MAX < 0= AND IF  DROP I-EXEC EXIT  THEN   \ deep, and safe through EXECUTE
+  DEP-CUR @ MAX DEP-CUR !  OLD-COMPILE, ;
+: DEP-BEGIN ( --- )  0 DEP-CUR !  0 DEP-R !  0 DEP-THR ! ;
+: DEP-END ( xt --- )   \ the definition just ended
+  DEP-TAB @ 0= IF DROP EXIT THEN
+  >R  DEP-CUR @ 1+  DEP-THR @  DEP-R @ 0< IF 2 OR THEN  R> DEP! ;
+: DEP-SAFE? ( xt --- f )   \ may be called through EXECUTE: neither flag
+  DEP-TAB @ 0= IF DROP -1 EXIT THEN  DEP@ NIP 0= ;
+
+: COMPILE, ( xt --- )
+  REL-ON @ 0= IF OLD-COMPILE, EXIT THEN
+  DUP SPECIAL? ?DUP IF  NIP DUP 3 CELLS + @ SWAP 2 CELLS + @ EXECUTE EXIT  THEN
+  VAR-LIT @ IF DUP DOVAR? VAR-LIT @ AND IF  EXECUTE REL-LITERAL EXIT  THEN THEN
+  DEP-TAB @ IF DEP-CALL EXIT THEN
+  OLD-COMPILE, ;
+
+\ ---- the inliner ----------------------------------------------------
+\ interp.4's INTERPRET tells it each token of a definition: a word it
+\ compiles (INL-XT), a number (INL-LIT), an immediate word it runs (INL-IMM:
+\ the end of it, but for ;). ; then registers a definition of 1 to INL-MAX
+\ tokens. Not one that touches the return stack.
+4 CONSTANT INL-MAX
+VARIABLE INL-N   -1 INL-N !                       \ tokens so far; -1, not a candidate
+VARIABLE INL-LAST                                 \ LAST when it began
+CREATE INL-TOK  INL-MAX 2 * CELLS ALLOT           \ [type][value]: 0 a word, 1 a number
+CREATE INL-SAFE  4 CELLS ALLOT  INL-SAFE 4 CELLS 0 FILL   \ immediate words that compile
+                                                  \ nothing of their own: ( \ and the ; words
+VARIABLE INL-BAD     0 INL-BAD !                  \ [n][xt ...]: the return stack's words
+: INL-BREAK ( --- )  -1 INL-N ! ;
+: STR-EQ0? ( c-addr1 u1 c-addr2 u2 --- f )   \ the build's: names
+  ROT OVER <> IF DROP 2DROP 0 EXIT THEN
+  0 ?DO OVER I + C@ OVER I + C@ <> IF 2DROP 0 UNLOOP EXIT THEN LOOP 2DROP -1 ;
+: INL-START ( --- )  REL-ON @ IF LAST @ INL-LAST !  0 INL-N ! ELSE INL-BREAK THEN ;
+: INL-REC ( value type --- )
+  INL-N @ 0< IF 2DROP EXIT THEN
+  INL-N @ INL-MAX < 0= IF 2DROP INL-BREAK EXIT THEN
+  INL-TOK INL-N @ 2 * CELLS +  TUCK !  CELL+ !  1 INL-N +! ;
+: INL-BAD? ( xt --- f )
+  INL-BAD @ ?DUP 0= IF DROP 0 EXIT THEN
+  DUP @ 0 ?DO  DUP I 1+ CELLS + @ 2 PICK = IF 2DROP -1 UNLOOP EXIT THEN  LOOP 2DROP 0 ;
+: INL-XT ( xt --- xt )  DUP INL-BAD? IF INL-BREAK ELSE DUP 0 INL-REC THEN ;
+: INL-LIT ( x --- x )  DUP 1 INL-REC ;
+: INL-SAFE! ( xt --- )   \ one more (after.4: shadow.4's ;)
+  4 0 DO INL-SAFE I CELLS + @ 0= IF INL-SAFE I CELLS + ! UNLOOP EXIT THEN LOOP DROP ;
+: INL-IMM ( xt --- xt )
+  4 0 DO DUP INL-SAFE I CELLS + @ = IF UNLOOP EXIT THEN LOOP  INL-BREAK ;
+: I-INLINE ( block --- )   \ the tokens again, each through COMPILE,
+  DUP @ 0 ?DO
+    DUP I 2 * 1+ CELLS +  DUP CELL+ @ SWAP @ IF REL-LITERAL ELSE COMPILE, THEN
+  LOOP DROP ;
+: INL-COMMIT ( --- )
+  INL-N @ DUP 0> SWAP INL-MAX 1+ < AND  LAST @ INL-LAST @ = AND IF
+    INL-N @ 2 * 1+ CELLS SP-ALLOT                 ( block )
+    INL-N @ OVER !
+    INL-TOK OVER CELL+ INL-N @ 2 * CELLS MOVE
+    LAST @ NAME> ['] I-INLINE ROT SPECIAL
+  THEN INL-BREAK ;
+\ OVERRIDE ( xt "name" --- ): a definition of name, when it ends, has its
+\ calls compiled as calls to xt - one that does the same (after.4).
+VARIABLE OVR-LIST   0 OVR-LIST !                 \ [next][xt][count+name], the build's
+: OVERRIDE ( xt "name" --- )
+  SP-HP @ 0= IF DROP BL WORD DROP EXIT THEN
+  BL WORD DUP C@ 1+ 2 CELLS + SP-ALLOT            ( xt name e )
+  OVR-LIST @ OVER !  DUP OVR-LIST !  ROT OVER CELL+ !
+  2 CELLS + OVER C@ 1+ MOVE ;
+: I-CALL ( xt --- )  COMPILE, ;
+\ EXEC-NAME ( "name" --- ): a definition of name, when it ends, has its
+\ calls compiled as xt EXECUTE - on a design whose JIT (the gene jitexec)
+\ translates a word only if it translates every word it calls, and EXECUTE
+\ from native code runs a word it refused in the interpreter. So one word
+\ the JIT cannot take (a system call, SP!, the return stack out of order)
+\ no longer leaves every word above it interpreted. For words that are
+\ cold or wait on the system anyway: the call costs an interpreter entry.
+VARIABLE EXEC-LIST   0 EXEC-LIST !               \ [next][count+name], the build's
+: EXEC-XT ( xt --- )  ['] I-EXEC OVER SPECIAL ;
+: EXEC-NAME ( "name" --- )   \ on a jitexec design (PORT-JIT 2) only
+  SP-HP @ 0=  PORT-JIT @ 2 = 0=  OR IF BL WORD DROP EXIT THEN
+  BL WORD DUP C@ 1+ CELL+ SP-ALLOT                 ( name e )
+  EXEC-LIST @ OVER !  DUP EXEC-LIST !  CELL+ OVER C@ 1+ MOVE ;
+: LAST-NAMED? ( entry-name --- f )  COUNT  LAST @ COUNT 31 AND  STR-EQ0? ;
+: OVR-CHECK ( --- )   \ the definition just ended
+  REL-ON @ 0= IF EXIT THEN
+  EXEC-LIST @ BEGIN ?DUP WHILE
+    DUP CELL+ LAST-NAMED? IF  DROP LAST @ NAME> DUP DEP-SAFE? IF EXEC-XT ELSE DROP THEN EXIT  THEN @
+  REPEAT
+  OVR-LIST @ BEGIN ?DUP WHILE
+    DUP 2 CELLS + LAST-NAMED? IF
+      LAST @ NAME> ['] I-CALL ROT CELL+ @ SPECIAL EXIT
+    THEN @
+  REPEAT ;
+: : ( "name" --- )  :  INL-START DEP-BEGIN ;
+: ; ( --- )  POSTPONE ;  LAST @ NAME> DEP-END  INL-COMMIT OVR-CHECK ; IMMEDIATE
+' ; INL-SAFE!  ' ( INL-SAFE!  ' \ INL-SAFE!
+
+\ ---- the kernel's small words, inline -------------------------------
+\ Each the kernel's own definition (forth-vm-evolution's forth/kernel.4),
+\ its primitives compiled where the call was.
+: LIT, ( x --- )  POSTPONE LITERAL ;
+: I-CELLS   DROP CELL-SHIFT LIT, POSTPONE LSHIFT ;
+: I-CELL+   DROP 1 CELLS LIT, POSTPONE + ;
+: I-1+      DROP 1 LIT, POSTPONE + ;
+: I-1-      DROP -1 LIT, POSTPONE + ;
+: I--       DROP POSTPONE NEGATE POSTPONE + ;
+: I-+!      DROP POSTPONE DUP POSTPONE @ POSTPONE ROT POSTPONE + POSTPONE SWAP POSTPONE ! ;
+: I-2DROP   DROP POSTPONE DROP POSTPONE DROP ;
+: I-2DUP    DROP POSTPONE OVER POSTPONE OVER ;
+: I-?DUP    DROP POSTPONE DUP POSTPONE IF POSTPONE DUP POSTPONE THEN ;
+: I-PICK    DROP 1 LIT, POSTPONE + CELL-SHIFT LIT, POSTPONE LSHIFT POSTPONE SP@ POSTPONE + POSTPONE @ ;
+: I-0<      DROP 0 LIT, POSTPONE < ;
+: I-0=      DROP 0 LIT, POSTPONE = ;
+: I-0>      DROP 0 LIT, POSTPONE SWAP POSTPONE < ;
+: I->       DROP POSTPONE SWAP POSTPONE < ;
+: I-U>      DROP POSTPONE SWAP POSTPONE U< ;
+: I-<>      DROP POSTPONE = 0 LIT, POSTPONE = ;
+: I-0<>     DROP 0 LIT, POSTPONE = 0 LIT, POSTPONE = ;
+: I-MIN     DROP POSTPONE OVER POSTPONE OVER POSTPONE SWAP POSTPONE < POSTPONE IF POSTPONE SWAP POSTPONE THEN POSTPONE DROP ;
+: I-MAX     DROP POSTPONE OVER POSTPONE OVER POSTPONE < POSTPONE IF POSTPONE SWAP POSTPONE THEN POSTPONE DROP ;
+: I-INVERT  DROP -1 LIT, POSTPONE XOR ;
+: I-ABS     DROP POSTPONE DUP 0 LIT, POSTPONE < POSTPONE IF POSTPONE NEGATE POSTPONE THEN ;
+: I-S>D     DROP POSTPONE DUP 0 LIT, POSTPONE < ;
+: I-COUNT   DROP POSTPONE DUP 1 LIT, POSTPONE + POSTPONE SWAP POSTPONE C@ ;
+: I-ALIGNED DROP 1 CELLS 1- LIT, POSTPONE + 1 CELLS NEGATE LIT, POSTPONE AND ;
+: I-2SWAP   DROP POSTPONE ROT POSTPONE >R POSTPONE ROT POSTPONE R> ;
+: I-NIP     DROP POSTPONE SWAP POSTPONE DROP ;
+: I-TUCK    DROP POSTPONE SWAP POSTPONE OVER ;
+: I-@XT     DROP POSTPONE @  ['] START COMPILE, POSTPONE @ POSTPONE + ;
+: I-!XT     DROP POSTPONE SWAP ['] START COMPILE, POSTPONE @ POSTPONE NEGATE POSTPONE + POSTPONE SWAP POSTPONE ! ;
+: I-*       DROP POSTPONE UM* POSTPONE DROP ;
+: I-2*      DROP 1 LIT, POSTPONE LSHIFT ;
+: I-CELL-   DROP 1 CELLS NEGATE LIT, POSTPONE + ;
+: I-CONST   REL-LITERAL ;                         \ a constant: its value
+: INLINE ( xt "name" --- )  ' SWAP 0 SPECIAL ;     \ name's calls compiled by xt
+
+: COMPILE-INIT ( --- )   \ the build's tables (SPECIAL does nothing without them)
+  REL-OK @ 0= IF EXIT THEN
+  4194304 DUP ALLOCATE ABORT" compile.4: no memory" DUP SP-HP ! + SP-END !
+  RS-MAX CELLS SP-ALLOT RS-TAB !  0 RS-N !
+  SP-BUCKETS CELLS SP-ALLOT SP-TAB !  SP-TAB @ SP-BUCKETS CELLS 0 FILL
+  7 CELLS SP-ALLOT INL-BAD !  6 INL-BAD @ !
+  ['] >R INL-BAD @ CELL+ !  ['] R> INL-BAD @ 2 CELLS + !  ['] R@ INL-BAD @ 3 CELLS + !
+  ['] I INL-BAD @ 4 CELLS + !  ['] RP@ INL-BAD @ 5 CELLS + !  ['] EXIT INL-BAD @ 6 CELLS + !
+  ['] >R DEP-TOR !  ['] R> DEP-FROMR !  ['] R@ DEP-RFETCH !
+  PORT-JIT @ 2 = IF  SP-BUCKETS CELLS SP-ALLOT DEP-TAB !  DEP-TAB @ SP-BUCKETS CELLS 0 FILL
+    ['] THROW DEP-THROWS  ['] ABORT DEP-THROWS  ['] (ABORT") DEP-THROWS  ['] (THROW) DEP-THROWS  THEN ;
+: COMPILE-OFF ( --- )   \ PORT-BOOT's, after RELOCATE: the tables were the build's
+  0 REL-ON !  0 REL-REC !  0 VAR-LIT !  0 SP-TAB !  0 RS-TAB !  0 RS-N !  0 SP-HP !  0 SP-END !
+  0 DEP-TAB !
+  0 INL-BAD !  INL-BREAK ;
+
+\ CONSTANT: its children's values compiled in place of their calls
+: CONSTANT ( x "name" --- )
+  DUP >R CONSTANT R>  LAST @ NAME> ['] I-CONST ROT SPECIAL ;
+
+COMPILE-INIT
+' I-CELLS INLINE CELLS      ' I-CELL+ INLINE CELL+    ' I-1+ INLINE 1+
+' I-1+ INLINE CHAR+         ' I-1- INLINE 1-          ' I-- INLINE -
+' I-+! INLINE +!            ' I-2DROP INLINE 2DROP    ' I-2DUP INLINE 2DUP
+' I-?DUP INLINE ?DUP        ' I-PICK INLINE PICK      ' I-0< INLINE 0<
+' I-0= INLINE 0=            ' I-0> INLINE 0>          ' I-> INLINE >
+' I-U> INLINE U>            ' I-<> INLINE <>          ' I-0<> INLINE 0<>
+' I-MIN INLINE MIN          ' I-MAX INLINE MAX        ' I-INVERT INLINE INVERT
+' I-ABS INLINE ABS          ' I-S>D INLINE S>D        ' I-COUNT INLINE COUNT
+' I-ALIGNED INLINE ALIGNED  ' I-2SWAP INLINE 2SWAP    ' I-NIP INLINE NIP
+' I-TUCK INLINE TUCK        ' I-@XT INLINE @XT        ' I-!XT INLINE !XT
+' I-* INLINE *              ' I-2* INLINE 2*          ' I-CELL- INLINE CELL-
+' FALSE ' I-CONST 0 SPECIAL
+
+\ POSTPONE: the kernel's compiles a word that is not immediate with its own
+\ COMPILE, - a macro's words were not this front end's (pool.4's
+\ BUFFER-BODY compiled a call to START, shadow.4's frames calls). This one
+\ compiles it with COMPILE, here; the word is an offset, as the kernel's.
+: (POSTPONE') ( --- )  R> DUP DUP @ + SWAP CELL+ >R  COMPILE, ;
+: POSTPONE ( "name" --- )
+  32 WORD FIND DUP 0= ABORT" Not found"
+  1 = IF COMPILE, ELSE POSTPONE (POSTPONE') HERE - , THEN ; IMMEDIATE
+REL-OK @ REL-ON !                    \ on: macros, constants, the inliner
+
+\ RELOCATE runs before its sites are right, so it is compiled with its
+\ variables called, not literals: on, but VAR-LIT off. Its state on the stack.
+\ And START is not called either: the image's place is RS-ANCHOR's less its
+\ offset - a JIT takes our variable, not the kernel's (a NOOP and DOVAR).
+CREATE RS-ANCHOR
+VARIABLE RS-ANCHOR-OFF   RS-ANCHOR START @ - RS-ANCHOR-OFF !
+: IMAGE-AT ( --- a-addr )  RS-ANCHOR RS-ANCHOR-OFF @ - ;
+: RS-SLOW ( c-addr --- c-addr' u )    \ a varint of more than a byte
+  0 0 ROT                                         ( u shift p )
+  BEGIN DUP C@ >R 1+ ROT ROT                      ( p u shift )
+    R@ 127 AND OVER LSHIFT ROT OR SWAP 7 +        ( p u' shift' )
+    ROT R> 128 AND 0=                             ( u' shift' p f )
+  UNTIL NIP SWAP ;
+: RELOCATE ( --- )    \ PORT-BOOT's first: every site by START's change
+  RS-IMG @ 0= IF EXIT THEN
+  IMAGE-AT RS-START @ -  DUP 0= IF DROP EXIT THEN    ( d )
+  IMAGE-AT RS-IMG @ +  DUP @ >R  CELL+  IMAGE-AT     ( d p at )
+  R> 0 ?DO
+    OVER C@ 128 AND IF  SWAP RS-SLOW ROT +  ELSE  OVER C@ + SWAP 1+ SWAP  THEN
+    2 PICK OVER +!
+  LOOP 2DROP DROP
+  IMAGE-AT RS-START ! ;
+
+\ Variables as literals only where the build asks (PORT-VARLIT, build.sh's
+\ VARLIT: 0 none, 1 all, 2 the kernel's): every design's LIT64 reads its
+\ eight bytes one at a time, which costs more than the call and DOVAR it
+\ saves. A JIT makes a call of our variable a literal itself (its header
+\ says DOVAR), not of the kernel's (a NOOP first): so on a JIT design the
+\ kernel's only - an image and a list of sites smaller by a third.
+\ VAR-LIT: 1 ours, 2 the kernel's, 3 both (DOVAR?'s).
+REL-OK @ PORT-VARLIT @ DUP 1 = 2 AND + AND VAR-LIT !  REL-OK @ REL-REC !   \ to the save
+
+\ On a design with jitexec (PORT-JIT 2): the words its JIT cannot take that
+\ the port and the shell call, through EXECUTE - the kernel's ALLOCATE FREE
+\ RESIZE (a system call under them); the primitives the probes below find
+\ (the system call, SCAN); and by name the words with SP! or the return
+\ stack out of order, the I/O ones and the shell's few, each if it may not
+\ throw. jitwords.4 adds an error's message, (ABORT-MSG), after interp.4:
+\ there its errors are a forth command's, which a CATCH takes.
+: ?EXEC-XT ( xt --- )  PORT-JIT @ 2 = IF EXEC-XT ELSE DROP THEN ;
+: JIT-EXECS ( --- )
+  ['] ALLOCATE ?EXEC-XT  ['] FREE ?EXEC-XT  ['] RESIZE ?EXEC-XT ;
+JIT-EXECS
+\ And the primitives a JIT may have no stencil for - which, a design's
+\ genes say (best-all-round's CMOVE is C, X_CMOVE; fastest-x86-64's Forth):
+\ each probed by a word that calls it past a false flag, run once here, so
+\ the JIT translates it or refuses it. Refused, the primitive is called
+\ through EXECUTE. A JIT header's four bytes follow its first byte: the
+\ native code's offset once translated, 0 once refused.
+: HDR@ ( a --- u )   \ four bytes, the low first
+  DUP C@  OVER 1+ C@ 8 LSHIFT OR  OVER 2 + C@ 16 LSHIFT OR  SWAP 3 + C@ 24 LSHIFT OR ;
+: JIT-NATIVE? ( xt --- f )  1+ HDR@  DUP 1 U>  SWAP 2147483648 AND 0=  AND ;
+: ?ROUTE ( probe prim --- )
+  PORT-JIT @ 2 = 0= IF 2DROP EXIT THEN
+  SWAP DUP EXECUTE JIT-NATIVE? IF DROP ELSE EXEC-XT THEN ;
+: P-SYSCALL 0 IF SYSCALL THEN ;   : P-SCAN 0 IF SCAN THEN ;   : P-FILL 0 IF FILL THEN ;
+: P-CMOVE 0 IF CMOVE THEN ;   : P-CMOVE> 0 IF CMOVE> THEN ;
+' P-SYSCALL ' SYSCALL ?ROUTE   ' P-SCAN ' SCAN ?ROUTE   ' P-FILL ' FILL ?ROUTE
+' P-CMOVE ' CMOVE ?ROUTE   ' P-CMOVE> ' CMOVE> ?ROUTE
+EXEC-NAME LOCALS-FAILED   EXEC-NAME READ-SOME   EXEC-NAME READ-FILE   EXEC-NAME READ-LINE
+EXEC-NAME WRITE-FILE   EXEC-NAME FILE-MODE   EXEC-NAME REFILL-STDIN   EXEC-NAME RUN-CAUGHT
+EXEC-NAME TEST-PARSE-INT   EXEC-NAME EXPAND-AND-RUN   EXEC-NAME EXEC-LOOP   EXEC-NAME RUN-TRAP
+EXEC-NAME SHELL-PARSE-ARGS
+BASE !

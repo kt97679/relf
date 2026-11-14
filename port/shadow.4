@@ -2,9 +2,8 @@
 \
 \ relf's shadow.4 compiles each save, store and restore as one of the
 \ engine's locals opcodes (LSAVE, L!, LZERO, LRESTORE), laid by the CV8
-\ compiler's own words. A host Forth has neither, so here each is the
-\ variable itself, compiled, then a call to a run-time word, and the save
-\ stack is a Forth array. The syntax and the meaning are
+\ compiler's own words. A host Forth has neither, so here a definition's
+\ saves and restores are a frame of a save stack in Forth, compiled inline. The syntax and the meaning are
 \ relf's: SHADOW{ a b | c } saves a b c on entry, stores the two
 \ arguments into a and b, zeroes c, and EXIT and ; restore all three on
 \ every way out. As in relf, a THROW past a word does not unwind the save
@@ -24,48 +23,60 @@ BASE @  DECIMAL
 4096 CONSTANT LSAVE-MAX              \ the engines' LSAVE_MAX
 \ The save stack is allocated, as the engines' is theirs, not in the image:
 \ the host's boot runs LSAVE-INIT, and so does this file, for the build.
-VARIABLE LSAVE-BASE
-VARIABLE LSAVE-SP   0 LSAVE-SP !
+\ LSAVE-PTR is its next free cell, LSAVE-LIM its end.
+VARIABLE LSAVE-BASE   VARIABLE LSAVE-PTR   VARIABLE LSAVE-LIM
+\ compiled by their xts (COMPILE,: a host may make a variable a literal),
+\ kept as offsets: a forth command's SHADOW{ compiles them after boot too
+VARIABLE LB-XT  ' LSAVE-BASE LB-XT !XT   VARIABLE LP-XT  ' LSAVE-PTR LP-XT !XT
+VARIABLE LL-XT  ' LSAVE-LIM LL-XT !XT
 : LSAVE-INIT ( --- )
-  LSAVE-MAX CELLS ALLOCATE ABORT" shadow: no memory for the save stack" LSAVE-BASE !
-  0 LSAVE-SP ! ;
+  LSAVE-MAX CELLS ALLOCATE ABORT" shadow: no memory for the save stack"
+  DUP LSAVE-BASE !  DUP LSAVE-PTR !  LSAVE-MAX CELLS + LSAVE-LIM ! ;
 LSAVE-INIT
-: (LSAVE) ( a-addr --- )
-  LSAVE-SP @ LSAVE-MAX < 0= IF 1 LOCALS-FAILED THEN
-  @ LSAVE-BASE @ LSAVE-SP @ CELLS + !  1 LSAVE-SP +! ;
-: (LRESTORE) ( a-addr --- )
-  LSAVE-SP @ 0 > 0= IF 2 LOCALS-FAILED THEN
-  -1 LSAVE-SP +!  LSAVE-BASE @ LSAVE-SP @ CELLS + @  SWAP ! ;
-: (L!) ( x a-addr --- )  ! ;
-: (LZERO) ( a-addr --- )  0 SWAP ! ;
 
 16 CONSTANT LDECL-MAX
 CREATE LDECL-ADDRS  LDECL-MAX CELLS ALLOT
 VARIABLE LDECL-N      0 LDECL-N !     \ names declared by the definition being compiled
 VARIABLE LDECL-ARGS   0 LDECL-ARGS !  \ how many of them take a data-stack argument
 
-: L-VAR, ( i --- )   \ the i-th variable; its run-time word follows, by POSTPONE
-  \ The variable itself is compiled, not its address as a literal: an image
-  \ saved by a host whose dictionary moves from run to run would keep a
-  \ stale address (relf's slot operands are relative to themselves) - and
-  \ the run-time words by POSTPONE, not ['] and COMPILE,, for the same
-  \ reason: a forth command's SHADOW{, after boot, compiles them too.
-  CELLS LDECL-ADDRS + @ COMPILE, ;
-
+\ What a definition's SHADOW{ compiles: one frame of the save stack, inline.
+\ On entry the frame's end checked against LSAVE-LIM, each variable's value
+\ stored into it, LSAVE-PTR moved past it, then the arguments stored into
+\ their variables (the last name the stack's top) and the rest zeroed; at
+\ every EXIT and ; the frame's start checked against LSAVE-BASE, LSAVE-PTR
+\ moved back, each value fetched back. relf's engine does a slot at a time
+\ (LSAVE, LRESTORE), with the same checks; here a call to a run-time word a
+\ slot was 24 dispatches on a design, the frame inline about 6 a slot.
+: L-VAR, ( i --- )  CELLS LDECL-ADDRS + @ COMPILE, ;   \ the i-th variable: its address
+: L-NUM, ( n --- )  POSTPONE LITERAL ;
+: L-OFF, ( i --- )  ?DUP IF CELLS L-NUM, POSTPONE + THEN ;   \ frame -> its i-th cell
 : L-COMPILE-ENTRY ( --- )
   LDECL-N @ 0 > IF
-    LDECL-N @ 0 DO I L-VAR, POSTPONE (LSAVE) LOOP
+    LP-XT @XT COMPILE, POSTPONE @                                ( frame )
+    POSTPONE DUP LDECL-N @ CELLS L-NUM, POSTPONE +  LL-XT @XT COMPILE, POSTPONE @
+    POSTPONE SWAP POSTPONE U< POSTPONE IF 1 L-NUM, POSTPONE LOCALS-FAILED POSTPONE THEN
+    LDECL-N @ 0 DO
+      I L-VAR, POSTPONE @ POSTPONE OVER I L-OFF, POSTPONE !
+    LOOP
+    LDECL-N @ CELLS L-NUM, POSTPONE +  LP-XT @XT COMPILE, POSTPONE !
   THEN
   LDECL-ARGS @ 0 > IF
-    LDECL-ARGS @ 0 DO LDECL-ARGS @ 1- I - L-VAR, POSTPONE (L!) LOOP
+    LDECL-ARGS @ 0 DO LDECL-ARGS @ 1- I - L-VAR, POSTPONE ! LOOP
   THEN
   LDECL-N @ LDECL-ARGS @ > IF
-    LDECL-N @ LDECL-ARGS @ DO I L-VAR, POSTPONE (LZERO) LOOP
+    LDECL-N @ LDECL-ARGS @ DO 0 L-NUM, I L-VAR, POSTPONE ! LOOP
   THEN ;
 
 : L-COMPILE-RESTORES ( --- )
   LDECL-N @ 0 > IF
-    LDECL-N @ 0 DO LDECL-N @ 1- I - L-VAR, POSTPONE (LRESTORE) LOOP
+    LP-XT @XT COMPILE, POSTPONE @  LDECL-N @ CELLS NEGATE L-NUM, POSTPONE +   ( frame )
+    POSTPONE DUP LB-XT @XT COMPILE, POSTPONE @
+    POSTPONE U< POSTPONE IF 2 L-NUM, POSTPONE LOCALS-FAILED POSTPONE THEN
+    POSTPONE DUP LP-XT @XT COMPILE, POSTPONE !
+    LDECL-N @ 0 DO
+      POSTPONE DUP I L-OFF, POSTPONE @ I L-VAR, POSTPONE !
+    LOOP
+    POSTPONE DROP
   THEN ;
 
 : L-END? ( c-addr --- f )

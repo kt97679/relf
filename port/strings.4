@@ -3,21 +3,35 @@
 \ SCAN is a C loop where it has the gene (X_SCAN, all but smallest) and stops
 \ at exactly c, as relf's does, except for a blank, which any control
 \ character also meets; so SCAN is the design's but for a blank, and
-\ CSTRLEN is the design's SCAN for the NUL. COMPARE is a byte loop.
-\ Measured on the knee's loop.sh: these three in Forth took 13 % of its
-\ dispatches (6.4 million).
+\ CSTRLEN is the design's SCAN for the NUL. COMPARE and STR-EQ? are Forth:
+\ a cell at a time while the strings agree, then bytes. STR-EQ? is the
+\ shell's STR= (COMPARE 0=), which after.4 has compiled as a call to it - an
+\ equality, so two lengths that differ end it at once.
 
 BASE @  DECIMAL
-: HOST-SCAN ( c-addr1 u1 c --- c-addr2 u2 )  SCAN ;
-: SCAN ( c-addr1 u1 c --- c-addr2 u2 )
-  DUP 32 = 0= IF HOST-SCAN EXIT THEN
+1 CELLS CONSTANT PORT-CELL                     \ a cell's bytes: a design may have four
+: CSTRLEN ( c-addr --- u )  DUP [ -1 1 RSHIFT ] LITERAL 0 SCAN DROP SWAP - ;
+: SCAN ( c-addr1 u1 c --- c-addr2 u2 )   \ the design's, defined: not this one
+  DUP 32 = 0= IF SCAN EXIT THEN
   >R BEGIN DUP WHILE OVER C@ R@ <> WHILE 1- SWAP 1+ SWAP REPEAT THEN R> DROP ;
-: CSTRLEN ( c-addr --- u )  DUP -1 1 RSHIFT 0 HOST-SCAN DROP SWAP - ;
 : COMPARE ( c-addr1 u1 c-addr2 u2 --- n )
   ROT 2DUP - >R MIN                               ( a1 a2 min )  ( R: u2-u1 )
+  BEGIN DUP PORT-CELL < 0= WHILE
+    >R OVER @ OVER @ = WHILE PORT-CELL + SWAP PORT-CELL + SWAP R> PORT-CELL -
+  REPEAT R> THEN
   0 ?DO
     OVER C@ OVER C@ - ?DUP IF NIP NIP 0< IF -1 ELSE 1 THEN UNLOOP R> DROP EXIT THEN
     1+ SWAP 1+ SWAP
   LOOP 2DROP
   R> DUP 0> IF DROP -1 EXIT THEN  0< IF 1 ELSE 0 THEN ;
+: STR-EQ? ( c-addr1 u1 c-addr2 u2 --- f )
+  ROT OVER <> IF DROP 2DROP 0 EXIT THEN           ( a1 a2 u )
+  BEGIN DUP PORT-CELL < 0= WHILE
+    >R OVER @ OVER @ <> IF R> DROP 2DROP 0 EXIT THEN
+    PORT-CELL + SWAP PORT-CELL + SWAP R> PORT-CELL -
+  REPEAT
+  BEGIN DUP WHILE
+    >R OVER C@ OVER C@ <> IF R> DROP 2DROP 0 EXIT THEN
+    1+ SWAP 1+ SWAP R> 1-
+  REPEAT DROP 2DROP -1 ;
 BASE !

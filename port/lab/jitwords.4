@@ -1,0 +1,52 @@
+\ port/lab/jitwords.4 - on a design with the JIT gene, after port/strings.4:
+\ the string words again, as its JIT takes them. It translates a word only
+\ if it can translate every word the word calls, and the return stack only
+\ in order down the page (an R> in each arm of an IF is refused); the
+\ design's SCAN is an operation it has no stencil for, and the kernel's HERE
+\ and PAD read a variable it has none for either (so <# and the rest are
+\ here again). One such word left every word above it interpreted: on
+\ loop.sh 32.8 million dispatches of fastest-x86-64's were the interpreter's.
+\ Here they are loops the JIT compiles: shorter than the call into the
+\ interpreter the C would cost.
+
+BASE @  DECIMAL
+\ An error's message on a jitexec design: through EXECUTE from here on, so
+\ a word with an ABORT" is still translated. Its THROW then cannot unwind
+\ native code (compile.4's depth): these are the port's and the shell's
+\ fatal errors - out of memory, the locals' save stack - which end the
+\ shell on a design as a fault does. interp.4's, a forth command's, before.
+' (ABORT-MSG) ?EXEC-XT
+: HERE ( --- c-addr )  DP @ ;
+: PAD ( --- c-addr )  DP @ 160 + ;
+: CSTRLEN ( c-addr --- u )  DUP BEGIN DUP C@ WHILE 1+ REPEAT SWAP - ;
+: SCAN ( c-addr1 u1 c --- c-addr2 u2 )     \ relf's: exactly c
+  >R BEGIN DUP WHILE OVER C@ R@ <> WHILE 1- SWAP 1+ SWAP REPEAT THEN R> DROP ;
+VARIABLE CMP-D                                   \ COMPARE's u2-u1
+: COMPARE ( c-addr1 u1 c-addr2 u2 --- n )
+  ROT 2DUP - CMP-D ! MIN                         ( a1 a2 min )
+  BEGIN DUP PORT-CELL < 0= WHILE 2 PICK @ 2 PICK @ = WHILE
+    PORT-CELL - ROT PORT-CELL + ROT PORT-CELL + ROT
+  REPEAT THEN
+  BEGIN DUP WHILE
+    2 PICK C@ 2 PICK C@ - ?DUP IF NIP NIP NIP 0< IF -1 ELSE 1 THEN EXIT THEN
+    1- ROT 1+ ROT 1+ ROT
+  REPEAT DROP 2DROP
+  CMP-D @ DUP 0> IF DROP -1 EXIT THEN  0< IF 1 ELSE 0 THEN ;
+: STR-EQ? ( c-addr1 u1 c-addr2 u2 --- f )
+  ROT OVER <> IF DROP 2DROP 0 EXIT THEN           ( a1 a2 u )
+  BEGIN DUP PORT-CELL < 0= WHILE
+    2 PICK @ 2 PICK @ <> IF DROP 2DROP 0 EXIT THEN
+    PORT-CELL - ROT PORT-CELL + ROT PORT-CELL + ROT
+  REPEAT
+  BEGIN DUP WHILE
+    2 PICK C@ 2 PICK C@ <> IF DROP 2DROP 0 EXIT THEN
+    1- ROT 1+ ROT 1+ ROT
+  REPEAT DROP 2DROP -1 ;
+\ the kernel's pictured numbers, on this PAD (its <# reached the kernel's)
+: HOLD ( c --- )  -1 HLD +!  HLD @ C! ;
+: # ( ud1 --- ud2 )  BASE @ MU/MOD ROT DUP 9 > IF 7 + THEN 48 + HOLD ;
+: #S ( ud --- 0 0 )  BEGIN # 2DUP OR 0= UNTIL ;
+: SIGN ( n --- )  0< IF 45 HOLD THEN ;
+: <# ( --- )  PAD HLD ! ;
+: #> ( ud --- c-addr u )  2DROP HLD @ PAD OVER - ;
+BASE !

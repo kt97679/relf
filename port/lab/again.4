@@ -1,0 +1,20 @@
+\ port/lab/again.4 - loaded right after port/lab/interp.4: the words of the
+\ files before it that the shell runs, compiled again. compile.4 and interp.4
+\ are read by the kernel's own interpreter, whose COMPILE, is the kernel's -
+\ from here on interp.4's INTERPRET reads, and compile.4's COMPILE, compiles.
+
+BASE @  DECIMAL
+\ MOVE: the kernel's copies backwards (CMOVE>, a byte loop in Forth) whenever
+\ the source is the lower; only an overlap needs it - else CMOVE, which a
+\ design with X_CMOVE runs in C. One R>: a JIT takes the return stack in
+\ order down the page only.
+: MOVE ( c-addr1 c-addr2 u --- )
+  >R 2DUP SWAP - R@ U< R> SWAP IF CMOVE> ELSE CMOVE THEN ;
+: WITHIN ( x lo hi --- f )  OVER - >R - R> U< ;
+\ relf.4's ABORT": its words reached START by a call, HERE by the kernel's
+: (ETYPE) ( c-addr u --- )  ETYPE-XT @ IF ETYPE-XT @XT EXECUTE ELSE 2DROP THEN ;
+: (ECHAR) ( c --- )  ABORT-CH C!  ABORT-CH 1 (ETYPE) ;
+: (ABORT-MSG) ( c-addr u --- )  (ETYPE) 32 (ECHAR) HERE COUNT (ETYPE) 10 (ECHAR) -2 (THROW) ;
+: ABORT" ( "ccc<quote>" --- )
+  POSTPONE IF POSTPONE S" POSTPONE (ABORT-MSG) POSTPONE THEN ; IMMEDIATE
+BASE !

@@ -1,0 +1,24 @@
+\ port/lab/after.4 - compile.4's front end for pool.4's BUFFER: and
+\ shadow.4's DEFER, loaded after both: a child's call compiled as its body.
+\   BUFFER: ( DOES> @ ): the body's address, a literal, and @ - relf's
+\     compiler makes the same of a DOES> @ word (DOES-FETCH?);
+\   DEFER: its DOES> inline - the body's cell, 0 doing nothing, else the
+\     word at that offset from START.
+
+BASE @  DECIMAL
+
+' ; INL-SAFE!       \ shadow.4's ;, which ends a definition through compile.4's
+' STR-EQ? OVERRIDE STR=      \ shell.4's COMPARE 0=, an equality (strings.4)
+
+: I-BUF ( body --- )  REL-LITERAL POSTPONE @ ;
+: BUFFER: ( size "name" --- )   \ only with variables as literals (VAR-LIT)
+  BUFFER:  VAR-LIT @ IF LAST @ NAME> ['] I-BUF BUF-BODY @ SPECIAL THEN ;
+
+: I-DEFER ( body --- )
+  REL-LITERAL POSTPONE @ POSTPONE DUP POSTPONE IF
+    ['] START COMPILE, POSTPONE @ POSTPONE + POSTPONE EXECUTE
+  POSTPONE ELSE POSTPONE DROP POSTPONE THEN ;
+: DEFER ( "name" --- )
+  DEFER  VAR-LIT @ IF LAST @ NAME> ['] I-DEFER HERE CELL- SPECIAL THEN ;
+
+BASE !

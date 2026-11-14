@@ -226,13 +226,6 @@ CREATE PW-BUF 256 ALLOT   VARIABLE PW-FID   CREATE PW-HOME 256 ALLOT   VARIABLE 
     THEN DROP
   REPEAT DROP PW-FID @ CLOSE-FILE DROP 0 ;
 
-\ kernel.4's ABORT": the message and the word being read to standard error,
-\ then -2 thrown - the shell's errors expect it printed ("ABORT\" (-2) has
-\ printed its message"); a host's own may print it only with no CATCH. The
-\ string is S"'s, not inline after the call, so a host's compiler that
-\ knows its own inline strings has no other to know.
-: (ABORT-MSG) ( c-addr u --- )  ETYPE 32 ECHAR HERE COUNT ETYPE 10 ECHAR -2 (THROW) ;
-: ABORT" ( "ccc<quote>" --- )
-  POSTPONE IF POSTPONE S" POSTPONE (ABORT-MSG) POSTPONE THEN ; IMMEDIATE
+' ETYPE ETYPE-XT !XT     \ port/relf.4's ABORT" prints here from now on
 
 BASE !

@@ -965,6 +965,7 @@ do not trust the absence of a line below.
 - 939 — 23 folded returns back (A39), the set relf's counts choose: -3.67 % dispatches on the shell, -5.47 % on rill3; 2-5 % and 4-12 % faster; format 11
 - 940 — twelve superinstructions from relf's hottest pairs (VAR@ and its follower, 2VAR@, compare-and-branch): the realistic script -12.36 % dispatches, the shell 9-13 % and rill3 7-11 % faster; format 12
 - 941 — relfsh on the lab's ten designs and on gforth (port/: relf's primitives over one SYSCALL): every build relfsh64's output and the shell suite but the forth command's own Forth; the designs 1.9-3.0 times slower (their kernel's compiler: 3.8 times the dispatches), 252-284 KB resident against 1,900; gforth-fast 1.29
+- 942 — why the designs ran relfsh slower: their kernel's compiler (3.8 times relf's dispatches) and a JIT that translated almost nothing (one word without a stencil refuses every word above it); port/lab/compile.4, a front end: fastest-x86-64 0.25-0.28 of relfsh64 (941: 2.4-2.7), fastest-x86-32 0.33-0.40, best-all-round 0.48-0.55, the interpreted designs 11-18 % faster; the lab JIT's THROW across native code reported
 
 ### Not tied to an iteration
 

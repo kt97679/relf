@@ -37,4 +37,19 @@ VARIABLE INC-TAKE-XT   0 INC-TAKE-XT !
 VARIABLE INCLUDE-LINE#  0 INCLUDE-LINE# !
 VARIABLE WORDLISTS  0 WORDLISTS !
 
+\ kernel.4's ABORT": the message and the word being read to standard error,
+\ then -2 thrown - the shell's errors expect it printed ("ABORT\" (-2) has
+\ printed its message"); a host's own may print it only with no CATCH. The
+\ string is S"'s, not inline after the call, so a host's compiler that
+\ knows its own inline strings has no other to know. Here, first, so that
+\ every file after has it; standard error is kernel-io.4's ETYPE, which
+\ sets ETYPE-XT - until then a message is not printed, only thrown.
+VARIABLE ETYPE-XT   0 ETYPE-XT !
+CREATE ABORT-CH  1 ALLOT
+: (ETYPE) ( c-addr u --- )  ETYPE-XT @ IF ETYPE-XT @XT EXECUTE ELSE 2DROP THEN ;
+: (ECHAR) ( c --- )  ABORT-CH C!  ABORT-CH 1 (ETYPE) ;
+: (ABORT-MSG) ( c-addr u --- )  (ETYPE) 32 (ECHAR) HERE COUNT (ETYPE) 10 (ECHAR) -2 (THROW) ;
+: ABORT" ( "ccc<quote>" --- )
+  POSTPONE IF POSTPONE S" POSTPONE (ABORT-MSG) POSTPONE THEN ; IMMEDIATE
+
 BASE !
