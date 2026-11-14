@@ -365,7 +365,7 @@ noise).
 | a CREATE'd word's address pushed inline (627) | a call when not followed by @ or ! | not among the most called: small |
 | DO loops in registers (630) | (LOOP) keeps its counter at [r15] | small: the dispatch dominates |
 | loop starts aligned (714) | bytecode is data; the asm engine's handlers are not aligned | not measured |
-| `LIT n -` - native folds it | not folded: ADD-IMM8 with -n would do it, no new opcode | small |
+| `LIT n -` - native folds it | **done 935**: PEEP-IMM and cross.4's PEEP-IMM-T make it ADDI -n, no new opcode | 0.12 % fewer dispatches |
 | a separate data region (672, 674) | data among the bytecode | memory, not speed |
 
 The first five rows are instructions or fused instructions: the engines'

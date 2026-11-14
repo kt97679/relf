@@ -1466,12 +1466,15 @@ VARIABLE STATE ( --- a-addr)
   ELSE DUP 16 RSHIFT 192 OR C, DUP 8 RSHIFT 255 AND C, 255 AND C, THEN ;
 
 : PEEP-IMM ( op --- f )
-\ Rewrite `LIT n +` or `LIT n =` just compiled, if op completes it.
+\ Rewrite `LIT n +` or `LIT n =` just compiled, if op completes it -
+\ and `LIT n -` as ADDI with -n (Iteration 935: no opcode of its own).
   LAST-LIT @ 0= IF DROP 0 EXIT THEN
-  LAST-LITV @ 128 + 256 U< 0= IF DROP 0 EXIT THEN
+  LAST-LITV @ SWAP                              ( v op )
   DUP [OP] + = IF DROP 121 ELSE
-  [OP] = = IF 123 ELSE 0 EXIT THEN THEN
-  LAST-LIT @ REWIND LAST-LITV @ >R NO-PEEP
+  DUP [OP] - = IF DROP NEGATE 121 ELSE
+  [OP] = = IF 123 ELSE DROP 0 EXIT THEN THEN THEN
+  OVER 128 + 256 U< 0= IF 2DROP 0 EXIT THEN    ( v' op' )
+  LAST-LIT @ REWIND  SWAP >R  NO-PEEP
   HERE LAST-OP ! OP, R> 255 AND C, -1 ;
 
 : PEEP-VAR ( op --- f )

@@ -958,6 +958,7 @@ do not trust the absence of a line below.
 - 932 — block calls without a CATCH (guarded only if break/continue); a round; echo -n said; docs/TUTORIAL.md
 - 933 — forth-vm-evolution's handoff read; its test patch applied; make builds the rill3 image
 - 934 — (+LOOP) an escaped primitive: -1.95 % dispatches, the shell's workloads 2-5 % faster on both engines
+- 935 — dskew measured: nothing on this VM, reverted; (DO), UNLOOP left (0.1 %); `LIT n -` as ADDI -n
 
 ### Not tied to an iteration
 
