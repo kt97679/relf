@@ -1,0 +1,5 @@
+# rill3's for loop over a 300-item list, 300 times (936): its test calls PICK every turn
+var l [@(range 300)]
+var t 0
+for r @(range 300) { for x @l { set t $(( $t + 1 )) } }
+echo $t

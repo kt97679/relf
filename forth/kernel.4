@@ -260,6 +260,11 @@ PRIMITIVE (+LOOP) ( n --- )
 \ overflow test on the biased index, as the colon word had it since
 \ Iteration 243 (coreplustest.fth). Then the loop's two cells go and the
 \ branch back is stepped over.
+PRIMITIVE PICK ( xu .. x0 u --- xu .. x0 xu )
+\ A copy of stack cell number u: 0 PICK is DUP, 1 PICK is OVER (Iteration
+\ 936: a colon word of six instructions until then, 1.5 % of the realistic
+\ script's dispatches, and called in rill3's runtime 98 times - its for
+\ loop's test among them).
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
@@ -427,11 +432,6 @@ VARIABLE R0 ( --- a-addr)
 
 32 CONSTANT BL ( --- 32 )
 \ Constant 32, the blank character
-
-: PICK  ( u --- x)
-\ place a copy of stack cell number u on the stack. 0 PICK is DUP, 1 PICK
-\ is OVER etc.
-  1 + CELLS SP@ + @ ;
 
 
 

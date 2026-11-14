@@ -1301,6 +1301,7 @@ L_xploop: { /* (+LOOP) ( n --- ), since 934 - a colon word of 29 before (forth-v
     }
     NEXT();
 }
+L_pick: tos = CELL(dsp + (tos << CELL_SHIFT)); NEXT();   /* PICK ( xu .. x0 u --- xu .. x0 xu ), since 936: a colon word of 6 */
 L_ctablefind: SPILL(); { /* c-addr table count width --- i | -1 (Iteration 676): the first */
     /* of count NUL-terminated names, width bytes apart, that is c-addr's */
     /* not t: NEXT's own opcode variable is t */

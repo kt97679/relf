@@ -115,6 +115,7 @@ CURRENT @  NPRIMS CURRENT !
 : DROP  N-POP ;
 : SWAP  rax [ r15 ] mov,  [ r15 ] rbx mov,  rbx rax mov, ;
 : OVER  N-PUSH  rbx [ r15 8 ] mov, ;
+: PICK  rbx [ r15 rbx *8 ] mov, ;         \ a primitive since 936: the u-th below the top
 : ROT   rax [ r15 8 ] mov,  rcx [ r15 ] mov,  [ r15 8 ] rcx mov,  [ r15 ] rbx mov,  rbx rax mov, ;
 : ?DUP  rbx rbx test,  1 F jz,  N-PUSH  1 L: ;
 : 2DUP  rax [ r15 ] mov,  r15 16 # sub,  [ r15 8 ] rbx mov,  [ r15 ] rax mov, ;

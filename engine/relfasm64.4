@@ -10,7 +10,7 @@ LABEL L_0branch LABEL L_0branch8 LABEL L_2drop LABEL L_2dup LABEL L_access LABEL
 LABEL wild_jump LABEL L_allocate LABEL L_and LABEL L_atxt LABEL L_badesc LABEL L_badop LABEL L_branch
 LABEL L_branch8 LABEL L_bye LABEL L_cellp LABEL L_cells LABEL L_cfetch LABEL L_chdir
 LABEL L_chmod LABEL L_closedir LABEL L_closefile LABEL L_compare LABEL L_count LABEL L_cputimes
-LABEL L_cstore LABEL L_cstrlen LABEL L_ctablefind LABEL L_xploop LABEL L_delfile LABEL L_dictlimit LABEL L_dodoes LABEL L_dovar
+LABEL L_cstore LABEL L_cstrlen LABEL L_ctablefind LABEL L_xploop LABEL L_pick LABEL L_delfile LABEL L_dictlimit LABEL L_dodoes LABEL L_dovar
 LABEL L_dplus LABEL L_drop LABEL L_dup LABEL L_dup2 LABEL L_dupfrom LABEL L_envat
 LABEL L_eq LABEL L_eqi LABEL L_esc LABEL L_execute LABEL L_execve LABEL L_exit
 LABEL L_fetch LABEL L_filekind LABEL L_filemode LABEL L_filepos LABEL L_filesize LABEL L_fill
@@ -1067,6 +1067,8 @@ repne, scasb,
 rcx not,
 rcx dec,
 r12 rcx mov,
+NEXT,
+L_pick L:  r12 [ r13 r12 *8 ] mov,       \ PICK ( xu .. x0 u --- xu .. x0 xu ), since 936
 NEXT,
 L_ctablefind L:                          \ ( c-addr table count width --- i | -1 ) (676)
 rsi [ r13 2 CELL * ] mov,                \ the name

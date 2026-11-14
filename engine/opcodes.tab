@@ -165,3 +165,4 @@ escaped   0x4B    CHMOD       L_chmod         -
 escaped   0x4C    TRAP-XT!    L_trapxt        -
 escaped   0x4D    CTABLE-FIND L_ctablefind    -
 escaped   0x4E    (+LOOP)     L_xploop        -
+escaped   0x4F    PICK        L_pick          -
