@@ -1,0 +1,15 @@
+   490153  23.2%  EXEC-SIMPLE > EXPAND-AND-RUN [R-stack order @+73]
+   479701  22.7%  EXEC-IMPL > EXEC-SIMPLE > EXPAND-AND-RUN [R-stack order @+73]
+   266703  12.6%  EXPAND-AND-RUN [R-stack order @+73]
+   141837   6.7%  RUN-CAUGHT [no stencil op op 33 @+106]
+   127778   6.0%  TEST-PARSE-INT [R-stack order @+254]
+    48376   2.3%  EXECUTE(k) (no R line)
+    47487   2.2%  DISPATCH > RUN-A-BUILTIN > RUN-CAUGHT [no stencil op op 33 @+106]
+    37247   1.8%  EXEC-BASE (no R line)
+    33768   1.6%  CATCH(k) [no stencil op op 34 @+22]
+    31253   1.5%  RUN-EXPANDED > DISPATCH > RUN-A-BUILTIN > RUN-CAUGHT [no stencil op op 33 @+106]
+    23427   1.1%  XV@ (no R line)
+    21638   1.0%  RUN-A-BUILTIN > RUN-CAUGHT [no stencil op op 33 @+106]
+    21367   1.0%  EXEC-LOOP [R-stack order @+243]
+    20176   1.0%  PEEK > LEX > SCAN-WORD > SCAN-SQUOTE > SYNTAX > THROW(k) [no stencil op op 35 @+18]
+    17321   0.8%  SCAN-WORD > SCAN-SQUOTE > SYNTAX > THROW(k) [no stencil op op 35 @+18]

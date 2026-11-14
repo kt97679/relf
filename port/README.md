@@ -67,7 +67,9 @@ TRAPPED (rt.4's trap word hands it the traps it does not take, though no engine 
 EXIT, (cm/ir.4 lays a made word's bytecode with COMPILE, LIT, CALL, STRING, and ends it with it), and the
 cell at image offset 8 - relf's engine calls the word there when a frame of locals fails, rt.4 puts its
 own there, and on a design those bytes are the kernel's start vectors: kept, and rt.4's word given to
-shadow.4's LOCALS-FAILED through LF-HOOK. lab/host.4 has kernel.4's >NAME (the made code shown, IR.).
+shadow.4's LOCALS-FAILED through LF-HOOK. lab/host.4 has a >NAME (the made code shown, IR.): a design's
+header has no flag on its count byte, so it tries each length below the xt and takes the name FIND
+finds there (944; 943's walked back to a byte with bit 7 and showed garbage).
 
 Not on gforth: cm/ir.4 keeps a word in its tokens as a three-byte offset from START, as relf's CALL, does,
 and a gforth primitive's xt is in gforth's binary, not within 16 MB of its dictionary. Nor on relf32:
@@ -99,13 +101,14 @@ A design runs the lab's Forth benchmarks faster than relf, and ran relfsh 1.9-3.
 - **The compiler.** The shell is compiled at build time by the design's kernel compiler, which calls every
   word but its primitives: a variable is a call to DOVAR, a constant a call, CELLS or 2DUP or `-` a call to
   a colon word. The lab's converter (tools/layout.py), which gives the kernel its slot opcodes, folds and
-  superinstructions, never sees the shell. loop.sh was 57.4 million dispatches on the knee, 10.4 million
-  of them calls, against relf's 15.1 million - the lab's benchmarks are mostly primitives; the shell is
+  superinstructions, never sees the shell. loop.sh was 47.0 million dispatches on the knee, 10.4 million
+  of them calls, against relf's 15.2 million (944's count: 941's said 57.4, every call taken twice) - the lab's benchmarks are mostly primitives; the shell is
   variables, constants, small words and locals, which relf's compiler and instruction set were made for.
 - **The JIT took almost nothing.** A JIT design translates a word only if it can translate every word
   below it. A few words it has no stencil for - the kernel's variables (a NOOP and DOVAR), the system
   call, the kernel's SCAN, HERE and PAD (a variable's slot) - and calls of them left every word above
-  interpreted: fastest-x86-64 interpreted 32.8 million dispatches of loop.sh.
+  interpreted: fastest-x86-64 interpreted 46.3 million dispatches of loop.sh (942's 32.8 was another
+  build's).
 
 lab/compile.4 is a front end for the kernel's COMPILE, (interp.4's INTERPRET calls it): variables, the
 kernel's too, and constants as literals (every absolute address recorded and moved at boot, as the image
@@ -133,3 +136,10 @@ Measured (Iteration 942, docs/progress has the table): fastest-x86-64 runs the s
 relfsh64's time (941: 2.4-2.7 times it), fastest-x86-32 0.33-0.40, best-all-round 0.48-0.55, small-jit
 1.50-1.63; the interpreted designs 1.6-2.7 (941: 1.8-3.3). The JIT designs' images are a quarter larger,
 their memory 924-944 KB at peak, their start 1.2-1.5 of relfsh64's.
+
+## Measuring (port/measure/)
+
+port/measure/README.md has every command 941-944 measured with - bench-vm's configurations, sizes and
+memory, the dispatch counts, the profiles, the JIT's refusals, where an image's bytes go - and results/
+what they gave. build.sh's MAP=1 writes IMAGE.map beside the image: each word's address, kind and name,
+under a line for the file it came from, and the bytes of the strings compiled in code. port/measure/REPORT-944.md answers the lab's questions of its Iteration 673.

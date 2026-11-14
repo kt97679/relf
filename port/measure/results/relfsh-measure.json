@@ -1,0 +1,690 @@
+{
+ "relfsh64": {
+  "engine": 175794,
+  "image": 0,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    1900,
+    376,
+    1900
+   ],
+   "loop": [
+    1908,
+    384,
+    1908
+   ],
+   "fn": [
+    1912,
+    388,
+    1912
+   ],
+   "str": [
+    1912,
+    388,
+    1912
+   ],
+   "arith": [
+    1912,
+    388,
+    1912
+   ],
+   "realistic": [
+    1920,
+    396,
+    1920
+   ]
+  }
+ },
+ "relfsh32": {
+  "engine": 153026,
+  "image": 0,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    1628,
+    320,
+    1628
+   ],
+   "loop": [
+    1708,
+    324,
+    1708
+   ],
+   "fn": [
+    1668,
+    320,
+    1668
+   ],
+   "str": [
+    1696,
+    324,
+    1696
+   ],
+   "arith": [
+    1684,
+    324,
+    1684
+   ],
+   "realistic": [
+    1688,
+    332,
+    1688
+   ]
+  }
+ },
+ "relfshasm64": {
+  "engine": 144250,
+  "image": 0,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    232,
+    212,
+    232
+   ],
+   "loop": [
+    236,
+    216,
+    236
+   ],
+   "fn": [
+    248,
+    228,
+    248
+   ],
+   "str": [
+    252,
+    232,
+    252
+   ],
+   "arith": [
+    248,
+    228,
+    248
+   ],
+   "realistic": [
+    268,
+    248,
+    268
+   ]
+  }
+ },
+ "relfsh-native": {
+  "engine": 417144,
+  "image": 0,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    496,
+    116,
+    496
+   ],
+   "loop": [
+    496,
+    116,
+    496
+   ],
+   "fn": [
+    512,
+    132,
+    512
+   ],
+   "str": [
+    512,
+    132,
+    512
+   ],
+   "arith": [
+    512,
+    132,
+    512
+   ],
+   "realistic": [
+    532,
+    152,
+    532
+   ]
+  }
+ },
+ "fastest-x86-64": {
+  "engine": 29124,
+  "image": 215260,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    716,
+    688,
+    716
+   ],
+   "loop": [
+    864,
+    836,
+    864
+   ],
+   "fn": [
+    888,
+    860,
+    888
+   ],
+   "str": [
+    924,
+    896,
+    924
+   ],
+   "arith": [
+    876,
+    848,
+    876
+   ],
+   "realistic": [
+    924,
+    896,
+    924
+   ]
+  }
+ },
+ "fastest-x86-32": {
+  "engine": 33188,
+  "image": 213271,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    728,
+    696,
+    728
+   ],
+   "loop": [
+    876,
+    844,
+    876
+   ],
+   "fn": [
+    900,
+    868,
+    900
+   ],
+   "str": [
+    936,
+    904,
+    936
+   ],
+   "arith": [
+    888,
+    856,
+    888
+   ],
+   "realistic": [
+    944,
+    912,
+    944
+   ]
+  }
+ },
+ "best-all-round": {
+  "engine": 29748,
+  "image": 212381,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    720,
+    692,
+    720
+   ],
+   "loop": [
+    860,
+    832,
+    860
+   ],
+   "fn": [
+    888,
+    860,
+    888
+   ],
+   "str": [
+    920,
+    892,
+    920
+   ],
+   "arith": [
+    876,
+    848,
+    876
+   ],
+   "realistic": [
+    924,
+    896,
+    924
+   ]
+  }
+ },
+ "small-jit": {
+  "engine": 20588,
+  "image": 197177,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    488,
+    468,
+    488
+   ],
+   "loop": [
+    548,
+    528,
+    548
+   ],
+   "fn": [
+    572,
+    552,
+    572
+   ],
+   "str": [
+    576,
+    556,
+    576
+   ],
+   "arith": [
+    576,
+    556,
+    576
+   ],
+   "realistic": [
+    588,
+    568,
+    588
+   ]
+  }
+ },
+ "portable-fastest": {
+  "engine": 16536,
+  "image": 172400,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    304,
+    288,
+    304
+   ],
+   "loop": [
+    312,
+    296,
+    312
+   ],
+   "fn": [
+    316,
+    300,
+    316
+   ],
+   "str": [
+    316,
+    300,
+    316
+   ],
+   "arith": [
+    308,
+    292,
+    308
+   ],
+   "realistic": [
+    320,
+    304,
+    320
+   ]
+  }
+ },
+ "portable-arm": {
+  "engine": 13320,
+  "image": 169920,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    284,
+    272,
+    284
+   ],
+   "loop": [
+    288,
+    276,
+    288
+   ],
+   "fn": [
+    296,
+    284,
+    296
+   ],
+   "str": [
+    300,
+    288,
+    300
+   ],
+   "arith": [
+    296,
+    284,
+    296
+   ],
+   "realistic": [
+    308,
+    296,
+    308
+   ]
+  }
+ },
+ "portable-knee": {
+  "engine": 10712,
+  "image": 170016,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    292,
+    284,
+    292
+   ],
+   "loop": [
+    292,
+    284,
+    292
+   ],
+   "fn": [
+    300,
+    292,
+    300
+   ],
+   "str": [
+    304,
+    296,
+    304
+   ],
+   "arith": [
+    300,
+    292,
+    300
+   ],
+   "realistic": [
+    312,
+    304,
+    312
+   ]
+  }
+ },
+ "portable-small": {
+  "engine": 9416,
+  "image": 171720,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    280,
+    272,
+    280
+   ],
+   "loop": [
+    284,
+    276,
+    284
+   ],
+   "fn": [
+    296,
+    288,
+    296
+   ],
+   "str": [
+    296,
+    288,
+    296
+   ],
+   "arith": [
+    288,
+    280,
+    288
+   ],
+   "realistic": [
+    300,
+    292,
+    300
+   ]
+  }
+ },
+ "least-memory": {
+  "engine": 8192,
+  "image": 173369,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    276,
+    268,
+    276
+   ],
+   "loop": [
+    280,
+    272,
+    280
+   ],
+   "fn": [
+    284,
+    276,
+    284
+   ],
+   "str": [
+    288,
+    280,
+    288
+   ],
+   "arith": [
+    284,
+    276,
+    284
+   ],
+   "realistic": [
+    296,
+    288,
+    296
+   ]
+  }
+ },
+ "smallest": {
+  "engine": 4912,
+  "image": 176489,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    280,
+    276,
+    280
+   ],
+   "loop": [
+    284,
+    280,
+    284
+   ],
+   "fn": [
+    292,
+    288,
+    292
+   ],
+   "str": [
+    292,
+    288,
+    292
+   ],
+   "arith": [
+    288,
+    284,
+    288
+   ],
+   "realistic": [
+    300,
+    296,
+    300
+   ]
+  }
+ },
+ "gforth-fast": {
+  "engine": 241296,
+  "image": 1041706,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    4036,
+    1872,
+    4036
+   ],
+   "loop": [
+    4036,
+    1872,
+    4036
+   ],
+   "fn": [
+    4044,
+    1880,
+    4044
+   ],
+   "str": [
+    4040,
+    1884,
+    4040
+   ],
+   "arith": [
+    4044,
+    1880,
+    4044
+   ],
+   "realistic": [
+    4052,
+    1888,
+    4052
+   ]
+  }
+ },
+ "gforth": {
+  "engine": 237968,
+  "image": 1041706,
+  "same": {
+   "loop": true,
+   "fn": true,
+   "str": true,
+   "arith": true,
+   "realistic": true
+  },
+  "mem": {
+   "true": [
+    3928,
+    1764,
+    3928
+   ],
+   "loop": [
+    3932,
+    1772,
+    3932
+   ],
+   "fn": [
+    3948,
+    1784,
+    3948
+   ],
+   "str": [
+    3940,
+    1788,
+    3940
+   ],
+   "arith": [
+    3944,
+    1780,
+    3944
+   ],
+   "realistic": [
+    3952,
+    1788,
+    3952
+   ]
+  }
+ }
+}

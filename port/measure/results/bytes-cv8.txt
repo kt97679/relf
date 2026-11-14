@@ -1,0 +1,28 @@
+kernel64-shell.img: image 126042 bytes, 2347 words, kernel part 10528
+  code                                             64104   50.9%
+  names and headers                                24426   19.4%
+  data and buffers (DOVAR, DODOES bodies)          20146   16.0%
+  kernel words (kernel64.img)                      10512    8.3%
+  strings (S" ." ABORT" in code)                    6838    5.4%
+  total 126026
+20 largest:
+    1965  ZERO-WIDTH
+    1051  PRINT-NODE-IMPL
+     581  APPLY-REDIRECTIONS
+     572  TEST-UNARY?
+     563  LIST-VARIABLES
+     552  PD-SPEC
+     551  EXPAND-WORDS
+     535  TRAPS
+     531  DO-KILL
+     502  DO-ULIMIT
+     502  (DO-GETOPTS)
+     499  SET-SHVAR
+     498  PF-CONVERSION
+     489  XE-PARAM-OP
+     445  SCAN-BRACE
+     438  PRINT-ENC
+     414  WIDE-CHARS
+     409  GLOB-WALK
+     403  CMD-REST
+     400  DO-CD

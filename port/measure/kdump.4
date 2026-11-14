@@ -1,0 +1,11 @@
+\ port/measure/kdump.4 - a design's kernel words and their offsets from START ("K offset name"), for
+\ design-prof.py and jit-why.py:  DESIGN/forth DESIGN/image.img < port/measure/kdump.4 | grep '^K'
+: KDUMP ( --- )
+  FORTH-WORDLIST @ 1+ 1 DO
+    FORTH-WORDLIST I CELLS + @
+    BEGIN DUP WHILE
+      ." K " DUP NAME> START @ - . DUP COUNT 31 AND TYPE CR
+      NEXT-NFA8
+    REPEAT DROP
+  LOOP ;
+KDUMP BYE

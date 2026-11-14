@@ -23,18 +23,24 @@ esac
 first=port/lab/nojit.4 jit=0 jitwords=
 grep -q -- '-DX_JIT=1' "$d/Makefile" && first=port/lab/jit.4 jit=1 jitwords=port/lab/jitwords.4
 [ $jit = 1 ] && grep -q -- '-DJITEXEC=1' "$d/Makefile" && jit=2
+# MAP=1: port/measure/map.4 first, and OUT.map - each definition's offset, its defining word and its
+# file, and the bytes of the strings compiled (port/measure/README.md); the image a few hundred bytes larger
 {
     printf 'S" %s" INCLUDED\n' "$first"
+    [ -n "$MAP" ] && printf 'S" port/measure/map.4" INCLUDED\n'
     # compile.4: variables as literals - 0 none, 1 all, 2 the kernel's (a JIT takes ours itself;
     # an interpreter's LIT64 is a byte loop)
     printf 'VARIABLE PORT-VARLIT %s PORT-VARLIT !\n' "${VARLIT:-$((jit > 0 ? 2 : 0))}"
     printf 'VARIABLE PORT-JIT %s PORT-JIT !\n' $jit                    # 0, a JIT, one with jitexec
     [ "$first" = port/lab/jit.4 ] && printf 'S" %s" %s JIT-PRISTINE\n' "$d/image.img" "$hdrlen"
     for f in port/relf.4 port/lab/compile.4 port/lab/interp.4 port/lab/again.4 port/strings.4 $jitwords port/alloc.4 port/os.4 port/kernel-io.4 port/lab/host.4 forth/pool.4 port/shadow.4 port/lab/after.4 \
-             $sources; do printf 'S" %s" INCLUDED\n' "$f"; done
-    [ -n "$hooks" ] && printf '%s\n' "$hooks"
-    printf ': PORT-MAIN ( --- )  %s ;\n' "$boot"                       # save.4's PORT-BOOT ends with it
-    printf 'S" port/lab/save.4" INCLUDED\n'
+             $sources port/lab/save.4; do
+        [ "$f" = port/lab/save.4 ] && { [ -n "$hooks" ] && printf '%s\n' "$hooks"
+            printf ': PORT-MAIN ( --- )  %s ;\n' "$boot"; }              # save.4's PORT-BOOT ends with it
+        [ -n "$MAP" ] && printf '.( FILE %s) CR ' "$f"
+        printf 'S" %s" INCLUDED\n' "$f"
+    done
+    [ -n "$MAP" ] && printf 'STR-REPORT\n'
     printf "' PORT-BOOT SET-BOOT\nS\" %s.body\" SAVE-BODY\nBYE\n" "$tmp"
 } | "$d/forth" "$d/image.img" > "$tmp.log" 2>&1 || true
 if [ ! -s "$tmp.body" ] || grep -qE 'Undefined word|Not found|Error|out of memory|cannot' "$tmp.log"; then
@@ -44,5 +50,6 @@ if [ ! -s "$tmp.body" ] || grep -qE 'Undefined word|Not found|Error|out of memor
 fi
 head -c "$hdrlen" "$d/image.img" > "$out"
 cat "$tmp.body" >> "$out"
+[ -n "$MAP" ] && grep -E '^(MAP|FILE|STRBYTES) ' "$tmp.log" > "$out.map"
 rm -f "$tmp.body" "$tmp.log" "$tmp.widths.4" "$tmp.edit.4"
 wc -c < "$out"

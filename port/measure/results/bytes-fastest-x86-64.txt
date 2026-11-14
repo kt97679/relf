@@ -1,0 +1,37 @@
+image body 215797 bytes (the file: + a 80-byte header)
+  code                                                  141596   65.6%
+  names and headers                                      28874   13.4%
+  data and buffers (CREATE, VARIABLE, their ALLOT)       24146   11.2%
+  kernel (the design's, converted)                        9694    4.5%
+  strings (S" and ." in code)                             8825    4.1%
+  before the port: nojit.4 and the map's own words        2234    1.0%
+  constants                                                428    0.2%
+  total 215797
+  port                           code       19466
+  port                           data        3456
+  port                           headers     4656
+  relfsh (pool.4, shell/)        code      130955
+  relfsh (pool.4, shell/)        data       21118
+  relfsh (pool.4, shell/)        headers    24218
+headers not found exactly: 0
+20 largest:
+    2669  PORT-BOOT                    :        port/lab/save.4
+    2493  PRINT-NODE-IMPL              :        shell/tree.4
+    2064  TEST-UNARY?                  :        shell/shell.4
+    1969  ZERO-WIDTH                   CREATE   shell/shell.4
+    1339  SET-SHVAR                    :        shell/shell.4
+    1269  APPLY-REDIRECTIONS           :        shell/shell.4
+    1178  EXPAND-WORDS                 :        shell/shell.4
+    1169  TEST-BINARY?                 :        shell/shell.4
+    1094  GLOB-WALK                    :        shell/shell.4
+    1086  FORTH                        :        port/lab/host.4
+     925  DO-KILL                      :        shell/shell.4
+     895  PD-SPEC                      :        shell/shell.4
+     887  XE-PARAM-OP                  :        shell/tree.4
+     887  (DO-GETOPTS)                 :        shell/shell.4
+     830  EW-ENTRY                     :        shell/shell.4
+     819  PF-CONVERSION                :        shell/shell.4
+     787  CMD-REST                     :        shell/shell.4
+     769  DO-UNSET                     :        shell/shell.4
+     766  BRACKET-MATCHES?             :        shell/shell.4
+     763  TEMP-ASSIGN                  :        shell/shell.4

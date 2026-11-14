@@ -1,0 +1,84 @@
+dispatches 35401119  calls 5346569 (15.1%)  returns: EXIT and its folds 1704499, DOVAR 3699483, DODOES 564873
+by operation:
+     5346569  15.1%  CALL
+     3699483  10.5%  dovar
+     3210635   9.1%  fetch
+     2950214   8.3%  lit8
+     2291062   6.5%  0branch
+     1950682   5.5%  dup
+     1464963   4.1%  exit
+     1438276   4.1%  eq
+     1153060   3.3%  store
+      937777   2.6%  swap
+      927314   2.6%  addi
+      882715   2.5%  fromr
+      796398   2.2%  plus
+      790617   2.2%  drop
+      765050   2.2%  over
+      564873   1.6%  dodoes
+      515042   1.5%  @ +
+      475147   1.3%  cfetch
+      461204   1.3%  gt
+      406036   1.1%  noop
+      391835   1.1%  lshift
+      374267   1.1%  branch
+      348828   1.0%  tor
+      319060   0.9%  negate
+      269124   0.8%  lit32
+      209393   0.6%  rot
+      175994   0.5%  ugt
+      172568   0.5%  OVER C@
+      170187   0.5%  + @
+      169759   0.5%  and
+by adjacent pair:
+     3592568  10.1%  CALL  dovar
+     2121697   6.0%  dovar  fetch
+     1236069   3.5%  lit8  eq
+      891862   2.5%  dovar  store
+      856541   2.4%  eq  0branch
+      564873   1.6%  dodoes  fromr
+      564873   1.6%  CALL  dodoes
+      554421   1.6%  fetch  exit
+      515023   1.5%  dup  lit8
+      507455   1.4%  fromr  fetch
+      503349   1.4%  dovar  @ +
+      428185   1.2%  0branch  dup
+      400820   1.1%  dup  0branch
+      394352   1.1%  fetch  lit8
+      387311   1.1%  lit8  lshift
+      319032   0.9%  negate  plus
+      312713   0.9%  CALL  dup
+      300118   0.8%  eq  lit8
+      299121   0.8%  noop  noop
+      284862   0.8%  gt  0branch
+      221828   0.6%  0branch  drop
+      211329   0.6%  over  over
+      205161   0.6%  0branch  lit8
+      202378   0.6%  store  lit8
+      201983   0.6%  addi  lit8
+hottest words by calls:
+      277225  ARGC
+      184317  EXEC-BASE
+      181430  XE-P
+      145361  LSAVE-PTR
+      136847  TOK-OUT
+      118207  EW-I
+      115296  CSTRLEN
+       97289  START(k)
+       87304  ARGV
+       84020  MOVE
+       77400  AE-POS
+       73275  IFSC-P
+       65957  EW-ARGC
+       64568  XE-END
+       58630  EXECUTE(k)
+       53716  TOK-POS
+       52816  SV-IDX
+       49980  GCM-P
+       47610  SCAN
+       46232  SV-NAME
+       44240  XV@
+       43635  STR-EQ?
+       42844  GM-P
+       39616  SVV-LEN
+       37996  NAME-CHAR-TABLE

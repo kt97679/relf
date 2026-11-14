@@ -1,0 +1,37 @@
+image body 170496 bytes (the file: + a 80-byte header)
+  code                                                   99569   58.4%
+  names and headers                                      28123   16.5%
+  data and buffers (CREATE, VARIABLE, their ALLOT)       23204   13.6%
+  kernel (the design's, converted)                        8969    5.3%
+  strings (S" and ." in code)                             8756    5.1%
+  before the port: nojit.4 and the map's own words        1447    0.8%
+  constants                                                428    0.3%
+  total 170496
+  port                           code       12176
+  port                           data        3364
+  port                           headers     4491
+  relfsh (pool.4, shell/)        code       96149
+  relfsh (pool.4, shell/)        data       20268
+  relfsh (pool.4, shell/)        headers    23632
+headers not found exactly: 0
+20 largest:
+    1963  ZERO-WIDTH                   CREATE   shell/shell.4
+    1537  TEST-UNARY?                  :        shell/shell.4
+    1477  PRINT-NODE-IMPL              :        shell/tree.4
+     945  SET-SHVAR                    :        shell/shell.4
+     902  APPLY-REDIRECTIONS           :        shell/shell.4
+     826  GLOB-WALK                    :        shell/shell.4
+     819  TEST-BINARY?                 :        shell/shell.4
+     716  EXPAND-WORDS                 :        shell/shell.4
+     699  PF-CONVERSION                :        shell/shell.4
+     691  DO-KILL                      :        shell/shell.4
+     686  (DO-GETOPTS)                 :        shell/shell.4
+     682  XE-PARAM-OP                  :        shell/tree.4
+     673  PD-SPEC                      :        shell/shell.4
+     605  BRACKET-MATCHES?             :        shell/shell.4
+     604  PRINT-ENC                    :        shell/tree.4
+     584  GLOB-MATCH                   :        shell/shell.4
+     577  LIST-VARIABLES               :        shell/shell.4
+     571  SCAN-BRACE                   :        shell/tree.4
+     566  DO-ULIMIT                    :        shell/shell.4
+     550  CMD-REST                     :        shell/shell.4

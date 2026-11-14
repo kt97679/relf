@@ -1,0 +1,14 @@
+\ port/measure/map.4 - port/lab/build.sh's MAP=1: loaded first, so that the build's log has each
+\ definition's offset from START, its defining word and its name (MAP lines), each file's start (FILE,
+\ build.sh's), and the bytes the strings in code took (STRBYTES: S" and .", call and count included).
+\ design-bytes.py and design-prof.py read them; the image is a few hundred bytes larger.
+: .( ( "ccc<paren>" --- )  41 WORD COUNT TYPE ; IMMEDIATE
+VARIABLE STR-BYTES  0 STR-BYTES !
+: MAP. ( c-addr u --- )  >IN @ >R BL WORD COUNT  ." MAP " HERE START @ - . 2SWAP TYPE SPACE TYPE CR  R> >IN ! ;
+: : ( "name" --- )  S" :" MAP. : ;
+: CREATE ( "name" --- )  S" CREATE" MAP. CREATE ;
+: VARIABLE ( "name" --- )  S" VARIABLE" MAP. VARIABLE ;
+: CONSTANT ( x "name" --- )  S" CONSTANT" MAP. CONSTANT ;
+: S" ( --- )  STATE @ IF HERE >R POSTPONE S" HERE R> - STR-BYTES +! ELSE POSTPONE S" THEN ; IMMEDIATE
+: ." ( --- )  STATE @ IF HERE >R POSTPONE ." HERE R> - STR-BYTES +! ELSE POSTPONE ." THEN ; IMMEDIATE
+: STR-REPORT ( --- )  ." STRBYTES " STR-BYTES @ . CR ;
