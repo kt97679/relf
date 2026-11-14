@@ -112,6 +112,38 @@ endif
 # board (Iteration 402). The stamp holds `uname -m`.
 HOSTARCH := $(shell uname -m 2>/dev/null || echo unknown)
 
+# The engines without a C library (Iteration 945). engine/rt-linux.c is
+# what cv8.c asks of one - system calls, an allocator, the environment,
+# /etc/passwd, the calendar, sigsetjmp - over Linux's system calls, for
+# x86-64, i386, AArch64 and RISC-V 64: started, the engine is 288 KB
+# resident where the library made it 1,904, at the same speed. The
+# default there; ENGINE_RT=libc links the library as before, and is the
+# default anywhere else. One behaviour differs: ~name reads /etc/passwd
+# alone, as the assembly engine does (QUESTIONS.md A9), where the
+# library asks NSS. On i386 the headers are taken with 64-bit file
+# offsets, whose struct stat and dirent are the kernel's.
+HOSTOS := $(shell uname -s 2>/dev/null || echo unknown)
+ifeq ($(HOSTOS)-$(filter x86_64 i386 i486 i586 i686 aarch64 riscv64,$(HOSTARCH)),Linux-$(HOSTARCH))
+ENGINE_RT ?= nolibc
+else
+ENGINE_RT ?= libc
+endif
+ifeq ($(ENGINE_RT),nolibc)
+RT_CFLAGS = -static -no-pie -nostdlib -fno-stack-protector -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 \
+            -fno-asynchronous-unwind-tables -ffunction-sections -fdata-sections -Wl,--gc-sections
+RT_CFLAGS32 = $(RT_CFLAGS) -D_FILE_OFFSET_BITS=64
+RT_SRC  = engine/rt-linux.c
+RT_LIBS = -lgcc
+else ifneq ($(ENGINE_RT),libc)
+$(error ENGINE_RT is nolibc or libc, not '$(ENGINE_RT)')
+endif
+# Bytes only (Iteration 945): no symbols - tests/sizes counted relf
+# stripped already - no build-id note, and code and read-only data in
+# one segment rather than page-aligned apart. The code is the same; the
+# C library's engine is 10 KB smaller with them. ENGINE_LDFLAGS= keeps
+# the symbols, for a debugger.
+ENGINE_LDFLAGS ?= -s -Wl,-z,noseparate-code -Wl,--build-id=none
+
 .PHONY: force-arch-check
 .relf-arch: force-arch-check
 	@printf '%s\n' '$(HOSTARCH)' | cmp -s - $@ 2>/dev/null || printf '%s\n' '$(HOSTARCH)' > $@
@@ -133,16 +165,16 @@ ifeq ($(HOSTBITS),32)
 relf64 kernel64-shell.img relfsh64:
 	@echo "$@: an 8-byte-cell build cannot run on this 32-bit host" >&2; exit 1
 else
-relf64: engine/cv8.c engine/cv8-ops.h .relf-arch
-	$(CC) $(CFLAGS) -o $@ $<
+relf64: engine/cv8.c engine/cv8-ops.h engine/rt-linux.c .relf-arch
+	$(CC) $(CFLAGS) $(RT_CFLAGS) $(ENGINE_LDFLAGS) -o $@ $< $(RT_SRC) $(RT_LIBS)
 endif
 
 ifeq ($(HOSTBITS),32)
-relf32: engine/cv8.c engine/cv8-ops.h .relf-arch
-	$(CC) $(CFLAGS) -o $@ $<
+relf32: engine/cv8.c engine/cv8-ops.h engine/rt-linux.c .relf-arch
+	$(CC) $(CFLAGS) $(RT_CFLAGS32) $(ENGINE_LDFLAGS) -o $@ $< $(RT_SRC) $(RT_LIBS)
 else
-relf32: engine/cv8.c engine/cv8-ops.h .relf-arch
-	$(CC) $(CFLAGS32) -o $@ $<
+relf32: engine/cv8.c engine/cv8-ops.h engine/rt-linux.c .relf-arch
+	$(CC) $(CFLAGS32) $(RT_CFLAGS32) $(ENGINE_LDFLAGS) -o $@ $< $(RT_SRC) $(RT_LIBS)
 endif
 
 # ------------------------------------------------------------------

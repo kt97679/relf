@@ -26,7 +26,11 @@
  *  Build:  cc -O2 -Wall -o relf64 cv8.c    (-m32 ... -o relf32 for 4-byte cells)
  *          cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 cv8.c
  *  The i386 build is non-PIE because PIE spends ebx on the GOT, which
- *  costs the TOS cache more than it saves (CV8.md 5.1).
+ *  costs the TOS cache more than it saves (CV8.md 5.1). Those link the
+ *  C library; the Makefile, on Linux on x86-64, i386, AArch64 and
+ *  RISC-V, links engine/rt-linux.c instead - static, no library, 288 KB
+ *  resident at start rather than 1.9 MB (Iteration 945; that file and
+ *  the Makefile have the flags). This file is the same for both.
  *
  *  HISTORY OF THIS FILE. It was tools/lab/vm-lab.c, a lab engine with
  *  a dozen build-time knobs for measuring encodings, run through
@@ -241,22 +245,27 @@ static inline UNS64 LD32(UNS64 a) {
                       RS = x; } while (0)   /* pushes x to return stack*/
 
 /*
- *  VM memory. +(CELL_BYTES-1) is necessary to be able to allocate
- *  MEMSIZE bytes from a CELL_BYTES-aligned address in order to have
- *  native word access.
+ *  VM memory. +(MEM_ALIGN-1) is necessary to be able to allocate
+ *  MEMSIZE bytes from a MEM_ALIGN-aligned address: CELL_BYTES, for
+ *  native word access, or more.
  */
 
 #if GUARD
 /*  Aligned to 64 KB, and every stack boundary is a multiple of 64 KB,
  *  so the guards start on a page boundary for any page size up to that
- *  (4 KB on x86, 16 or 64 KB on some ARM systems).  */
-static UNS8 mem[MEMSIZE + CELL_BYTES - 1] __attribute__((aligned(65536)));
+ *  (4 KB on x86, 16 or 64 KB on some ARM systems). Aligned at run time,
+ *  base rounded up within an array 64 KB longer, not by the linker
+ *  (Iteration 945): a section aligned to 64 KB made the static i386
+ *  link pad its file to the boundary, 28 KB of zeros. Untouched pages
+ *  cost nothing.  */
+#define MEM_ALIGN 65536
 #else
-static UNS8 mem[MEMSIZE + CELL_BYTES - 1];
+#define MEM_ALIGN CELL_BYTES
 #endif
+static UNS8 mem[MEMSIZE + MEM_ALIGN - 1];
 
 /*
- *  1st CELL_BYTES-aligned address in mem array. Base address of the
+ *  1st MEM_ALIGN-aligned address in mem array. Base address of the
  *  system.
  */
 
@@ -701,8 +710,8 @@ static void load_image_fd(int fd, long limit) {
             exit(2);
         }
     }
-    base = (UNS8*)(((UNS64)(uintptr_t)mem + CELL_BYTES - 1)
-                    & ~(UNS64)(CELL_BYTES - 1));
+    base = (UNS8*)(((UNS64)(uintptr_t)mem + MEM_ALIGN - 1)
+                    & ~(UNS64)(MEM_ALIGN - 1));
     len = full_read(fd, base, limit < 0 ? MEMSIZE
                     : limit - (long)(8 + CELL_BYTES * (2 + nthreads + 2 * ntails)));
     close(fd);

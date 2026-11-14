@@ -17,6 +17,7 @@ cm:failed 0
 cm:passed 197
 core:4byte 1
 core:8byte 1
+core:libc 1
 core:okmarkers 2136
 crosspath:kernel64-shell.img reproduces
 ddc:gforth reproduces
@@ -111,13 +112,13 @@ shell:files 94
 shell:host-sh-tests 0
 size:asm-engine 17912
 size:asm-shell 144250
-size:engine-code-i386 23990
-size:engine-code-x86_64 29743
-size:i386 148222
+size:engine-code-i386 26257
+size:engine-code-x86_64 25538
+size:i386 146986
 size:image-i386 117882
 size:image-rill3 82888
 size:image-x86_64 126322
-size:x86_64 169554
+size:x86_64 155786
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>
 verify:skip-rows complete

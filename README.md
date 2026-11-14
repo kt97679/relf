@@ -5,7 +5,8 @@ L.C. Benschop's SOD32. This repository refactors it towards full
 self-hosting (docs/GOALS.md). What it is today:
 
 - **Two engines** that run the same byte-coded Forth image: `cv8.c`, a
-  small virtual machine in portable C (38 KB stripped on x86-64), and
+  small virtual machine in portable C (29 KB on x86-64, static, with no
+  C library: `engine/rt-linux.c`), and
   `relfasm64`, 17,912 bytes of x86-64 on raw system calls, no libc -
   **assembled by relf itself**, from `engine/relfasm64.4`, with an
   assembler written in Forth (`forth/asm64.4`). It reproduces itself.
@@ -80,6 +81,13 @@ image serves every machine of the same cell width - images are
 little-endian, and position-independent. Checked on x86-64, i386, ARMv7
 (an NVIDIA Tegra, natively) and, under qemu, AArch64 and RISC-V. The
 assembly engine is x86-64 only.
+
+**No C library.** On Linux on x86-64, i386, AArch64 and RISC-V 64 the
+engine is linked with `engine/rt-linux.c`, what it needs of a C library
+over raw system calls: static, 288 KB resident at start rather than the
+library's 1.9 MB, at the same speed. `make ENGINE_RT=libc` links the
+library instead, and is what any other system gets. The one difference:
+`~name` comes from `/etc/passwd` alone, not through NSS.
 
 **Time.** The shell keeps time in UTC everywhere (docs/QUESTIONS.md A16),
 and has no locale: character classes, ranges and the order of pathname

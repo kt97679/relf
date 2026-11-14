@@ -373,8 +373,26 @@ The guard catches every push at the push itself, and the return stack's
 guard sits two cells above the empty data stack, so an underflow of two
 or more cells faults too. `-DGUARD=0` brings the compares back, for a
 target without an MMU; they cost 3–6% at 64-bit and nothing measurable
-at 32. The block is aligned to 64 KB so the guards fall on page
-boundaries for pages up to that size.
+at 32. The image's base is aligned to 64 KB so the guards fall on page
+boundaries for pages up to that size - within a block 64 KB longer, at run
+time since Iteration 945: aligned by the linker, the block made a static
+i386 link pad its file to the boundary.
+
+### 5.5 Without the C library
+
+Since Iteration 945 the Makefile links the engine with `engine/rt-linux.c`
+rather than the C library, on Linux on x86-64, i386, AArch64 and RISC-V 64:
+what `cv8.c` calls - system calls, an allocator, the environment,
+`/etc/passwd`, the UTC calendar, `sigsetjmp` - over raw system calls,
+compiled against the library's headers so every type and constant is the
+target's own. `cv8.c` is the same for both builds. The engine is static,
+29 KB on x86-64, and 288 KB resident at start where the library made it
+1,904 - the library and its loader were nearly all of it - at the same
+speed, and starts in 0.6 of the time. `ENGINE_RT=libc` builds it with the
+library, the default anywhere else; `tests/run_tests.sh` builds both and
+runs CORE on each. One behaviour differs: `~name` reads `/etc/passwd`
+alone (QUESTIONS.md A9, as the assembly engine), where the library asks
+NSS.
 
 ### 5.4 Cells are host pointers
 

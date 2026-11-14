@@ -3,8 +3,10 @@
 # for both the default (8-byte) cell width and the 32-bit (4-byte,
 # i386) target.
 #
-# relf is built from cv8.c, the CV8 engine - portable, libc-based C,
-# built with a plain `cc`. Cell width is the host's pointer width,
+# relf is built from cv8.c, the CV8 engine - portable C, built as the
+# Makefile builds it: without the C library, on engine/rt-linux.c, where
+# that has the architecture (Iteration 945), and with it elsewhere; the
+# library's build is compiled and run on CORE here too. Cell width is the host's pointer width,
 # chosen at compile time (CV8.md 5.4), so a 32-bit compiler
 # (`cc -m32`) produces the 4-byte-cell engine with no source changes.
 # The i386 build is non-PIE: PIE spends ebx on the GOT, which costs
@@ -246,11 +248,18 @@ echo "== Building $NATIVE_ENGINE (native, $NATIVE_BYTES-byte cells) =="
 # ${CC} rather than a bare `cc`, so a 64-bit machine can be told to
 # build and test as a 32-bit one: CC='cc -m32 -fno-pie -no-pie'
 # HOSTBITS=32 tests/run_tests.sh (Iteration 398).
-${CC:-cc} -O2 -Wall -o "$NATIVE_ENGINE" engine/cv8.c
+# By the Makefile (Iteration 945): what make and the shells run is what
+# is tested. It built its own with the C library until then, and so,
+# once the Makefile's no longer did, replaced them mid-verify.
+rm -f "$NATIVE_ENGINE"
+make -s CC="${CC:-cc}" HOSTBITS="$HOSTBITS" "$NATIVE_ENGINE"
 # The compare-on-every-push build, for a target without an MMU, is not
 # what runs here - so check at least that it still compiles cleanly.
 ${CC:-cc} -O2 -Wall -Werror -DGUARD=0 -o /tmp/relf-noguard engine/cv8.c
 rm -f /tmp/relf-noguard
+# And the C library's build (ENGINE_RT=libc), the default where
+# rt-linux.c has no port: compiled cleanly, and run on CORE below.
+${CC:-cc} -O2 -Wall -Werror -o /tmp/relf-libc engine/cv8.c
 
 # The native half: cross-compile the host's own image, check it is the
 # one committed, and run everything against it. The labels stay
@@ -265,6 +274,8 @@ check_image_reproduces /tmp/relf-regen-native.img "$NATIVE_IMG" "$NATIVE_BYTES-b
 
 echo "== Running test suite ($NATIVE_BYTES-byte cells) =="
 run_suite "./$NATIVE_ENGINE" /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
+run_suite /tmp/relf-libc /tmp/relf-regen-native.img "C library, $NATIVE_BYTES-byte cells"
+rm -f /tmp/relf-libc
 run_ext_suites "./$NATIVE_ENGINE" /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
 run_io_suite "./$NATIVE_ENGINE" /tmp/relf-regen-native.img "$NATIVE_BYTES-byte cells"
 run_shell_test_suite "$NATIVE_ENGINE" "$NATIVE_IMG" "$NATIVE_BYTES-byte cells"
@@ -283,7 +294,8 @@ if [ "$HOSTBITS" = 32 ]; then
 else
 
 echo "== Building relf32 (i386, 4-byte cells) =="
-if ! cc -m32 -O2 -Wall -fno-pie -no-pie -o relf32 engine/cv8.c 2>/tmp/relf32_build.log; then
+rm -f relf32
+if ! make -s relf32 >/tmp/relf32_build.log 2>&1; then
     echo "SKIP: gcc -m32 not available on this host (32-bit dev libs missing?) - see /tmp/relf32_build.log"
     echo "      install gcc-multilib (Debian/Ubuntu) to run the i386 half"
 else

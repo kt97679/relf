@@ -186,6 +186,9 @@ width_state() {  # width_state WIDTH-LABEL MARKER-PATTERN
 }
 
 emit core:8byte  "$(width_state '8-byte cells' 'PASS (8-byte cells):')"
+# The C library's engine (ENGINE_RT=libc) on CORE, beside the Makefile's
+# own without it (Iteration 945): 1 when it passed.
+emit core:libc   "$(grep -c 'PASS (C library, [48]-byte cells):' /tmp/verify-run.log)"
 emit shell:8byte "$(width_state '8-byte cells' 'PASS (8-byte cells shell')"
 # A host without a 32-bit toolchain skips the i386 half, and that is a
 # property of the machine rather than of this shell: `skipped` says so,

@@ -684,7 +684,11 @@ here as the evidence for it.
   no libc. **Done in phase 2 and deliberately undone in phase 5**,
   which traded it for portability: the engine uses libc, and the
   primitives are thin wrappers over it (`READ`, `WRITE`, `POLL`, ...).
-  The goal stands; phase 5 explains why it waits. This applies to the
+  The goal stands; phase 5 explains why it waits. **Met again at 945
+  without giving up portability**: `cv8.c` links `engine/rt-linux.c`, its
+  calls over raw system calls for x86-64, i386, AArch64 and RISC-V 64,
+  and the library only elsewhere (`ENGINE_RT=libc`) - the assembly engine
+  had been the one way to it. This applies to the
   *engine's runtime*, not to build-time bootstrap tooling: `gcc`/`as`/`ld`
   remain fine to use for building the engine until phase 3 below (a
   self-hosted assembler) replaces them.
