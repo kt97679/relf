@@ -26,8 +26,8 @@ ext:4byte 1
 ext:8byte 1
 forthfuzz:failures 0
 i386:utf8:failed 0
-image-sum:kernel32-shell.img 1330666603/120596
-image-sum:kernel64-shell.img 2627628305/129028
+image-sum:kernel32-shell.img 3642364724/120532
+image-sum:kernel64-shell.img 308233776/128964
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 image:narrow-host reproduces
@@ -109,15 +109,15 @@ shell:assertions 1128
 shell:dead-words 0
 shell:files 94
 shell:host-sh-tests 0
-size:asm-engine 15856
-size:asm-shell 144900
-size:engine-code-i386 21766
-size:engine-code-x86_64 26519
-size:i386 150936
-size:image-i386 120596
-size:image-rill3 84013
-size:image-x86_64 129028
-size:x86_64 168164
+size:asm-engine 15960
+size:asm-shell 144940
+size:engine-code-i386 21862
+size:engine-code-x86_64 26639
+size:i386 150872
+size:image-i386 120532
+size:image-rill3 83957
+size:image-x86_64 128964
+size:x86_64 168100
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>
 verify:skip-rows complete

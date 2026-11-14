@@ -1286,6 +1286,21 @@ L_scan: SPILL(); { /* c-addr1 u1 c --- c-addr2 u2 : from the first c, or the end
 L_cstrlen: SPILL(); /* c-addr --- u : a NUL-terminated string's length */
     DS0 = (UNS64)strlen((const char *)(uintptr_t)DS0);
     FILLNEXT();
+L_xploop: { /* (+LOOP) ( n --- ), since 934 - a colon word of 29 before (forth-vm-
+             * evolution: an instruction in 9 of its 10 designs). Counter at rp[0],
+             * limit at rp[1]; x the counter less the limit: the loop is done when x
+             * and x + n differ in sign and x and n do - kernel.4's test since 243 -
+             * and then both are dropped and the branch back stepped over */
+    UNS64 n = tos, x = CELL(rp) - CELL(rp + CELL_BYTES);
+    POPT();
+    if ((INT64)((x ^ (x + n)) & (x ^ n)) < 0) {
+        rp += 2 * CELL_BYTES;
+        ip += BYTE(ip) == OPC_BRANCH8 ? 2 : 3;
+    } else {
+        CELL(rp) += n;
+    }
+    NEXT();
+}
 L_ctablefind: SPILL(); { /* c-addr table count width --- i | -1 (Iteration 676): the first */
     /* of count NUL-terminated names, width bytes apart, that is c-addr's */
     /* not t: NEXT's own opcode variable is t */

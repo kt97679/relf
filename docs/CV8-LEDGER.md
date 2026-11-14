@@ -358,7 +358,7 @@ noise).
 |---|---|---:|
 | direct reads of a tree's fields (628's @ from an address) | XF@, XV@ colon words of 7 | 4.9 % (710 priced) |
 | DEFER's call inline (a jump in the stub) | DEFER, a colon word | 2.5 % |
-| +LOOP inline code (630) | (+LOOP), a colon word of 29 | 1.7 % |
+| +LOOP inline code (630) | **done 934**: (+LOOP) an escaped primitive (forth-vm-evolution: an instruction in 9 of its 10 designs) - the realistic script 1.95 % fewer dispatches | was 1.7 % |
 | PICK inline | PICK, a colon word of 6 | 1.5 % |
 | compares fused with IF/WHILE/UNTIL, OVER with an op, DUP 0= IF, more ops taking a literal (628, 629, 661-669, 705-707) | one dispatch each: fused pairs given up at 536 (QUESTIONS.md A15) | about 8 % of dispatches were pairs when they went |
 | the kernel's own code folded and inlined by its cross compiler (627, 705-707) | cross.4 has PEEP-IMM and PEEP-VAR, not 681's constants or 683's inlining | not priced |

@@ -251,6 +251,15 @@ PRIMITIVE CTABLE-FIND  ( c-addr table count width --- i | -1 )
 \ The first of count NUL-terminated names width bytes apart that is
 \ c-addr's, or -1: the shell's variable scan, a Forth loop until 676 -
 \ 5-14 % of the native shell's time, 3-6 % of CV8's (660's price).
+PRIMITIVE (+LOOP) ( n --- )
+\ Runtime part of +LOOP (Iteration 934): a colon word of 29 instructions
+\ until then, 1.7 % of the realistic script's dispatches; an instruction
+\ in nine of forth-vm-evolution's ten designs. The loop is done when the
+\ index crosses the boundary between limit-1 and limit: with x = index -
+\ limit, when x and x+n differ in sign and x and n do - the signed-
+\ overflow test on the biased index, as the colon word had it since
+\ Iteration 243 (coreplustest.fth). Then the loop's two cells go and the
+\ branch back is stepped over.
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.
@@ -373,10 +382,6 @@ VARIABLE R0 ( --- a-addr)
 \ To access the loop parameters on the return stack, the DO LOOP words must
 \ first pop their OWN return address!
 
-: SKIP-BRANCH ( a --- a' )
-\ Past the branch instruction at a.
-  DUP C@ BRANCH8-TOK = IF 2 ELSE 3 THEN + ;
-
 : (DO)   ( n1 n2 ---)
 \ Runtime part of DO.
   R> ROT ROT SWAP >R >R >R ;
@@ -407,26 +412,6 @@ VARIABLE R0 ( --- a-addr)
 \ CALL it, and the call's return address would sit where the counter
 \ belongs - which is how the first attempt failed (529).
 
-: (+LOOP) ( n ---)
-\ Runtime part of +LOOP
-\ Very similar to (LOOP), but the compare condition is different.
-\ With x = index - limit, the loop has crossed the boundary between
-\ limit-1 and limit exactly when x changes sign AND x and the step n
-\ have opposite signs:  ((x XOR x+n) AND (x XOR n)) < 0.
-\ That is the signed-overflow test on the biased index x+MIN-INT,
-\ computed without storing the bias, so (DO), I, J and the rest are
-\ unchanged. The previous test used only the first half - "x changed
-\ sign" - which also fires when x wraps from MAX-INT to MIN-INT, so a
-\ step of a 256th of the cell range stopped half way (Iteration 243;
-\ coreplustest.fth, seven cases).
-     R> SWAP R>              \ ret n index
-     2DUP + ROT ROT          \ ret index' n index
-     R@ -                    \ ret index' n x
-     2DUP XOR >R             \ ret index' n x        R: x^n limit
-     DUP ROT +               \ ret index' x x'
-     XOR R> AND 0 <          \ ret index' crossed?
-     IF R> 2DROP SKIP-BRANCH >R
-     ELSE >R >R THEN ;
 
 
 

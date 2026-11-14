@@ -19,6 +19,9 @@ for l in open(sys.argv[2]):
         n, cwd, cmd = l.split('|'); cfg.append((n, cwd, cmd))
 WL = os.environ.get('WL', 'loop fn str arith start').split()
 W = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'tests', 'bench-vm') + '/'
+# WDIR and WEXT (934): another directory of workloads and their suffix - rill3's tests/cm/bench, .cm
+W = os.environ.get('WDIR', W).rstrip('/') + '/'
+WEXT = os.environ.get('WEXT', '.sh')
 # SCALE=k (Iteration 576): every workload's loop bound times k, in copies
 # made here. At 1 dash spends 2 to 4 ms on one, much of it its own start,
 # which relf beats - so the ratios understated the cost per operation, a
@@ -59,7 +62,7 @@ for r in range(ROUNDS + 1):
         if w == 'start':
             t = run(cwd, cmd.replace('{w}', '-c true'), 20)
         else:
-            t = run(cwd, cmd.replace('{w}', W + w + '.sh'))
+            t = run(cwd, cmd.replace('{w}', W + w + WEXT))
         if r: res[(n, w)].append(t)          # round 0 is warmup
 
 def boot(xs, k=2000):
