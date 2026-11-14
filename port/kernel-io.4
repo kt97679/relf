@@ -1,0 +1,238 @@
+\ port/kernel-io.4 - relf's own I/O words, copied from forth/kernel.4.
+\
+\ relf's kernel reads and writes descriptors in Forth over its READ, WRITE
+\ and POLL primitives (Iteration 245): line reading, short writes, EINTR,
+\ the terminal key. A host Forth's words differ - gforth's fids are C
+\ FILE pointers, not descriptors - and the shell is written against
+\ relf's. So these are relf's definitions as they are, over port/os.4's
+\ primitives - copied from kernel.4 at Iteration 940, by name.
+
+BASE @  DECIMAL
+00 CONSTANT W/O ( --- mode)
+02 CONSTANT R/O ( --- mode)
+04 CONSTANT R/W ( --- mode)
+06 CONSTANT A/O ( --- mode)
+10 CONSTANT X/O ( --- mode)   \ create, but not over an existing file
+: BIN ( mode1 --- mode2)
+\ Modify the R/O W/O or R/W mode so that it applies to binary files.
+  1 + ;
+
+: CREATE-FILE ( c-addr u mode --- fid ior)
+\ Create a new file with the name starting at c-addr with length u,
+\ truncating any that exists, and open it in the given mode. Return
+\ the file-ID and the IO result (ior=0 if success). W/O and A/O keep
+\ their own OPEN-FILE modes; R/O and R/W use the engine's read-write
+\ create modes, 8 and 9 (cv8.c's open_flags). Until Iteration 245 this
+\ masked every mode to W/O, and a file created R/W was write-only.
+  DUP 2 U< 0= OVER 6 U< AND IF 1 AND 8 + THEN OPEN-FILE ;
+
+: READ-SOME ( c-addr u fd --- n )
+\ One read(2), retried when a signal interrupted it (EINTR, 4): n bytes,
+\ 0 at end of file, or a negative errno.
+  BEGIN >R 2DUP R@ READ DUP -4 = WHILE DROP R> REPEAT
+  R> DROP >R 2DROP R> ;
+
+: READ-FILE ( c-addr u1 fid --- u2 ior )
+\ Read u1 characters, fewer only at end of file. read(2) returns less
+\ than asked for on a pipe or a terminal, so this loops. ior is 0 or a
+\ negative errno.
+  >R 0 >R                                ( c-addr u1  R: fid got )
+  BEGIN DUP WHILE
+    2DUP R> R@ SWAP >R READ-SOME         ( c-addr u1 n )
+    DUP 0< IF >R 2DROP R> R> SWAP R> DROP EXIT THEN
+    DUP 0= IF DROP 2DROP R> 0 R> DROP EXIT THEN
+    R> OVER + >R
+    ROT OVER + ROT ROT -
+  REPEAT
+  2DROP R> 0 R> DROP ;
+
+: WRITE-FILE ( c-addr u fid --- ior )
+\ Write all u characters, looping over short writes. ior is 0, a
+\ negative errno, or -1 if write(2) made no progress.
+  >R
+  BEGIN DUP WHILE
+    2DUP R@ WRITE                        ( c-addr u n )
+    DUP -4 = IF DROP ELSE
+      DUP 0 > 0= IF >R 2DROP R> DUP 0= + R> DROP EXIT THEN
+      ROT OVER + ROT ROT -
+    THEN
+  REPEAT
+  2DROP R> DROP 0 ;
+
+: WRITE-LINE ( c-addr u fid --- ior )
+\ Write the string and a newline. The newline is the 10 on the stack,
+\ written from where SP@ says it is, as EMIT does.
+  DUP >R WRITE-FILE ?DUP IF R> DROP EXIT THEN
+  10 SP@ 1 R> WRITE-FILE SWAP DROP ;
+
+VARIABLE RL-NEWLINE?   \ did the line just read end at a newline
+: RL-END ( c-addr p nl? flag ior --- u2 flag ior )
+\ READ-LINE's result from its end pointer p. When the line ended at a
+\ newline (nl?), a CR just before it is part of the terminator: CRLF
+\ files read as plain lines. A line cut short by the buffer keeps a
+\ trailing CR, because nothing says it is the end: stripping it made a
+\ full buffer look one short, and a caller growing its buffer took the
+\ line for finished (Iteration 249).
+  >R >R >R OVER -
+  R> DUP RL-NEWLINE? !                   \ the shell's `read` needs this
+  IF DUP IF 2DUP + 1- C@ 13 = IF 1- THEN THEN THEN
+  SWAP DROP R> R> ;
+
+: RL-BYTES ( c-addr u1 fid --- u2 flag ior )
+\ READ-LINE a byte at a time, for a descriptor that cannot seek: a
+\ byte read past the newline could not be given back, and a pipe or a
+\ terminal is shared with whatever runs next.
+  >R OVER + OVER                         ( c-addr end p  R: fid )
+  BEGIN 2DUP - WHILE
+    DUP 1 R@ READ-SOME                   ( c-addr end p n )
+    DUP 1 = IF
+      DROP DUP C@ 10 = IF SWAP DROP -1 -1 0 R> DROP RL-END EXIT THEN
+      1+
+    ELSE
+      \ 0 is end of file, below 0 an error; the flag says whether this
+      \ line got any characters before it.
+      >R SWAP DROP 2DUP - 0= 0=          ( c-addr p any  R: fid n )
+      0 SWAP R> R> DROP                  ( c-addr p 0 any n )
+      DUP 0< 0= IF DROP 0 THEN
+      RL-END EXIT
+    THEN
+  REPEAT
+  SWAP DROP 0 -1 0 R> DROP RL-END ;
+
+: READ-LINE ( c-addr u1 fid --- u2 flag ior )
+\ Read a line of at most u1 characters; the newline ends it and is not
+\ stored. flag is false only at end of file.
+\
+\ No buffer. A descriptor that can seek is read a block at a time, and
+\ whatever was read past the newline is given back by seeking to just
+\ after it - so the file offset is always exactly where the reader has
+\ consumed to, and nothing else needs to know a read happened. That is
+\ what the engine's read-ahead pool achieved with a table, an LRU and
+\ seek-back on eviction (until Iteration 245). Anything else is read a
+\ byte at a time: see RL-BYTES.
+  OVER 0= IF 2DROP DROP 0 -1 0 EXIT THEN   \ zero characters: not EOF
+  DUP FILE-POSITION IF 2DROP RL-BYTES EXIT THEN
+  >R >R >R                               ( c-addr u1  R: hi lo fid )
+  OVER SWAP R@ READ-FILE                 ( c-addr n ior )
+  ?DUP IF >R DROP DUP 0 -1 R> R> DROP R> R> 2DROP RL-END EXIT THEN
+  DUP 0= IF DROP DUP 0 0 0 R> DROP R> R> 2DROP RL-END EXIT THEN
+  2DUP 10 SCAN SWAP DROP                 ( c-addr n rest )
+  DUP >R - R>                            ( c-addr i rest )
+  DUP 0= 0= ROT ROT                      ( c-addr nl? i rest )
+  1 > IF                                 \ read past the newline: give it back
+    R> R> R>                             ( c-addr nl? i fid lo hi )
+    3 PICK 1+ 0 D+ ROT REPOSITION-FILE   ( c-addr nl? i ior )
+  ELSE
+    R> R> R> 2DROP DROP 0                ( c-addr nl? i 0 )
+  THEN
+  >R ROT DUP ROT + ROT -1 R> RL-END ;
+
+: W! ( w a-addr --- )
+\ Store the low 16 bits of w at a-addr, little-endian.
+  2DUP C! SWAP 8 RSHIFT SWAP 1+ C! ;
+
+: W@ ( a-addr --- w )
+\ Fetch an unsigned 16-bit little-endian value.
+  DUP C@ SWAP 1+ C@ 8 LSHIFT OR ;
+
+: FD-POLL ( fd events ms --- revents | 0 | -errno )
+\ poll(2) on one descriptor: the events that occurred, 0 on timeout, or
+\ a negative errno. events and revents are poll(2)'s bits; POLLIN is 1.
+\
+\ The struct pollfd - an int fd, then short events and short revents,
+\ eight bytes, checked by cv8.c at build time - is laid out in two
+\ cells pushed onto the data stack for the purpose and found with SP@,
+\ as KEY finds its byte. No variable, so the word is reentrant, which a
+\ multitasker will need.
+  >R >R >R 0 0 SP@ R> R> R>            ( 0 0 p fd events ms )
+  >R 2 PICK 4 + W!                     ( 0 0 p fd )
+  DUP 2 PICK W! 16 RSHIFT OVER 2 + W!  ( 0 0 p )
+  DUP 1 R> POLL                        ( 0 0 p n )
+  DUP 0 > IF DROP 6 + W@ ELSE SWAP DROP THEN
+  >R 2DROP R> ;
+
+: FD-WAIT ( fd events --- revents )
+\ Wait for one of events on fd, however long it takes: the events that
+\ occurred, or 0 if poll(2) itself failed. A signal is retried.
+  BEGIN 2DUP -1 FD-POLL DUP -4 = WHILE DROP REPEAT
+  >R 2DROP R> 0 MAX ;
+
+: KEY ( --- c )
+\ Receive one character from the terminal.
+\
+\ One byte, unbuffered, straight off descriptor 0 - which is what
+\ gforth, SPF and lbForth all do, and what dash does for its `read`
+\ builtin. No buffer, and no buffer is possible: descriptor 0 is
+\ INHERITED, shared with every child, and a byte read ahead is a byte
+\ taken from whatever runs next. The engine used to hold 4096 bytes of
+\ it, and `read x; cat` swallowed the whole pipe - see
+\ tests/shell/run-read. Reading into the cell the 0 just pushed, via
+\ SP@, for the same reason EMIT does.
+\
+\ End of input exits, which is not decoration: without it a shell
+\ reading a script off stdin spun on read(0,"",1)=0 forever (GOALS.md's
+\ Bug 3).
+\
+\ A failed read WAITS, once, for descriptor 0 to become readable, then
+\ tries again; a second failure exits. That covers a non-blocking
+\ descriptor with nothing typed yet (EAGAIN, where ANS KEY must wait
+\ and this used to exit), without knowing EAGAIN's value, which is 11
+\ on Linux and 35 on the BSDs. A real error - stdin a directory, a
+\ terminal gone - leaves the descriptor "readable", so the retry fails
+\ at once and KEY exits rather than spinning. No shared state changes:
+\ fcntl could have made the descriptor blocking, but the flag belongs
+\ to every process sharing it (Iteration 246).
+  0                                    ( waited? )
+  BEGIN
+    0 SP@ 1 0 READ-SOME                ( waited? c n )
+    DUP 1 = IF DROP SWAP DROP EXIT THEN
+    0= ROT OR IF BYE THEN              ( c )
+    DROP 0 1 FD-WAIT 1 AND 0= IF BYE THEN
+    -1
+  0 UNTIL ;
+
+: KEY? ( --- flag )
+\ Is a character available from the terminal, now? Also true at end of
+\ input or on an error, where KEY would not wait either. On a terminal
+\ in its usual line mode the system sees nothing until Enter; after
+\ `0 -1 RAW-MODE` it sees each key as it is typed.
+  0 1 0 FD-POLL 0= 0= ;
+
+: MS ( u --- )
+\ Wait at least u milliseconds: poll(2) on no descriptors. A signal can
+\ end the wait early; nothing in this system installs a handler.
+  0 0 ROT POLL DROP ;
+
+VARIABLE ECHAR-BUF ( --- a-addr )
+: ETYPE ( c-addr u --- )
+\ Type to standard error (Iteration 554): an error message on standard
+\ output ended up in `x=$(forth 'bad')`, as if it were the result.
+  2 WRITE-FILE DROP ;
+
+: ECHAR ( c --- )  ECHAR-BUF C!  ECHAR-BUF 1 ETYPE ;
+
+\ ---- the home directory of a user, from /etc/passwd (relf: getpwnam) ----
+CREATE PW-BUF 256 ALLOT   VARIABLE PW-FID   CREATE PW-HOME 256 ALLOT   VARIABLE PW-NAME
+: PW-FIELD ( c-addr u n --- c-addr' u' )   \ the n-th ':' field of a line
+  0 ?DO [CHAR] : SCAN DUP IF 1- SWAP 1+ SWAP THEN LOOP
+  2DUP [CHAR] : SCAN SWAP DROP - ;
+: GETPWHOME ( c-addr --- addr | 0 )
+  PW-NAME !
+  S" /etc/passwd" R/O OPEN-FILE IF DROP 0 EXIT THEN PW-FID !
+  BEGIN PW-BUF 255 PW-FID @ READ-LINE 0= AND WHILE        ( u )
+    PW-BUF OVER 0 PW-FIELD  PW-NAME @ DUP CSTRLEN COMPARE 0= IF
+      PW-BUF SWAP 5 PW-FIELD  255 MIN >R PW-HOME R@ MOVE  0 PW-HOME R> + C!
+      PW-FID @ CLOSE-FILE DROP  PW-HOME EXIT
+    THEN DROP
+  REPEAT DROP PW-FID @ CLOSE-FILE DROP 0 ;
+
+\ kernel.4's ABORT": the message and the word being read to standard error,
+\ then -2 thrown - the shell's errors expect it printed ("ABORT\" (-2) has
+\ printed its message"); a host's own may print it only with no CATCH. The
+\ string is S"'s, not inline after the call, so a host's compiler that
+\ knows its own inline strings has no other to know.
+: (ABORT-MSG) ( c-addr u --- )  ETYPE 32 ECHAR HERE COUNT ETYPE 10 ECHAR -2 (THROW) ;
+: ABORT" ( "ccc<quote>" --- )
+  POSTPONE IF POSTPONE S" POSTPONE (ABORT-MSG) POSTPONE THEN ; IMMEDIATE
+
+BASE !

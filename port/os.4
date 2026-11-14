@@ -1,0 +1,367 @@
+\ port/os.4 - relf's operating-system primitives, in Forth, over one SYSCALL.
+\
+\ relf's engines implement about eighty primitives the shell is written
+\ against - processes, pipes, files, directories, the terminal, signals,
+\ the environment, time (forth/kernel.4's ESCAPED list; engine/cv8.c has
+\ the C, engine/relfasm64.4 the same over raw system calls). A Forth that
+\ is not relf has none of them. This file is them, each with relf's stack
+\ effect and its result convention (0 or -errno, 200 where cv8.c says
+\ 200), over the one word a host must give:
+\
+\   SYSCALL ( block num --- r )   Linux x86-64 system call num, its six
+\                                 arguments the cells at block, r its
+\                                 result or -errno; num -1, -2, -3 give
+\                                 argc, argv and the initial environ.
+\
+\ forth-vm-evolution's engines have that word as it is (vm.c's
+\ L_syscall); gforth is given it through its C interface (port/gforth/).
+\ x86-64 Linux only: the numbers and struct layouts below are its.
+\
+\ Signals differ in one way. relf catches a signal with a handler in the
+\ engine that sets a flag; a Forth word cannot be a handler. So a caught
+\ signal is blocked instead and read from a signalfd when the shell asks
+\ (SIGNALS-PENDING), and EXECVE unblocks them for the program it starts;
+\ WAITPID polls the signalfd beside the child, so a wait still ends. What
+\ that loses: a blocked signal interrupts no read with EINTR - relf's
+\ action 3, used at the interactive prompt.
+
+BASE @  DECIMAL
+
+\ ---- the system call, by argument count ------------------------------
+CREATE SC-BLK 6 CELLS ALLOT
+: SC0 ( num --- r )            SC-BLK SWAP SYSCALL ;
+: SC1 ( a num --- r )          SWAP SC-BLK ! SC0 ;
+: SC2 ( a b num --- r )        SWAP SC-BLK CELL+ ! SC1 ;
+: SC3 ( a b c num --- r )      SWAP SC-BLK 2 CELLS + ! SC2 ;
+: SC4 ( a b c d num --- r )    SWAP SC-BLK 3 CELLS + ! SC3 ;
+: SC5 ( a b c d e num --- r )  SWAP SC-BLK 4 CELLS + ! SC4 ;
+: SC-IOR ( r --- ior ) 0< IF 200 ELSE 0 THEN ;          \ cv8.c's 200
+: SC-ERR ( r --- ior ) DUP 0< 0= IF DROP 0 THEN ;       \ 0 or -errno
+
+\ C's 32-bit and 16-bit fields, little-endian
+: LE32@ ( a --- u )
+  DUP C@  OVER 1+ C@ 8 LSHIFT OR  OVER 2 + C@ 16 LSHIFT OR  SWAP 3 + C@ 24 LSHIFT OR ;
+: LE32S@ ( a --- n )  LE32@ DUP 2147483648 AND IF 4294967296 - THEN ;
+: LE32! ( u a --- )
+  2DUP C!  OVER 8 RSHIFT OVER 1+ C!  OVER 16 RSHIFT OVER 2 + C!  SWAP 24 RSHIFT SWAP 3 + C! ;
+: LE16@ ( a --- u )  DUP C@ SWAP 1+ C@ 8 LSHIFT OR ;
+
+\ ---- memory -----------------------------------------------------------
+\ zeroed, as relf's calloc - unless the host's own are: a design's
+\ ALLOCATE is an anonymous mmap, and filling it would only touch its pages
+VARIABLE ALLOCATE-ZEROES   0 ALLOCATE-ZEROES !    \ the host sets it
+: ALLOCATE ( u --- a-addr ior )
+  DUP >R ALLOCATE  DUP 0= ALLOCATE-ZEROES @ 0= AND IF OVER R@ 0 FILL THEN  R> DROP ;
+\ CTABLE-FIND ( c-addr table count width --- i | -1 ): the first of count
+\ NUL-terminated names, width bytes apart, that is c-addr's
+: CT-EQ ( a b --- f )
+  BEGIN OVER C@ OVER C@ = WHILE OVER C@ 0= IF 2DROP -1 EXIT THEN 1+ SWAP 1+ SWAP REPEAT 2DROP 0 ;
+: CTABLE-FIND ( c-addr table count width --- i | -1 )
+  SWAP 0 ?DO                              ( c-addr table width )
+    2 PICK 2 PICK CT-EQ IF 2DROP DROP I UNLOOP EXIT THEN
+    TUCK + SWAP
+  LOOP 2DROP DROP -1 ;
+
+\ ---- reading and writing ---------------------------------------------
+: READ ( c-addr u fd --- n )    ROT ROT 0 SC3 ;
+: WRITE ( c-addr u fd --- n )   ROT ROT 1 SC3 ;
+: POLL ( a-addr n ms --- n' )   7 SC3 ;
+
+\ ---- files: fids are descriptors, as relf's -------------------------
+CREATE OPEN-FLAGS
+  577 , 577 , 0 , 0 , 2 , 2 , 1089 , 1089 , 578 , 578 , 193 ,
+11 CONSTANT #OPEN-MODES
+\ a name is c-addr u: the byte after it is borrowed for a NUL and given
+\ back, as cv8.c does
+VARIABLE Z-SAVED
+: Z-ON ( c-addr u --- c-addr u )  2DUP + DUP C@ Z-SAVED ! 0 SWAP C! ;
+: Z-OFF ( c-addr u --- )  + Z-SAVED @ SWAP C! ;
+: -1IF ( r --- ior )  0< IF -1 ELSE 0 THEN ;            \ libc's -1
+: OPEN-FILE ( c-addr u fam --- fid ior )
+  DUP #OPEN-MODES U< 0= IF DROP 2DROP -1 200 EXIT THEN
+  CELLS OPEN-FLAGS + @ >R  Z-ON  OVER R> 420 2 SC3 >R  Z-OFF  R>
+  DUP 0< IF DROP -1 200 ELSE 0 THEN ;
+: CLOSE-FILE ( fid --- ior )  3 SC1 -1IF ;
+: DELETE-FILE ( c-addr u --- ior )  Z-ON  OVER 87 SC1 >R  Z-OFF  R> -1IF ;
+: CHMOD ( c-addr u mode --- ior )  >R Z-ON  OVER R> 90 SC2 >R  Z-OFF  R> -1IF ;
+: REPOSITION-FILE ( ud fid --- ior )  SWAP DROP SWAP 0 8 SC3 SC-IOR ;   \ lseek(fid, ud, SEEK_SET)
+: FILE-POSITION ( fid --- ud ior )  0 1 8 SC3  DUP 0< IF DROP 0 0 200 ELSE 0 0 THEN ;
+: FILE-SIZE ( fid --- ud ior )
+  DUP 0 1 8 SC3 DUP 0< IF 2DROP 0 0 200 EXIT THEN   ( fid cur )
+  OVER 0 2 8 SC3 >R  0 8 SC3 DROP  R>              ( end )
+  DUP 0< IF DROP 0 0 200 ELSE 0 0 THEN ;
+: SYSTEM ( c-addr u --- ior )  2DROP 200 ;          \ not used by the shell
+
+\ ---- processes ---------------------------------------------------------
+\ FORK: below, with the signals
+: GETPID ( --- pid )  39 SC0 ;
+: GETPPID ( --- pid )  110 SC0 ;
+CREATE WSTATUS 2 CELLS ALLOT
+\ WAITPID: below, with the signals
+: WAIT-NOHANG ( --- pid status )
+  0 WSTATUS !  -1 WSTATUS 1 0 61 SC4  DUP 0 > IF WSTATUS LE32S@ ELSE DROP 0 0 THEN ;
+: WAIT-JOB ( pid --- pid' status )
+  0 WSTATUS !  WSTATUS 2 0 61 SC4  DUP 0 > 0= IF DROP -1 THEN  WSTATUS LE32S@ ;
+: PIPE ( --- fd-read fd-write ior )
+  WSTATUS 22 SC1  0< IF 0 0 200 ELSE WSTATUS LE32@ WSTATUS 4 + LE32@ 0 THEN ;
+: DUP2 ( oldfd newfd --- ior )  33 SC2 SC-IOR ;
+: DUP-FROM ( fd floor --- fd' | -1 )  1030 SWAP 72 SC3  DUP 0< IF DROP -1 THEN ;
+: KILL ( pid sig --- ior )  62 SC2 SC-ERR ;
+: UMASK ( mask --- old )  95 SC1 ;
+: SETPGID ( pid pgid --- ior )  109 SC2 SC-ERR ;
+: CHDIR ( c-addr --- ior )  80 SC1 SC-IOR ;
+: GETCWD ( addr max --- len ior )  OVER SWAP 79 SC2  0< IF DROP 0 200 ELSE CSTRLEN 0 THEN ;
+: ACCESS ( c-addr mode --- ior )  21 SC2 SC-ERR ;
+
+\ ---- the terminal ------------------------------------------------------
+CREATE TIO 64 ALLOT   CREATE TIO-SAVED 64 ALLOT   VARIABLE TIO-SAVED?   0 TIO-SAVED? !
+CREATE TIO-RAW 64 ALLOT   CREATE RAW-SAVED 64 ALLOT   VARIABLE RAW-FD   -1 RAW-FD !
+: TCGETS ( fd buf --- r )  21505 SWAP 16 SC3 ;
+: TCSETS ( fd buf --- r )  21507 SWAP 16 SC3 ;        \ TCSETSW: after output drains
+: ISATTY ( fd --- flag )  TIO TCGETS 0= ;
+: TIO-CLEAR ( buf off mask --- )  >R + DUP LE32@ R> INVERT AND SWAP LE32! ;
+: TERM-RAW ( fd --- ior )
+  DUP TIO TCGETS DUP IF SWAP DROP EXIT THEN DROP
+  TIO-SAVED? @ 0= IF TIO TIO-SAVED 64 MOVE -1 TIO-SAVED? ! THEN
+  TIO 12 32776 TIO-CLEAR  TIO 12 2 TIO-CLEAR        \ ECHO IEXTEN, ICANON
+  TIO 0 320 TIO-CLEAR                               \ ICRNL INLCR
+  1 TIO 17 6 + + C!  0 TIO 17 5 + + C!              \ VMIN 1, VTIME 0
+  TIO TCSETS SC-ERR ;
+: TERM-RESTORE ( fd --- ior )
+  TIO-SAVED? @ IF TIO-SAVED TCSETS SC-ERR ELSE DROP 0 THEN ;
+: RAW-MODE ( fd flag --- ior )
+  IF DUP TIO-RAW TCGETS DUP IF SWAP DROP EXIT THEN DROP
+     RAW-FD @ 0< IF TIO-RAW RAW-SAVED 64 MOVE DUP RAW-FD ! THEN
+     TIO-RAW 12 10 TIO-CLEAR  1 TIO-RAW 23 + C!  0 TIO-RAW 22 + C!
+     TIO-RAW 21506 SWAP 16 SC3 SC-ERR
+  ELSE DUP RAW-FD @ <> IF DROP 0 EXIT THEN
+     RAW-SAVED 21506 SWAP 16 SC3 SC-ERR  -1 RAW-FD ! THEN ;
+: TCGETPGRP ( fd --- pgid | -1 )
+  0 WSTATUS !  21519 WSTATUS 16 SC3 0< IF -1 ELSE WSTATUS LE32S@ THEN ;
+\ SIGTTOU (22) blocked across the call, as cv8.c does: a background shell
+\ handing the terminal over is otherwise stopped by it
+CREATE TTOU-SET 2 CELLS ALLOT
+: TCSETPGRP ( fd pgid --- ior )
+  WSTATUS !  2097152 TTOU-SET !                      \ 1 << (22 - 1)
+  0 TTOU-SET TTOU-SET CELL+ 8 14 SC4 DROP
+  21520 WSTATUS 16 SC3 SC-ERR
+  2 TTOU-SET CELL+ 0 8 14 SC4 DROP ;
+
+\ ---- files' kinds, modes, directories ------------------------------------
+CREATE STATBUF 144 ALLOT
+: FILE-KIND ( c-addr --- kind )
+  STATBUF 4 SC2 IF 0 EXIT THEN
+  STATBUF 24 + LE32@ 61440 AND
+  DUP 32768 = IF DROP 1 EXIT THEN  16384 = IF 2 ELSE 3 THEN ;
+: FILE-MODE ( c-addr follow? --- mode )
+  >R STATBUF R@ IF 4 ELSE 6 THEN SC2 IF R> DROP 0 EXIT THEN
+  R> DUP 1 = IF DROP STATBUF 8 + @ EXIT THEN
+  2 = IF STATBUF @ EXIT THEN
+  STATBUF 24 + LE32@ ;
+\ A directory: [fd][pos][len] and a getdents64 buffer; READ-DIR's name is
+\ good until the next READ-DIR on it, as readdir(3)'s
+4096 CONSTANT DIR-BUFSZ
+: OPEN-DIR ( c-addr --- dirp | 0 )
+  589824 0 2 SC3 DUP 0< IF DROP 0 EXIT THEN        \ O_DIRECTORY | O_CLOEXEC
+  3 CELLS DIR-BUFSZ + ALLOCATE IF DROP 3 SC1 DROP 0 EXIT THEN
+  TUCK !  0 OVER CELL+ !  0 OVER 2 CELLS + ! ;
+: READ-DIR ( dirp --- c-addr | 0 )
+  DUP CELL+ @ OVER 2 CELLS + @ < 0= IF
+    DUP @ OVER 3 CELLS + DIR-BUFSZ 217 SC3
+    DUP 0 > 0= IF 2DROP 0 EXIT THEN
+    OVER 2 CELLS + !  0 OVER CELL+ !
+  THEN
+  DUP 3 CELLS + OVER CELL+ @ +                      ( dirp entry )
+  DUP 16 + LE16@ ROT CELL+ +!  19 + ;
+: CLOSE-DIR ( dirp --- )  DUP @ 3 SC1 DROP FREE DROP ;
+
+\ ---- limits and times -------------------------------------------------
+CREATE RLIM 2 CELLS ALLOT
+: GETRLIMIT ( resource --- soft hard ior )
+  RLIM 97 SC2 DUP IF >R 0 0 R> ELSE DROP RLIM @ RLIM CELL+ @ 0 THEN ;
+: SETRLIMIT ( soft hard resource --- ior )
+  >R RLIM CELL+ ! RLIM !  R> RLIM 160 SC2 SC-ERR ;
+: GETFSIZE ( --- n )
+  1 RLIM 97 SC2 IF -1 EXIT THEN  RLIM @ DUP -1 = IF EXIT THEN  512 / ;
+: SETFSIZE ( n --- ior )
+  DUP 0< IF DROP -1 ELSE 512 * THEN  DUP RLIM ! RLIM CELL+ !
+  1 RLIM 160 SC2 IF 202 ELSE 0 THEN ;
+CREATE RUSAGE 144 ALLOT
+: RU-MS ( a --- ms )  DUP @ 1000 * SWAP CELL+ @ 1000 / + ;
+: CPU-TIMES ( --- user sys child-user child-sys )
+  0 RUSAGE 98 SC2 DROP  RUSAGE RU-MS  RUSAGE 2 CELLS + RU-MS
+  -1 RUSAGE 98 SC2 DROP  RUSAGE RU-MS  RUSAGE 2 CELLS + RU-MS ;
+\ UTC, as relf has it (QUESTIONS.md A16): the civil date of a day count,
+\ Howard Hinnant's civil_from_days
+CREATE TSPEC 2 CELLS ALLOT
+VARIABLE CV-DAYS  VARIABLE CV-DOE  VARIABLE CV-YOE  VARIABLE CV-Y  VARIABLE CV-DOY
+VARIABLE CV-MP  VARIABLE CV-M  VARIABLE CV-D
+: CIVIL ( days --- )
+  DUP CV-DAYS !  719468 +  146097 /MOD           ( doe era )
+  400 * CV-Y !  DUP CV-DOE !
+  DUP 1460 / -  CV-DOE @ 36524 / +  CV-DOE @ 146096 / -  365 / CV-YOE !
+  CV-YOE @ CV-Y +!
+  CV-DOE @  CV-YOE @ 365 *  CV-YOE @ 4 / +  CV-YOE @ 100 / -  -  CV-DOY !
+  CV-DOY @ 5 * 2 + 153 / CV-MP !
+  CV-DOY @  CV-MP @ 153 * 2 + 5 /  -  1+ CV-D !
+  CV-MP @ 10 < IF CV-MP @ 3 + ELSE CV-MP @ 9 - THEN CV-M !
+  CV-M @ 3 < IF 1 CV-Y +! THEN ;
+: LOCAL-TIME ( --- sec min hour mday mon year wday )
+  0 TSPEC 228 SC2 DROP  TSPEC @  86400 /MOD CIVIL   ( secs-of-day )
+  60 /MOD 60 /MOD                                    ( sec min hour )
+  CV-D @  CV-M @ 1-  CV-Y @ 1900 -  CV-DAYS @ 4 + 7 MOD ;   \ 1970-01-01, a Thursday
+
+\ ---- the environment: a table of "NAME=value" pointers, relf's environ ----
+VARIABLE ENV-V   0 ENV-V !     \ the NULL-terminated table, or 0 until first use
+VARIABLE ENV-N                 \ entries, the NULL not counted
+VARIABLE ENV-CAP
+: ENV-INIT ( --- )
+  SC-BLK -3 SYSCALL                                 ( environ )
+  0 BEGIN 2DUP CELLS + @ WHILE 1+ REPEAT            ( environ n )
+  DUP ENV-N !  DUP 64 + ENV-CAP !
+  ENV-CAP @ 1+ CELLS ALLOCATE DROP ENV-V !
+  ENV-V @ SWAP 1+ CELLS MOVE ;
+: ENV ( --- a-addr )  ENV-V @ 0= IF ENV-INIT THEN ENV-V @ ;
+: ENV-MATCH ( name entry --- value | 0 )   \ entry "name=..." -> its value
+  BEGIN OVER C@ DUP WHILE OVER C@ <> IF 2DROP 0 EXIT THEN 1+ SWAP 1+ SWAP REPEAT
+  DROP SWAP DROP  DUP C@ [CHAR] = = IF 1+ ELSE DROP 0 THEN ;
+: ENV-FIND ( name --- i | -1 )
+  ENV ENV-N @ 0 ?DO DUP I CELLS + @ 2 PICK SWAP ENV-MATCH IF 2DROP I UNLOOP EXIT THEN LOOP
+  2DROP -1 ;
+: GETENV ( c-addr --- addr | 0 )
+  DUP ENV-FIND DUP 0< IF 2DROP 0 EXIT THEN  CELLS ENV + @ ENV-MATCH ;
+: ENV-AT ( i --- c-addr | 0 )
+  DUP 0< OVER ENV-N @ < 0= OR IF DROP 0 EXIT THEN  CELLS ENV + @ ;
+: UNSETENV ( c-addr --- ior )
+  ENV-FIND DUP 0< IF DROP 0 EXIT THEN
+  CELLS ENV +  DUP CELL+ SWAP  ENV-N @ CELLS ENV + OVER - MOVE   \ the NULL moves too
+  -1 ENV-N +!  0 ;
+VARIABLE SE-S  VARIABLE SE-P
+: SETENV ( value-addr name-addr --- ior )
+  OVER CSTRLEN OVER CSTRLEN + 2 + ALLOCATE IF DROP 2DROP 200 EXIT THEN SE-S !   ( v n )
+  DUP SE-S @ OVER CSTRLEN DUP >R MOVE                   \ the name
+  SE-S @ R> +  [CHAR] = OVER C!  1+ SE-P !              \ '='
+  SWAP DUP CSTRLEN 1+ SE-P @ SWAP MOVE                  ( n )  \ the value and its NUL
+  ENV-FIND DUP 0< IF
+    DROP ENV-N @ ENV-CAP @ = IF
+      ENV-CAP @ 2* ENV-CAP !  ENV ENV-CAP @ 1+ CELLS RESIZE IF DROP 200 EXIT THEN ENV-V !
+    THEN
+    SE-S @ ENV ENV-N @ CELLS + !  1 ENV-N +!  0 ENV ENV-N @ CELLS + !
+  ELSE CELLS ENV + SE-S @ SWAP ! THEN 0 ;
+
+\ $0: the shell takes RELF_ARGV0, which relf's engine sets to its argv[0]
+\ when no wrapper has (engine/cv8.c's main). The host's boot runs it; here,
+\ before the shell's own SETENV, which tells tables MAIN has not made yet.
+CREATE RA0-NM  S" RELF_ARGV0" HERE SWAP DUP ALLOT MOVE  0 C,
+: ARGV0-DEFAULT ( --- )
+  RA0-NM GETENV 0= IF  SC-BLK -2 SYSCALL @  RA0-NM SETENV DROP  THEN ;
+
+\ ---- signals, through a signalfd -----------------------------------------
+VARIABLE SIG-CAUGHT   0 SIG-CAUGHT !     \ the caught signals, bit n-1 for signal n
+VARIABLE SIG-SEEN     0 SIG-SEEN !       \ caught and not yet asked for
+VARIABLE SIG-FD      -1 SIG-FD !
+CREATE SIG-SET 2 CELLS ALLOT
+CREATE KSA 4 CELLS ALLOT                 \ the kernel's sigaction: handler flags restorer mask
+CREATE SIG-INFO 128 ALLOT
+: SIG-BIT ( signo --- bit )  1- 1 SWAP LSHIFT ;
+: SIG-MASK! ( how set --- )  SIG-SET !  SIG-SET 0 8 14 SC4 DROP ;
+: SIG-FD-UPDATE ( --- )
+  SIG-CAUGHT @ SIG-SET !
+  SIG-FD @ SIG-SET 8 526336 289 SC4                 \ SFD_NONBLOCK | SFD_CLOEXEC
+  DUP 0< 0= IF SIG-FD ! ELSE DROP THEN ;
+: FORK ( --- pid )
+  \ The child closes the signalfd it shares with its parent and makes its
+  \ own: a signalfd4 on a shared one changes the parent's mask too, and a
+  \ subshell resetting its traps took the parent's from under it - a USR1
+  \ during a command substitution was never seen (run-signal-storm).
+  57 SC0  DUP 0= IF  SIG-FD @ 0< 0= IF
+    SIG-FD @ 3 SC1 DROP  -1 SIG-FD !  SIG-CAUGHT @ IF SIG-FD-UPDATE THEN
+  THEN THEN ;
+\ WAITPID: relf's fails, as waitpid does with EINTR, when a caught signal
+\ comes - the wait builtin then runs its trap and returns 128+n. A blocked
+\ signal interrupts nothing, so with signals caught the wait is a poll on
+\ the signalfd and a pidfd for the child (pidfd_open, Linux 5.3), the
+\ child reaped once its pidfd is ready; the shell reads the signal itself.
+CREATE WP-FDS 2 CELLS ALLOT                 \ two struct pollfd: fd, events, revents
+VARIABLE WP-PFD
+: WP-REAP ( pid --- r )  0 WSTATUS !  WSTATUS 1 0 61 SC4 ;      \ WNOHANG
+: WP-DONE ( r --- status ior )
+  WP-PFD @ 0< 0= IF WP-PFD @ 3 SC1 DROP THEN
+  0< IF -1 200 ELSE WSTATUS LE32S@ 0 THEN ;
+: WAITPID ( pid --- status ior )
+  -1 WP-PFD !
+  SIG-CAUGHT @ 0<> SIG-FD @ 0< 0= AND IF DUP 0 434 SC2 WP-PFD ! THEN
+  WP-PFD @ 0< IF  0 WSTATUS !  WSTATUS 0 0 61 SC4  WP-DONE EXIT  THEN
+  BEGIN
+    DUP WP-REAP ?DUP IF NIP WP-DONE EXIT THEN
+    SIG-FD @ WP-FDS LE32!  1 WP-FDS 4 + LE32!       \ POLLIN, revents 0
+    WP-PFD @ WP-FDS 8 + LE32!  1 WP-FDS 12 + LE32!
+    WP-FDS 2 -1 POLL DROP
+    WP-FDS 6 + LE16@ 1 AND IF DROP -1 WP-DONE EXIT THEN   \ a signal: EINTR
+  AGAIN ;
+: SIG-DISPOSE ( signo handler --- r )   \ SIG_DFL 0 or SIG_IGN 1
+  KSA !  0 KSA CELL+ !  0 KSA 2 CELLS + !  0 KSA 3 CELLS + !
+  KSA 0 8 13 SC4 ;
+: SIG-INVALID? ( signo --- f )
+  DUP 0 > 0= OVER 64 > OR  OVER 11 = OR OVER 7 = OR OVER 8 = OR OVER 9 = OR SWAP 19 = OR ;
+: SIGNAL-ACTION ( signo action --- ior )
+  OVER SIG-INVALID? IF 2DROP -22 EXIT THEN
+  DUP 2 < IF
+    SWAP DUP SIG-BIT INVERT DUP SIG-CAUGHT @ AND SIG-CAUGHT !  SIG-SEEN @ AND SIG-SEEN !
+    DUP SIG-BIT 1 SWAP SIG-MASK!  SIG-FD-UPDATE
+    SWAP SIG-DISPOSE SC-ERR
+  ELSE
+    DROP DUP 0 SIG-DISPOSE >R
+    SIG-BIT DUP SIG-CAUGHT @ OR SIG-CAUGHT !  0 SWAP SIG-MASK!  SIG-FD-UPDATE
+    R> SC-ERR
+  THEN ;
+: SIG-DRAIN ( --- )
+  SIG-FD @ 0< IF EXIT THEN
+  BEGIN SIG-FD @ SIG-INFO 128 0 SC3 128 = WHILE
+    SIG-INFO LE32@ SIG-BIT SIG-SEEN @ OR SIG-SEEN !
+  REPEAT ;
+: SIGNALS-PENDING ( --- signo | 0 )
+  SIG-DRAIN  SIG-SEEN @ DUP 0= IF EXIT THEN
+  65 1 DO DUP I SIG-BIT AND IF DROP I SIG-BIT INVERT SIG-SEEN @ AND SIG-SEEN ! I UNLOOP EXIT THEN LOOP ;
+: EXECVE ( argv-addr path-addr --- ior )
+  1 SIG-CAUGHT @ SIG-MASK!                          \ the program gets them unblocked
+  SWAP ENV 59 SC3                                   \ returns only if it failed
+  0 SIG-CAUGHT @ SIG-MASK! ;
+
+\ ---- the process's arguments: relf's SYS-ARG 0 is the first after its own --
+VARIABLE ARG-BASE   2 ARG-BASE !     \ argv[0] the engine, argv[1] the image (hosts change it)
+: SYS-ARGC ( --- n )  SC-BLK -1 SYSCALL ARG-BASE @ - 0 MAX ;
+: SYS-ARG ( n --- c-addr )
+  DUP 0< OVER SYS-ARGC < 0= OR IF DROP 0 EXIT THEN
+  ARG-BASE @ + CELLS  SC-BLK -2 SYSCALL + @ ;
+
+\ ---- leaving -------------------------------------------------------------
+: SYS-EXIT ( n --- )  0 TERM-RESTORE DROP  231 SC1 ;
+
+\ ---- TCP, for the forth builtin's examples ----------------------------------
+CREATE SOCKADDR 16 ALLOT
+: SA-SET ( port ip --- )   \ sockaddr_in: AF_INET, the port big-endian, the address
+  SOCKADDR 16 0 FILL  2 SOCKADDR C!
+  OVER 8 RSHIFT 255 AND SOCKADDR 2 + C!  SWAP 255 AND SOCKADDR 3 + C!
+  SOCKADDR 4 + LE32! ;
+: TCP-LISTEN ( port loopback? --- fd ior )
+  IF 16777343 ELSE 0 THEN SA-SET                    \ 127.0.0.1, in network order
+  2 1 0 41 SC3 DUP 0< IF 200 EXIT THEN
+  1 WSTATUS !  DUP 1 2 WSTATUS 4 54 SC5 DROP
+  DUP SOCKADDR 16 49 SC3 0<  OVER 16 50 SC2 0< OR IF 3 SC1 DROP -1 200 ELSE 0 THEN ;
+: TCP-ACCEPT ( fd --- fd' ior )  0 0 43 SC3 DUP 0< IF 200 ELSE 0 THEN ;
+VARIABLE IP-V  VARIABLE IP-N
+: IP4 ( c-addr --- u )   \ a dotted address, NUL-terminated, as a little-endian cell of network order
+  0 IP-V !  4 0 DO
+    0 IP-N !
+    BEGIN DUP C@ DUP [CHAR] 0 < 0= SWAP [CHAR] 9 > 0= AND WHILE
+      DUP C@ [CHAR] 0 -  IP-N @ 10 * + IP-N !  1+
+    REPEAT
+    IP-N @ 255 AND I 8 * LSHIFT IP-V @ OR IP-V !  1+
+  LOOP DROP IP-V @ ;
+: TCP-CONNECT ( c-addr port --- fd ior )
+  SWAP IP4 SA-SET
+  2 1 0 41 SC3 DUP 0< IF 200 EXIT THEN
+  DUP SOCKADDR 16 42 SC3 0< IF 3 SC1 DROP -1 200 ELSE 0 THEN ;
+
+BASE !

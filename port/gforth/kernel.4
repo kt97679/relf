@@ -1,0 +1,47 @@
+\ port/gforth/kernel.4 - relf's kernel words that relfsh uses and gforth
+\ lacks, or has under another meaning; loaded after sys.fs, before the port.
+
+BASE @  DECIMAL
+
+\ Names are case-sensitive in relf and not in gforth, where the shell's
+\ CMD-OPT-v and CMD-OPT-V were one word - `command -v` described as -V
+\ does. So the port and the shell are defined in a table, gforth's
+\ case-sensitive word list, on top of the search order, with gforth's own
+\ words below it; FORTH-WORDLIST is that table to the shell, whose MAIN
+\ puts it on top (tree.4) and makes it CURRENT, as relf's forth word list
+\ is for words a forth command defines. boot.4 sets the order up again.
+table CONSTANT RELF-WORDLIST
+RELF-WORDLIST >order  definitions
+: FORTH-WORDLIST ( --- wid )  RELF-WORDLIST ;
+
+\ START: relf's dictionary base, which relf adds to an offset kept in the
+\ image (@XT, ROOT-WORDLIST). gforth's image loads where it was saved, so
+\ the offsets are the addresses themselves.
+VARIABLE START   0 START !
+
+\ SID SRC #SRC: relf's input source, which a THROW out of its EVALUATE does
+\ not restore, so the shell keeps them around each builtin (RUN-CAUGHT).
+\ gforth's EVALUATE restores its own on a THROW; these only have to exist.
+VARIABLE SID   VARIABLE SRC   VARIABLE #SRC
+
+\ MAIN sets relf's search order to FORTH FORTH and the include buffer's
+\ pointer back (tree.4). gforth's FORTH-WORDLIST, CONTEXT (the order's
+\ top) and CURRENT take that as meant; #ORDER and the buffer have only to
+\ exist - gforth's order is one deep at boot, and its includes are its own.
+VARIABLE #ORDER
+CREATE INCLUDE-BUFFER 512 ALLOT   VARIABLE INCLUDE-POINTER
+
+\ kernel.4's, which gforth lacks
+: CELL- ( a-addr1 --- a-addr2 )  1 CELLS - ;
+
+\ The data stack's depth in cells, gforth's -d: by gforth's ENVIRONMENT?,
+\ which port/relf.4 replaces with extend.4's (it answers nothing).
+: STACK-CELLS ( --- n )  S" STACK-CELLS" ENVIRONMENT? 0= IF 2048 THEN ;
+
+\ S0 and R0: the stacks' bases. The shell gives a forth command a stack of
+\ its own by setting S0 (DO-FORTH), so that DEPTH counts from there -
+\ gforth's DEPTH counts from sp0, so S0 is sp0.
+: S0 ( --- a-addr )  sp0 ;
+: R0 ( --- a-addr )  rp0 ;
+
+BASE !

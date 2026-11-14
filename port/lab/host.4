@@ -1,0 +1,67 @@
+\ port/lab/host.4 - what relfsh needs of a forth-vm-evolution design beyond
+\ port/os.4: the design's kernel is relf's of long ago (the lab forked it),
+\ so most of the shell's words are there under relf's names - START, S0, R0,
+\ SRC, SID, TIB, the search order's cells - and SYSCALL is its engine's.
+
+BASE @  DECIMAL
+
+2 ARG-BASE !                       \ argv: the engine, the image, then the shell's own
+-1 ALLOCATE-ZEROES !               \ a design's ALLOCATE is an anonymous mmap
+\ DICT-LIMIT is relf's address where the dictionary must stop, the stacks
+\ being above it; the shell's only use is its guard for the forth
+\ command's 16 KB gap (STACK-GAP-ROOM), which reports an overflow when the
+\ gap would end within 8 KB of it. A design keeps its stacks in a chunk of
+\ their own (STACKSEP), 256 KB of data stack under a guard page, so here
+\ it is that floor less those 8 KB, from the stack pointer at boot.
+262144 CONSTANT DSTACK-BYTES        \ every design's DSTACK_BYTES
+VARIABLE DSTACK-TOP   0 DSTACK-TOP !
+: DICT-LIMIT ( --- a-addr )  DSTACK-TOP @ DSTACK-BYTES - 4096 + 1024 +  8192 - ;
+
+\ ---- extend.4's search order, on the design's word list ---------------
+\ The design's word list is relf's of before the link cell: [count][heads],
+\ the wid being the count's address, the heads absolute (COLD relocates
+\ FORTH-WORDLIST's), the links in the chain relative. WORDLIST lays relf's
+\ link cell in front again, a START-relative offset of the previous one,
+\ so save.4 can find each word list made before the image is saved and
+\ make its heads relative, and PORT-BOOT absolute again; COLD knows only
+\ FORTH-WORDLIST. The rest is extend.4's.
+: .( ( "ccc<rparen>" --- )  41 PARSE TYPE ; IMMEDIATE
+: GET-ORDER ( --- w1 w2 ... wn n )
+  #ORDER @ 0 ?DO CONTEXT I CELLS + @ LOOP #ORDER @ ;
+: SET-ORDER ( w1 w2 ... wn n --- )
+  #ORDER ! 0 #ORDER @ 1- DO CONTEXT I CELLS + ! -1 +LOOP ;
+: ALSO ( --- )  CONTEXT #ORDER @ CELLS + DUP 1 CELLS - @ SWAP ! 1 #ORDER +! ;
+: PREVIOUS ( --- )  -1 #ORDER +! ;
+: WORDLIST ( --- wid )
+  ALIGN WORDLISTS @ ,
+  HERE DUP START @ - WORDLISTS !
+  FORTH-WORDLIST @ ,
+  HERE FORTH-WORDLIST @ CELLS DUP ALLOT 0 FILL ;
+: DEFINITIONS ( --- )  CONTEXT #ORDER @ 1- CELLS + @ CURRENT ! ;
+: FORTH ( --- )  FORTH-WORDLIST CONTEXT #ORDER @ 1- CELLS + ! ;
+WORDLIST START @ -  CONSTANT ROOT-WORDLIST-OFFSET
+: ROOT-WORDLIST ( --- wid )   ROOT-WORDLIST-OFFSET START @ + ;
+: ONLY ( --- )  1 #ORDER ! ROOT-WORDLIST CONTEXT ! ;
+: VOCABULARY ( --- )
+  WORDLIST START @ - CREATE  ,
+  DOES> >R
+  GET-ORDER SWAP DROP R> @ START @ + SWAP SET-ORDER ;
+VARIABLE WL-XT
+: WORDLISTS-DO ( xt --- )   \ xt ( a-addr --- ) on each nonzero head of each
+  WL-XT !  WORDLISTS @
+  BEGIN ?DUP WHILE
+    START @ +                                     ( wid )
+    DUP @ 1+ 1 DO
+      DUP I CELLS + DUP @ IF WL-XT @ EXECUTE ELSE DROP THEN
+    LOOP
+    1 CELLS - @
+  REPEAT ;
+ROOT-WORDLIST CURRENT !
+: FORTH FORTH ;
+: ALSO ALSO ;
+: ONLY ONLY ;
+: PREVIOUS PREVIOUS ;
+: DEFINITIONS DEFINITIONS ;
+DEFINITIONS
+
+BASE !

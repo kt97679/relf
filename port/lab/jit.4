@@ -1,0 +1,55 @@
+\ port/lab/jit.4 - loaded first on a design with the JIT gene (its Makefile's -DX_JIT=1).
+\
+\ Such a design gives every colon word a header, [JIT][four bytes]: the
+\ body's length with the top bit set until the word's first call, then the
+\ native code's offset (forth-vm-evolution's forth/cv8t-jit.4, engine/jit.c).
+\ The words the build runs are translated as it runs them, so an image saved
+\ from it would carry offsets into the building process's code buffer - and
+\ crash. This ; keeps each header's first value, and save.4 puts them back
+\ in the saved copy, so the saved image starts as an unrun one.
+
+8192 CONSTANT JH-MAX
+VARIABLE JH-TAB   \ pairs: a header's length field, its value - allocated, so not saved
+JH-MAX 2 * CELLS ALLOCATE DROP JH-TAB !
+VARIABLE JH-N   0 JH-N !
+: JH@ ( a --- u )   \ the four bytes, little end first
+  DUP C@  OVER 1 + C@ 8 LSHIFT OR  OVER 2 + C@ 16 LSHIFT OR  SWAP 3 + C@ 24 LSHIFT OR ;
+: ; ( --- )
+  JIT-AT @ >R  POSTPONE ;  R>
+  ?DUP IF JH-TAB @ 0= 0= JH-N @ JH-MAX < AND IF   \ not after boot: JH-TAB is 0 there
+    DUP JH-TAB @ JH-N @ 2 * CELLS + !  JH@ JH-TAB @ JH-N @ 2 * 1 + CELLS + !  JH-N @ 1 + JH-N !
+  ELSE DROP THEN THEN ; IMMEDIATE
+VARIABLE PRE-SAVE-XT   \ save.4 runs it on the copy: ( copy-of --- ) with an address converter
+: JH-RESTORE ( xt --- )   \ xt: ( live-addr --- copy-addr )
+  JH-N @ 0 ?DO
+    JH-TAB @ I 2 * CELLS + @ OVER EXECUTE          ( xt copy )
+    JH-TAB @ I 2 * 1 + CELLS + @ SWAP              ( xt v copy )
+    4 0 DO 2DUP C! SWAP 8 RSHIFT SWAP 1 + LOOP 2DROP
+  LOOP DROP ;
+
+\ The kernel's own words, on a design with the gene jitimg: the converter
+\ gave them headers too, and the build runs some of them. Their first
+\ values are in the design's image file, which build.sh names here first.
+VARIABLE JO-BUF   0 JO-BUF !     \ the original image's body
+VARIABLE JO-LEN   0 JO-LEN !
+VARIABLE JX
+: JIT-PRISTINE ( c-addr u hdrlen --- )
+  >R R/O OPEN-FILE ABORT" jit.4: cannot open the design's image" >R
+  131072 ALLOCATE ABORT" jit.4: no memory" JO-BUF !
+  JO-BUF @ 131072 R@ READ-FILE ABORT" jit.4: cannot read the design's image"
+  R> CLOSE-FILE DROP
+  R> DUP JO-BUF +!  - JO-LEN ! ;
+: JH-KERNEL ( xt --- )   \ xt: ( live-addr --- copy-addr )
+  JX !  JO-BUF @ 0= IF EXIT THEN
+  JO-LEN @ 5 - 0 ?DO
+    JO-BUF @ I + C@ JIT-OP = IF JO-BUF @ I + 4 + C@ 128 AND IF
+      START @ I + JX @ EXECUTE                     ( copy )
+      DUP C@ JIT-OP = IF  JO-BUF @ I + 1 + SWAP 1 + 4 MOVE  ELSE DROP THEN
+    THEN THEN
+  LOOP ;
+: JIT-UNRUN ( xt --- )
+  DUP JH-KERNEL  DUP JH-RESTORE
+  \ the saved image's pointers into this process's memory: 0, so a word
+  \ a forth command defines after boot records nothing
+  DUP JH-TAB SWAP EXECUTE 0 SWAP !  JO-BUF SWAP EXECUTE 0 SWAP ! ;
+' JIT-UNRUN PRE-SAVE-XT !

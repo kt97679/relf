@@ -1,0 +1,26 @@
+\ port/gforth/boot.4 - relfsh's boot word on gforth: loaded after the
+\ shell's sources; build.sh saves the image (gforthmi: relocatable).
+
+BASE @  DECIMAL
+
+\ gforth catches nearly every signal itself, to THROW or to exit; relf's
+\ engine leaves them as the process found them. Back to the default, all
+\ but the faults - gforth's THROW for those is relf's own trap route.
+: SIGNALS-DEFAULT ( --- )
+  32 1 DO
+    I 4 = I 5 = OR I 7 = OR I 8 = OR I 11 = OR I 9 = OR I 19 = OR 0= IF
+      I 0 SIG-DISPOSE DROP
+    THEN
+  LOOP ;
+
+' 'cold DEFER@ CONSTANT GFORTH-COLD     \ gforth's own start-up hooks, run first
+: PORT-BOOT ( --- )
+  GFORTH-COLD EXECUTE  RELFSYS-OPEN       \ sys.fs's library, opened again
+  ONLY FORTH  RELF-WORDLIST >order  RELF-WORDLIST set-current   \ kernel.4's
+  0 ENV-V !  0 SIG-CAUGHT !  0 SIG-SEEN !  -1 SIG-FD !  LSAVE-INIT
+  0 TIO-SAVED? !  -1 RAW-FD !
+  DSTACK-INIT  SIGNALS-DEFAULT  ARGV0-DEFAULT
+  MAIN ;
+' PORT-BOOT IS 'cold
+
+BASE !

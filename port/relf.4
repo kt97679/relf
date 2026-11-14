@@ -1,0 +1,40 @@
+\ port/relf.4 - relf's kernel and extension words that the shell uses and
+\ a host Forth does not have, or has with another meaning: the parts of
+\ forth/extend.4, forth/safety.4 and kernel.4 the shell reaches, without
+\ what is relf's alone (its wordlist layout, the engine's trap, the
+\ compile-only list). Loaded first, before port/os.4.
+
+BASE @  DECIMAL
+
+\ extend.4's, unconditionally: a host's own may differ in a corner
+: NIP ( x1 x2 --- x2 )    SWAP DROP ;
+: TUCK ( x1 x2 --- x2 x1 x2 )  SWAP OVER ;
+: 0<> ( x --- f )         0= 0= ;
+: 0> ( n --- f )          0 > ;
+: U> ( u1 u2 --- f )      SWAP U< ;
+: WITHIN ( x lo hi --- f ) OVER - >R - R> U< ;
+: ERASE ( c-addr u --- )  0 FILL ;
+ 0 CONSTANT FALSE ( --- f )
+: [COMPILE] ( "ccc" --- )  ' COMPILE, ; IMMEDIATE
+: CASE ( --- 0 )   0 ; IMMEDIATE
+: OF ( --- x )     POSTPONE OVER POSTPONE = POSTPONE IF POSTPONE DROP ; IMMEDIATE
+: ENDOF ( x1 --- x2 )  POSTPONE ELSE ; IMMEDIATE
+: ENDCASE ( 0 x1 .. xn --- )  POSTPONE DROP  BEGIN ?DUP WHILE POSTPONE THEN REPEAT ; IMMEDIATE
+: ENVIRONMENT? ( c-addr u --- false | i*x true )  2DROP FALSE ;
+: AGAIN ( x --- )  0 POSTPONE LITERAL POSTPONE UNTIL ; IMMEDIATE
+
+\ an xt kept as an offset from START, so an image survives a move (shadow.4)
+: @XT ( a-addr --- xt )  @ START @ + ;
+: !XT ( xt a-addr --- )  SWAP START @ - SWAP ! ;
+
+\ safety.4's: the engine's trap and the compile-only list are relf's alone
+VARIABLE TRAP-ENTRY  0 TRAP-ENTRY !
+: TRAP-XT! ( xt --- )  DROP ;
+: COMPILE-ONLY-XT ( xt --- )  DROP ;
+: (THROW) ( k*x n --- i*x n )  THROW ;
+VARIABLE INC-HOLD-XT   0 INC-HOLD-XT !
+VARIABLE INC-TAKE-XT   0 INC-TAKE-XT !
+VARIABLE INCLUDE-LINE#  0 INCLUDE-LINE# !
+VARIABLE WORDLISTS  0 WORDLISTS !
+
+BASE !

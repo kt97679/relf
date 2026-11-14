@@ -1,0 +1,21 @@
+\ port/gforth/host.4 - what relfsh needs of gforth beyond port/os.4,
+\ loaded after port/kernel-io.4.
+
+BASE @  DECIMAL
+
+1 ARG-BASE !        \ argv: the engine, then the shell's own (--appl-image)
+-1 ALLOCATE-ZEROES !  \ sys.fs's ALLOCATE is calloc
+
+\ DICT-LIMIT is relf's address where the dictionary must stop, the stacks
+\ being above it; the shell's only use is its guard for the forth
+\ command's 16 KB gap (STACK-GAP-ROOM), which reports an overflow when the
+\ gap would end within 8 KB of it. gforth's data stack is a region of its
+\ own, STACK-CELLS deep (gforth's -d), so here it is that floor less those
+\ 8 KB, from sp0 at boot.
+VARIABLE DSTACK-TOP   0 DSTACK-TOP !
+VARIABLE DSTACK-BYTES 0 DSTACK-BYTES !
+: DSTACK-INIT ( --- )
+  sp0 @ DSTACK-TOP !  STACK-CELLS CELLS DSTACK-BYTES ! ;   \ kernel.4's STACK-CELLS
+: DICT-LIMIT ( --- a-addr )  DSTACK-TOP @ DSTACK-BYTES @ - 1024 +  8192 - ;
+
+BASE !

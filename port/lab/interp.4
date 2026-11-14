@@ -1,0 +1,81 @@
+\ port/lab/interp.4 - relf's interpreter on a forth-vm-evolution design:
+\ kernel.4's ?STACK, its compile-only list, INTERPRET and EVALUATE, and
+\ safety.4's INCLUDE-FILE and INCLUDED. The design's kernel is relf's of
+\ long ago and has all of these but the list, with one difference that the
+\ shell sees: under a CATCH its interpreter throws -13 for an undefined
+\ word, and its ABORT"s throw -2, without a word on standard error - where
+\ relf prints "Undefined word BAD" or "Stack error DROP" and the shell's
+\ forth command leaves the reporting to it (BUILTIN-FAILED). Words compiled
+\ by the kernel itself keep their own (":"'s "name too long" is one).
+\ Loaded after port/kernel-io.4, whose ABORT" these use; from here on the
+\ build's own files are read by this INTERPRET.
+
+BASE @  DECIMAL
+
+: ?STACK ( --- )
+  DEPTH DUP 0< SWAP 10000 > OR ABORT" Stack error" ;
+
+VARIABLE CO-LIST   0 CO-LIST !     \ [next][xt], both offsets from START
+: COMPILE-ONLY-XT ( xt --- )
+  HERE CO-LIST @ , SWAP START @ - ,  START @ - CO-LIST ! ;
+: COMPILE-ONLY ( --- )  LAST @ NAME> COMPILE-ONLY-XT ;
+: CO? ( xt --- f )
+  START @ -  CO-LIST @
+  BEGIN DUP WHILE
+    START @ +  2DUP CELL+ @ = IF 2DROP -1 EXIT THEN
+    @
+  REPEAT SWAP DROP ;
+
+: INTERPRET ( --- )
+  BEGIN
+   32 WORD DUP C@
+  WHILE
+   FIND DUP
+   IF
+    -1 = STATE @ AND
+    IF
+     COMPILE,
+    ELSE
+     STATE @ 0= IF DUP CO? ABORT" compile only" THEN
+     EXECUTE
+    THEN
+   ELSE DROP
+    NUMBER? 0= ABORT" Undefined word" DROP
+    STATE @ IF POSTPONE LITERAL THEN
+   THEN  ?STACK
+  REPEAT   DROP ;
+
+: EVALUATE ( c-addr u --- )
+  SID @ >R SRC @ >R #SRC @ >R  >IN @ >R
+  #SRC ! SRC ! 0 >IN ! -1 SID ! INTERPRET
+  R> >IN ! R> #SRC ! R> SRC ! R> SID ! ;
+
+\ safety.4's, as there
+: INC-HOOK ( a-addr --- )  DUP @ IF @XT EXECUTE ELSE DROP THEN ;
+: INCLUDE-LINES ( --- )
+  BEGIN REFILL WHILE #SRC @ INCLUDE-LINE# ! INTERPRET REPEAT ;
+VARIABLE INCLUDE-LINES-XT   ' INCLUDE-LINES INCLUDE-LINES-XT !XT
+: INCLUDE-FILE ( fid --- )
+  INC-TAKE-XT INC-HOOK
+  INCLUDE-POINTER @ INCLUDE-LINE# @ + 256 +
+  INCLUDE-BUFFER 1 CELLS 508 + + U> ABORT" includes nested too deep"
+  INCLUDE-POINTER @ >R INCLUDE-LINE# @ >R
+  SID @ >R SRC @ >R #SRC @ >R >IN @ >R
+  INCLUDE-LINE# @ INCLUDE-POINTER +! INCLUDE-POINTER @ SRC !
+  0 INCLUDE-LINE# !  SID !
+  INCLUDE-LINES-XT @XT CATCH
+  R> >IN ! R> #SRC ! R> SRC ! R> SID ! R> INCLUDE-LINE# ! R> INCLUDE-POINTER !
+  THROW ;
+VARIABLE INCLUDE-FILE-XT   ' INCLUDE-FILE INCLUDE-FILE-XT !XT
+: INCLUDED ( c-addr u --- )
+  INC-HOLD-XT INC-HOOK
+  R/O OPEN-FILE ?DUP IF INC-TAKE-XT INC-HOOK ABORT" Can't open include file" THEN
+  DUP >R  INCLUDE-FILE-XT @XT CATCH  DUP IF NIP THEN
+  R> CLOSE-FILE DROP  THROW ;
+
+\ safety.4's list: the words whose interpretation reaches the interpreter's
+\ own return stack
+' >R COMPILE-ONLY-XT   ' R> COMPILE-ONLY-XT   ' R@ COMPILE-ONLY-XT
+' I COMPILE-ONLY-XT    ' EXIT COMPILE-ONLY-XT
+
+BASE !

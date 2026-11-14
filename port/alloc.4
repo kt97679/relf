@@ -1,0 +1,73 @@
+\ port/alloc.4 - ALLOCATE FREE RESIZE for a host whose own are system calls.
+\
+\ relf's engines have C's calloc, free and realloc. A forth-vm-evolution
+\ design's ALLOCATE is an mmap and its FREE a munmap, each block a page or
+\ more: the shell's loop.sh made 4,017 mmaps and 4,004 munmaps where relf
+\ makes 8 and 1, and every block's first touch was a page fault. So here,
+\ as a C library would: blocks of 16 to 4096 bytes, powers of two, carved
+\ from 64 KB chunks of the host's and kept on a free list per size when
+\ freed; a larger one is the host's own. One cell before a block holds its
+\ class, or -1 for the host's. Zeroed, as calloc's (port/os.4 is told so).
+\ Loaded before port/os.4, so that everything after it allocates here; the
+\ host's boot runs AL-RESET first - a saved image's lists are another
+\ process's.
+
+BASE @  DECIMAL
+
+: HOST-ALLOCATE ( u --- a-addr ior )  ALLOCATE ;
+: HOST-FREE ( a-addr --- ior )  FREE ;
+: HOST-RESIZE ( a-addr u --- a-addr' ior )  RESIZE ;
+
+9 CONSTANT #AL-CLASSES                  \ 16 32 64 ... 4096
+4096 CONSTANT AL-MAX
+65536 CONSTANT AL-CHUNK-SIZE
+CREATE AL-FREE  #AL-CLASSES CELLS ALLOT  \ each class's free list, linked through a block's first cell
+VARIABLE AL-CHUNK   VARIABLE AL-LEFT     \ the chunk being carved, and what is left of it
+: AL-RESET ( --- )  AL-FREE #AL-CLASSES CELLS 0 FILL  0 AL-CHUNK !  0 AL-LEFT ! ;
+AL-RESET
+
+: AL-CLASS ( u --- k )   \ the least k with 16 << k >= u, u from 1 to AL-MAX
+  15 + 4 RSHIFT 1-  0 SWAP  BEGIN DUP WHILE 1 RSHIFT SWAP 1+ SWAP REPEAT DROP ;
+: AL-SIZE ( k --- u )  16 SWAP LSHIFT ;
+: AL-HEAD ( k --- a-addr )  CELLS AL-FREE + ;
+
+: AL-CARVE ( u --- a-addr | 0 )   \ u bytes from the chunk, a new one if they do not fit
+  AL-LEFT @ OVER < IF
+    AL-CHUNK-SIZE HOST-ALLOCATE IF 2DROP 0 EXIT THEN
+    AL-CHUNK !  AL-CHUNK-SIZE AL-LEFT !
+  THEN
+  AL-CHUNK @  OVER AL-CHUNK +!  SWAP NEGATE AL-LEFT +! ;
+
+: ALLOCATE ( u --- a-addr ior )
+  DUP AL-MAX > IF
+    CELL+ HOST-ALLOCATE ?DUP IF EXIT THEN
+    -1 OVER !  CELL+ 0 EXIT                       \ the host's pages come zeroed
+  THEN
+  1 MAX AL-CLASS                                  ( k )
+  DUP AL-HEAD @ ?DUP IF                           ( k a )
+    DUP @ ROT AL-HEAD !                           \ off the list
+    DUP DUP CELL- @ AL-SIZE 0 FILL  0 EXIT        \ used before: zeroed again
+  THEN
+  DUP AL-SIZE CELL+ AL-CARVE ?DUP 0= IF DROP 0 -1 EXIT THEN   ( k b )
+  TUCK !  CELL+ 0 ;                               \ a chunk's fresh bytes are zero
+
+: FREE ( a-addr --- ior )
+  ?DUP 0= IF 0 EXIT THEN
+  DUP CELL- @ DUP 0< IF DROP CELL- HOST-FREE EXIT THEN   ( a k )
+  AL-HEAD  2DUP @ SWAP !  ! 0 ;
+
+VARIABLE AL-OLD   VARIABLE AL-NEW
+: RESIZE ( a-addr u --- a-addr' ior )
+  OVER 0= IF SWAP DROP ALLOCATE EXIT THEN
+  OVER CELL- @ 0< OVER AL-MAX > AND IF            \ the host's, staying the host's
+    SWAP CELL- SWAP CELL+ HOST-RESIZE ?DUP IF SWAP CELL+ SWAP EXIT THEN
+    CELL+ 0 EXIT
+  THEN
+  OVER CELL- @ DUP 0< 0= IF AL-SIZE OVER < 0= IF DROP 0 EXIT THEN ELSE DROP THEN   \ it fits
+  SWAP AL-OLD !                                   ( u )
+  DUP ALLOCATE IF 2DROP AL-OLD @ -1 EXIT THEN AL-NEW !
+  AL-OLD @ CELL- @ DUP 0< IF DROP ELSE AL-SIZE MIN THEN   \ what the old one holds, at most u
+  AL-OLD @ AL-NEW @ ROT MOVE
+  AL-OLD @ FREE DROP  AL-NEW @ 0 ;
+
+BASE !

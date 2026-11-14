@@ -1,0 +1,117 @@
+\ port/shadow.4 - forth/shadow.4's locals, DEFER and IS for a Forth that is not relf.
+\
+\ relf's shadow.4 compiles each save, store and restore as one of the
+\ engine's locals opcodes (LSAVE, L!, LZERO, LRESTORE), laid by the CV8
+\ compiler's own words. A host Forth has neither, so here each is the
+\ variable itself, compiled, then a call to a run-time word, and the save
+\ stack is a Forth array. The syntax and the meaning are
+\ relf's: SHADOW{ a b | c } saves a b c on entry, stores the two
+\ arguments into a and b, zeroes c, and EXIT and ; restore all three on
+\ every way out. As in relf, a THROW past a word does not unwind the save
+\ stack.
+
+BASE @  DECIMAL
+
+: DEFER ( "name" --- )
+  CREATE 0 ,
+  DOES> DUP @ 0= IF DROP EXIT THEN  @XT EXECUTE ;
+: IS ( xt "name" --- )  ' >BODY !XT ;
+
+: LOCALS-FAILED ( n --- )
+  DUP 1 = ABORT" shadow: save stack overflow"
+  2 = ABORT" shadow: save stack underflow" ;
+
+4096 CONSTANT LSAVE-MAX              \ the engines' LSAVE_MAX
+\ The save stack is allocated, as the engines' is theirs, not in the image:
+\ the host's boot runs LSAVE-INIT, and so does this file, for the build.
+VARIABLE LSAVE-BASE
+VARIABLE LSAVE-SP   0 LSAVE-SP !
+: LSAVE-INIT ( --- )
+  LSAVE-MAX CELLS ALLOCATE ABORT" shadow: no memory for the save stack" LSAVE-BASE !
+  0 LSAVE-SP ! ;
+LSAVE-INIT
+: (LSAVE) ( a-addr --- )
+  LSAVE-SP @ LSAVE-MAX < 0= IF 1 LOCALS-FAILED THEN
+  @ LSAVE-BASE @ LSAVE-SP @ CELLS + !  1 LSAVE-SP +! ;
+: (LRESTORE) ( a-addr --- )
+  LSAVE-SP @ 0 > 0= IF 2 LOCALS-FAILED THEN
+  -1 LSAVE-SP +!  LSAVE-BASE @ LSAVE-SP @ CELLS + @  SWAP ! ;
+: (L!) ( x a-addr --- )  ! ;
+: (LZERO) ( a-addr --- )  0 SWAP ! ;
+
+16 CONSTANT LDECL-MAX
+CREATE LDECL-ADDRS  LDECL-MAX CELLS ALLOT
+VARIABLE LDECL-N      0 LDECL-N !     \ names declared by the definition being compiled
+VARIABLE LDECL-ARGS   0 LDECL-ARGS !  \ how many of them take a data-stack argument
+
+: L-VAR, ( i --- )   \ the i-th variable; its run-time word follows, by POSTPONE
+  \ The variable itself is compiled, not its address as a literal: an image
+  \ saved by a host whose dictionary moves from run to run would keep a
+  \ stale address (relf's slot operands are relative to themselves) - and
+  \ the run-time words by POSTPONE, not ['] and COMPILE,, for the same
+  \ reason: a forth command's SHADOW{, after boot, compiles them too.
+  CELLS LDECL-ADDRS + @ COMPILE, ;
+
+: L-COMPILE-ENTRY ( --- )
+  LDECL-N @ 0 > IF
+    LDECL-N @ 0 DO I L-VAR, POSTPONE (LSAVE) LOOP
+  THEN
+  LDECL-ARGS @ 0 > IF
+    LDECL-ARGS @ 0 DO LDECL-ARGS @ 1- I - L-VAR, POSTPONE (L!) LOOP
+  THEN
+  LDECL-N @ LDECL-ARGS @ > IF
+    LDECL-N @ LDECL-ARGS @ DO I L-VAR, POSTPONE (LZERO) LOOP
+  THEN ;
+
+: L-COMPILE-RESTORES ( --- )
+  LDECL-N @ 0 > IF
+    LDECL-N @ 0 DO LDECL-N @ 1- I - L-VAR, POSTPONE (LRESTORE) LOOP
+  THEN ;
+
+: L-END? ( c-addr --- f )
+  DUP C@ 1 <> IF DROP 0 EXIT THEN  1+ C@ [CHAR] } = ;
+: L-BAR? ( c-addr --- f )
+  DUP C@ 1 <> IF DROP 0 EXIT THEN  1+ C@ [CHAR] | = ;
+: L-OUT? ( c-addr --- f )
+  DUP C@ 2 <> IF DROP 0 EXIT THEN
+  DUP 1+ C@ [CHAR] - = SWAP 2 + C@ [CHAR] - = AND ;
+
+: L-ADD-NAME ( c-addr --- )
+  LDECL-N @ LDECL-MAX < 0= ABORT" shadow: too many locals"
+  FIND 0= ABORT" shadow: undefined local name"
+  LDECL-ADDRS LDECL-N @ CELLS + !               \ its xt, compiled where it is used
+  LDECL-N @ 1+ LDECL-N ! ;
+
+: SHADOW{ ( --- )
+  0 LDECL-N !
+  -1 LDECL-ARGS !
+  BEGIN
+    BL WORD
+    DUP C@ 0= ABORT" shadow: missing } on this line"
+    DUP L-END? 0=
+  WHILE
+    DUP L-BAR? IF
+      DROP LDECL-N @ LDECL-ARGS !
+    ELSE DUP L-OUT? IF
+      DROP
+      BEGIN BL WORD
+        DUP C@ 0= ABORT" shadow: missing } on this line"
+        DUP L-END? 0=
+      WHILE DROP REPEAT
+      DROP
+      LDECL-ARGS @ -1 = IF LDECL-N @ LDECL-ARGS ! THEN
+      L-COMPILE-ENTRY EXIT
+    ELSE
+      L-ADD-NAME
+    THEN THEN
+  REPEAT
+  DROP
+  LDECL-ARGS @ -1 = IF LDECL-N @ LDECL-ARGS ! THEN
+  L-COMPILE-ENTRY ; IMMEDIATE
+
+: EXIT ( --- )
+  L-COMPILE-RESTORES POSTPONE EXIT ; IMMEDIATE
+: ; ( --- )
+  L-COMPILE-RESTORES 0 LDECL-N ! 0 LDECL-ARGS ! POSTPONE ; ; IMMEDIATE
+
+BASE !

@@ -1,0 +1,37 @@
+\ port/lab/save.4 - saving relfsh on a forth-vm-evolution design, and its boot
+\ word: loaded after the shell's sources, as relf's save-system.4 is.
+
+BASE @  DECIMAL
+\ ---- saving: the design's header is written by build.sh, this writes the image ----
+VARIABLE SS-FID  VARIABLE SS-LEN  VARIABLE SS-BUF
+: SS>COPY ( live-addr --- copy-addr )  START @ - SS-BUF @ + ;
+: SS-UNRELOCATE ( live-addr --- )  SS>COPY DUP @ START @ - SWAP ! ;
+: SS-ZERO ( live-addr --- )  SS>COPY 0 SWAP ! ;
+: SAVE-BODY ( c-addr u --- )   \ START to HERE, as COLD expects to find it
+  RESET-BUFFERS
+  HERE START @ - SS-LEN !
+  SS-LEN @ ALLOCATE ABORT" save: out of memory" SS-BUF !
+  START @ SS-BUF @ SS-LEN @ MOVE
+  DP SS-UNRELOCATE
+  FORTH-WORDLIST @ 1+ 1 DO
+    FORTH-WORDLIST I CELLS + DUP @ IF SS-UNRELOCATE ELSE DROP THEN
+  LOOP
+  ['] SS-UNRELOCATE WORDLISTS-DO                         \ host.4's word lists
+  PRE-SAVE-XT @ ?DUP IF ['] SS>COPY SWAP EXECUTE THEN   \ jit.4's headers, as unrun
+  LAST SS-ZERO  HANDLER SS-ZERO  SS-FID SS-ZERO  SS-BUF SS-ZERO
+  W/O CREATE-FILE ABORT" save: cannot create file" SS-FID !
+  SS-BUF @ SS-LEN @ SS-FID @ WRITE-FILE DROP
+  SS-FID @ CLOSE-FILE DROP ;
+: SET-BOOT ( xt --- )  START @ - BOOT ! ;
+
+\ ---- the boot word: the port's own state, then relf's MAIN ----------------
+: WL-RELOCATE ( a-addr --- )  START @ SWAP +! ;
+VARIABLE WL-RELOCATE-XT   ' WL-RELOCATE WL-RELOCATE-XT !XT   \ not ['], absolute
+: PORT-BOOT ( --- )
+  AL-RESET                                         \ alloc.4's lists: the saver's, not ours
+  WL-RELOCATE-XT @XT WORDLISTS-DO
+  0 ENV-V !  0 SIG-CAUGHT !  0 SIG-SEEN !  -1 SIG-FD !  LSAVE-INIT
+  0 TIO-SAVED? !  -1 RAW-FD !  0 HANDLER !  SP@ DSTACK-TOP !
+  ARGV0-DEFAULT                                    \ os.4's
+  MAIN ;
+BASE !
