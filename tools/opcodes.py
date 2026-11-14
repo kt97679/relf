@@ -47,3 +47,8 @@ def formats(path=None):
             continue
         out[int(f[1], 0)] = f[4] if len(f) > 4 else '-'
     return out
+
+def returns():
+    """the opcodes that end a body: EXIT and the folded returns, an
+    operation and the EXIT after it as one opcode (Iteration 939)"""
+    return {n for k, n, nm, h in load() if nm == 'EXIT' and k != 'escaped' or k == 'fold'}

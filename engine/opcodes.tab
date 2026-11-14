@@ -61,6 +61,35 @@ tiny      0x44    (LOOP)      L_loop          -
 tiny      0x45    (?DO)       L_qdo           -
 tiny      0x46    EXECUTE     L_execute       -
 tiny      0x47    @XT         L_atxt          -
+# The folded returns (Iteration 939; relf had them until 538 gave them up for
+# 64 opcodes, and forth-vm-evolution's designs keep them): an operation
+# and the EXIT after it as one opcode. The set is relf's own counts' (the
+# shell's and rill3's workloads, tools/knee-model.py), in the order of the
+# base opcodes; cross.4's FOLD-OPS-T lists the bases, and --check holds them
+# together.
+fold      0x48    DROP;EXIT   LX_drop         -
+fold      0x49    C@;EXIT     LX_cfetch       -
+fold      0x4A    @;EXIT      LX_fetch        -
+fold      0x4B    C!;EXIT     LX_cstore       -
+fold      0x4C    !;EXIT      LX_store        -
+fold      0x4D    AND;EXIT    LX_and          -
+fold      0x4E    OR;EXIT     LX_or           -
+fold      0x4F    XOR;EXIT    LX_xor          -
+fold      0x50    R>;EXIT     LX_fromr        -
+fold      0x51    >R;EXIT     LX_tor          -
+fold      0x52    =;EXIT      LX_eq           -
+fold      0x53    U<;EXIT     LX_ult          -
+fold      0x54    +;EXIT      LX_plus         -
+fold      0x55    +!;EXIT     LX_plusstore    -
+fold      0x56    push0;EXIT  LX_lit0         -
+fold      0x57    push1;EXIT  LX_lit1         -
+fold      0x58    push-1;EXIT LX_litm1        -
+fold      0x59    VAR!;EXIT   LX_vs           slot
+fold      0x5A    0=;EXIT     LX_zeq          -
+fold      0x5B    -;EXIT      LX_sub          -
+fold      0x5C    2DROP;EXIT  LX_2drop        -
+fold      0x5D    1+;EXIT     LX_onep         -
+fold      0x5E    1-;EXIT     LX_onem         -
 spec      0x61    push0       L_lit0          -
 spec      0x62    push1       L_lit1          -
 spec      0x63    push-1      L_litm1         -

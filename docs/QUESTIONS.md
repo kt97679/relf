@@ -804,3 +804,15 @@ can reuse what was done for relfsh." - the work after 823, relfsh's line
 editor the first thing to try. And: "don't forget to add regression tests
 each time bug is discovered".
 
+
+**A39. A15 revisited: the image format may change for speed (938 -> 939).**
+The user, on forth-vm-evolution: "The goal of forth-vm-evolution project
+was to design generic forth that would be small, fast and not resource
+heavy. I was hoping to use winning designs for the forth shell. I'm ok to
+change relf image format and cross.4. With faster and smaller forth I
+expect that both forth shell and rill3 will become faster and smaller."
+So A15's 64 one-byte opcodes are no longer a limit; calls keep their form.
+938 counted what the lab's winning portable design would bring on relf's
+own workloads; 939 is the first of its mechanisms back: 23 folded returns,
+the set relf's counts choose. Each next one is measured on the shell and
+rill3 before it stays.

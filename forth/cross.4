@@ -86,6 +86,22 @@ VARIABLE PRIMS-USED 0 PRIMS-USED !
 125 CONSTANT LIT64-OP
 126 CONSTANT ESC-OP
  68 CONSTANT LOOP-OP     \ (LOOP), an opcode since Iteration 530
+
+\ The folded returns (Iteration 939): FOLD-BASE + k is the operation
+\ FOLD-OPS-T's k-th byte names, then EXIT, in one opcode. The bases by
+\ number - push0 and VAR! have no word to name them by - in the order of
+\ opcodes.tab's fold rows, which --check holds this list to.
+72 CONSTANT FOLD-BASE
+23 CONSTANT #FOLD
+CREATE FOLD-OPS-T
+  5 C, 10 C, 11 C, 12 C, 13 C, 14 C, 15 C, 16 C, 17 C, 18 C, 20 C, 21 C,
+  23 C, 65 C, 97 C, 98 C, 99 C, 101 C, 106 C, 107 C, 112 C, 114 C, 117 C,
+ALIGN
+: FOLD-OP-T ( op --- op2 -1 | op 0 )
+\ The folded form of op, if it has one.
+  #FOLD 0 DO
+    DUP FOLD-OPS-T I + C@ = IF DROP I FOLD-BASE + -1 UNLOOP EXIT THEN
+  LOOP 0 ;
 : TCELLSHIFT ( --- n ) TARGET-CELL-BYTES @ 8 = IF 3 ELSE 2 THEN ;
 \ Calls and slot operands name a byte offset: the call scale is 0,
 \ because bodies are not aligned (CV8.md 2.4).
@@ -93,6 +109,7 @@ VARIABLE PRIMS-USED 0 PRIMS-USED !
 \ The four primitives the peepholes complete, by index, found the same
 \ way when PRIMITIVE declares them.
 VARIABLE PLUS-IDX   VARIABLE EQUALS-IDX   VARIABLE MINUS-IDX
+-1 MINUS-IDX !     \ set by OPCODE, after the first primitives: never NOOP's 0
 VARIABLE FETCH-IDX  VARIABLE STORE-IDX
 
 \ ---- raw emission ---------------------------------------------------
@@ -144,9 +161,9 @@ NO-PEEP-T
 \ folding into the EXIT.
   SIGNED-T
   NO-PEEP-T THERE LAST-LIT-T ! DUP LAST-LITV-T !
-  DUP 0 = IF DROP LIT0-OP C,-T EXIT THEN
-  DUP 1 = IF DROP LIT0-OP 1+ C,-T EXIT THEN
-  DUP -1 = IF DROP LIT0-OP 2 + C,-T EXIT THEN
+  DUP 0 = IF DROP THERE LAST-OP-T ! LIT0-OP C,-T EXIT THEN
+  DUP 1 = IF DROP THERE LAST-OP-T ! LIT0-OP 1+ C,-T EXIT THEN
+  DUP -1 = IF DROP THERE LAST-OP-T ! LIT0-OP 2 + C,-T EXIT THEN
   DUP 256 U< IF THERE LAST-OP-T ! LIT8-OP C,-T C,-T EXIT THEN
   DUP 65536 U< IF THERE LAST-OP-T ! LIT16-OP C,-T W,-T EXIT THEN
   \ A 4-byte HOST holds nothing a signed 32-bit literal cannot, so it
@@ -164,8 +181,12 @@ NO-PEEP-T
   LIT64-OP C,-T DUP 32,-T 32 RSHIFT 32,-T ;
 
 : EXIT,-T ( --- )
-\ The end of a body: EXIT. (Folded into the last operation until 538.)
-  EXIT-OP C,-T NO-PEEP-T ;
+\ A return: folded into the last operation where that has a "then EXIT"
+\ form (until 538, and again since 939), else EXIT. LAST-OP-T is 0 where
+\ anything may branch to HERE, so nothing can branch to the EXIT folded.
+  LAST-OP-T @ ?DUP IF
+    DUP C@-T FOLD-OP-T IF SWAP C!-T NO-PEEP-T EXIT THEN 2DROP
+  THEN EXIT-OP C,-T NO-PEEP-T ;
 
 : PEEP-IMM-T ( idx --- f )   \ kernel.4's PEEP-IMM: `LIT n -` too, as ADDI -n (935)
   LAST-LIT-T @ 0= IF DROP 0 EXIT THEN
@@ -183,11 +204,12 @@ NO-PEEP-T
   DUP FETCH-IDX @ = IF DROP VAR@-OP ELSE
   STORE-IDX @ = IF VAR!-OP ELSE 0 EXIT THEN THEN
   LAST-CALL-T @ REWIND-T LAST-CALLXT-T @ >R NO-PEEP-T
-  C,-T R> 4 + ALIGNED-T SLOT,-T -1 ;   \ >BODY-T, which is defined later
+  THERE LAST-OP-T ! C,-T R> 4 + ALIGNED-T SLOT,-T -1 ;   \ >BODY-T, defined later
 
 : PRIM,-T ( idx --- )
 \ Compile primitive number idx into the current target definition.
   DUP DIRECT? 0= IF NO-PEEP-T ESC-OP C,-T #DIRECT @ - C,-T EXIT THEN
+  DUP EXIT-OP = IF DROP EXIT,-T EXIT THEN    \ an EXIT folds as `;`'s (939)
   DUP PEEP-IMM-T IF DROP EXIT THEN
   DUP PEEP-VAR-T IF DROP EXIT THEN
   NO-PEEP-T THERE LAST-OP-T ! C,-T ;
@@ -237,7 +259,7 @@ VARIABLE IMAGE-FID
   48 IMAGE-HDR 3 + C!                                     \ call scale 0
   TARGET-CELL-BYTES @ IMAGE-HDR 4 + C!
   76 IMAGE-HDR 5 + C!         \ 'L': specialised opcodes
-  10 IMAGE-HDR 6 + C!         \ format version (10 since Iteration 539)
+  11 IMAGE-HDR 6 + C!         \ format version (11 since Iteration 939)
   15 IMAGE-HDR 7 + C!         \ varcall | varslot | spec | lit64
   IMAGE-HDR 8 IMAGE-FID @ WRITE-FILE ABORT" Can't write file"
   #TTHREADS HDR,
@@ -281,7 +303,6 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
   TLINK @ DUP C@-T 32 OR SWAP C!-T
   S" +" TNAME= IF DUP PLUS-IDX ! THEN
   S" =" TNAME= IF DUP EQUALS-IDX ! THEN
-  S" -" TNAME= IF DUP MINUS-IDX ! THEN
   S" @" TNAME= IF DUP FETCH-IDX ! THEN
   S" !" TNAME= IF DUP STORE-IDX ! THEN
   DROP
@@ -293,9 +314,13 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 \ primitive, so COMPILE, inlines it; the engine, not a Forth body,
 \ defines what it does.
   "HEADER THERE , DUP ,
-  C,-T EXIT-OP C,-T
+  DUP C,-T EXIT-OP C,-T
   TLINK @ DUP C@-T 32 OR SWAP C!-T
-  DOES> CELL+ @ NO-PEEP-T THERE LAST-OP-T ! C,-T ;
+  \ `-` is one of these, not a PRIMITIVE, so 935's MINUS-IDX was never set
+  \ and `LIT n -` stayed two operations in the kernel's own code (939)
+  S" -" TNAME= IF DUP MINUS-IDX ! THEN  DROP
+  DOES> CELL+ @ DUP PEEP-IMM-T IF DROP EXIT THEN
+        NO-PEEP-T THERE LAST-OP-T ! C,-T ;
 
 \ Literals kernel.4's compiler needs, compiled into its definitions.
 \ Opcode numbers above the primitives depend on how many there are, so
@@ -307,6 +332,13 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 : DOVAR-TOK  DOVAR-OP LITERAL-T ;
 : DODOES-TOK DODOES-OP LITERAL-T ;
 : LIT8-TOK   LIT8-OP LITERAL-T ;
+: FOLD-BASE-TOK FOLD-BASE LITERAL-T ;
+: #FOLD-TOK  #FOLD LITERAL-T ;
+: FOLD-TABLE ( --- )
+\ Overwrite the cell a VARIABLE just reserved with the fold list as
+\ opcode bytes, for kernel.4's FOLD-OP (as until 538).
+  -1 CELLS-T ALLOT-T
+  #FOLD 0 DO FOLD-OPS-T I + C@ C,-T LOOP ALIGN-T ;
 : BRANCH8-TOK BRANCH8-OP LITERAL-T ;
 : 0BRANCH8-TOK 0BRANCH8-OP LITERAL-T ;
 : [OP] ( "name" --- )
@@ -363,7 +395,7 @@ T[
 
 T]
 : CONSTANT "HEADER THERE , DUP ,
-  LITERAL-T EXIT,-T
+  LITERAL-T EXIT-OP C,-T NO-PEEP-T   \ never folded: CONST-WORD? reads it
   DOES> CELL+ @ LITERAL-T ;   \ compiled inline, as the value
 T[
 

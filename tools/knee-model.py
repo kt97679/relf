@@ -56,6 +56,7 @@ CM = count([([cmw, 'tests/cm/bench/%s' % f], {}) for f in ('calls.cm', 'loop.cm'
 
 N = opcodes.number
 EXIT = N('EXIT')
+EXITS = opcodes.returns()      # EXIT and the folded returns (939)
 opname, escname = opcodes.names()
 FMT = opcodes.formats()
 def s16(v): return v - 65536 if v >= 32768 else v
@@ -114,9 +115,9 @@ def decode(path):
                 if tgt in INLINE3: ip += 3
                 elif tgt in STRINGS: ip = ip + 1 + img[ip]
             else: ip += 1
-            if op == EXIT: kind = 'exit'
+            if op in EXITS: kind = 'exit'
             ins.append((a, key, ip - a, kind, tgt))
-            if op == EXIT and ip > far: break
+            if op in EXITS and ip > far: break
         code.append((name, xt, end, ins, targets))
     return code, xt_of
 

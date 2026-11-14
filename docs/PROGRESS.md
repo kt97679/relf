@@ -962,6 +962,7 @@ do not trust the absence of a line below.
 - 936 — PICK an escaped primitive (-1.51 % dispatches; rill3 loops 5-6 % faster); cv8.c's layout penalty measured, -falign-labels the cure at a size cost
 - 937 — AArch64 and RISC-V under qemu: CORE as x86's, rill3 197/197; tools/xarch-check.sh
 - 938 — portable-knee on relf's workloads: its sets 2.6 % (shell) and 3.5 % (rill3) of dispatches; level with relf's engines on calls and branches; tools/knee-model.py
+- 939 — 23 folded returns back (A39), the set relf's counts choose: -3.67 % dispatches on the shell, -5.47 % on rill3; 2-5 % and 4-12 % faster; format 11
 
 ### Not tied to an iteration
 

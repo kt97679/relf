@@ -365,7 +365,8 @@ noise).
 | a CREATE'd word's address pushed inline (627) | a call when not followed by @ or ! | not among the most called: small |
 | DO loops in registers (630) | (LOOP) keeps its counter at [r15] | small: the dispatch dominates |
 | loop starts aligned (714) | bytecode is data; the asm engine's handlers are not aligned | not measured |
-| `LIT n -` - native folds it | **done 935**: PEEP-IMM and cross.4's PEEP-IMM-T make it ADDI -n, no new opcode | 0.12 % fewer dispatches |
+| `LIT n -` - native folds it | **done 935**: PEEP-IMM makes it ADDI -n, no new opcode; cross.4's PEEP-IMM-T only from 939 (`-` is an OPCODE word, and 935 looked for it among the PRIMITIVEs) | 0.12 % fewer dispatches |
+| a return folded into the operation before it (forth-vm-evolution: every winning design) | **done 939**: 23 folded returns, the set relf's counts choose (A39 lifted A15's 64 opcodes) | the shell's workloads 3.67 % fewer dispatches, rill3's 5.47 % |
 | a separate data region (672, 674) | data among the bytecode | memory, not speed |
 
 The first five rows are instructions or fused instructions: the engines'

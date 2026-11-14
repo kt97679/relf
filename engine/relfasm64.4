@@ -30,6 +30,10 @@ LABEL L_tcpaccept LABEL L_tcpconnect LABEL L_tcplisten LABEL L_tcsetpgrp LABEL L
 LABEL L_tor LABEL L_type LABEL L_ult LABEL L_umask LABEL L_umdiv LABEL L_ummult
 LABEL L_unsetenv LABEL L_vf LABEL L_vs LABEL L_waitjob LABEL L_waitnohang LABEL L_waitpid
 LABEL L_write LABEL L_xor LABEL L_zeq LABEL L_zlt LABEL _start LABEL alloc_block
+LABEL LX_drop LABEL LX_cfetch LABEL LX_fetch LABEL LX_cstore LABEL LX_store LABEL LX_and
+LABEL LX_or LABEL LX_xor LABEL LX_fromr LABEL LX_tor LABEL LX_eq LABEL LX_ult LABEL LX_plus
+LABEL LX_plusstore LABEL LX_lit0 LABEL LX_lit1 LABEL LX_litm1 LABEL LX_vs LABEL LX_zeq
+LABEL LX_sub LABEL LX_2drop LABEL LX_onep LABEL LX_onem
 LABEL bad_hdr LABEL bad_magic LABEL bad_version LABEL copy40 LABEL die LABEL dispatch256
 LABEL do_call LABEL ehdr LABEL env_badname LABEL env_find LABEL env_init LABEL esc_tab
 LABEL file_end LABEL free_block LABEL heap_init LABEL locals_failed LABEL m_argv0 LABEL m_badesc
@@ -84,7 +88,7 @@ MEMSIZE RSTACK_BYTES - DSTACK_BYTES - CONSTANT DGUARD
 MEMSIZE RSTACK_BYTES - PAGE - CONSTANT RGUARD
 8 CONSTANT CELL
 4096 CONSTANT LSAVE_MAX
-10 CONSTANT CV8_VERSION
+11 CONSTANT CV8_VERSION                 \ 11 since Iteration 939: the folded returns
 15 CONSTANT FEATURES                     \ varcall varslot spec lit64
 
 0 CONSTANT SYS_read
@@ -848,6 +852,84 @@ al sete,
 rax neg,
 r12 rax mov,
 NEXT,
+
+\ the folded returns (Iteration 939): an operation, then EXIT, in one
+\ dispatch - cv8.c's LX_ handlers, the operation's body and EXITNEXT,
+LX_drop L:  POPT,
+EXITNEXT,
+LX_cfetch L:  r12 [ r12 ] byte-ptr movzx,
+EXITNEXT,
+LX_fetch L:  r12 [ r12 ] mov,
+EXITNEXT,
+LX_cstore L:  al [ r13 ] mov,
+[ r12 ] al mov,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+EXITNEXT,
+LX_store L:  rax [ r13 ] mov,
+[ r12 ] rax mov,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+EXITNEXT,
+LX_and L:  r12 [ r13 ] and,
+r13 CELL # add,
+EXITNEXT,
+LX_or L:  r12 [ r13 ] or,
+r13 CELL # add,
+EXITNEXT,
+LX_xor L:  r12 [ r13 ] xor,
+r13 CELL # add,
+EXITNEXT,
+LX_fromr L:  rax [ r15 ] mov,
+r15 CELL # add,
+rax PUSHT,
+EXITNEXT,
+LX_tor L:  r12 RPUSH,
+POPT,
+EXITNEXT,
+LX_eq L:  4 FLAG,
+EXITNEXT,
+LX_ult L:  2 FLAG,
+EXITNEXT,
+LX_plus L:  r12 [ r13 ] add,
+r13 CELL # add,
+EXITNEXT,
+LX_plusstore L:  rax [ r13 ] mov,
+[ r12 ] rax add,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+EXITNEXT,
+LX_lit0 L:  eax eax xor,
+rax PUSHT,
+EXITNEXT,
+LX_lit1 L:  eax 1 # mov,
+rax PUSHT,
+EXITNEXT,
+LX_litm1 L:  rax 1 NEGATE # mov,
+rax PUSHT,
+EXITNEXT,
+LX_vs L:  SLOT,
+[ rdx ] r12 mov,
+POPT,
+EXITNEXT,
+LX_zeq L:  eax eax xor,
+r12 r12 test,
+al sete,
+rax neg,
+r12 rax mov,
+EXITNEXT,
+LX_sub L:  rax [ r13 ] mov,
+rax r12 sub,
+r12 rax mov,
+r13 CELL # add,
+EXITNEXT,
+LX_2drop L:  r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+EXITNEXT,
+LX_onep L:  r12 inc,
+EXITNEXT,
+LX_onem L:  r12 dec,
+EXITNEXT,
 L_lit64 L:  rax [ r14 ] mov,
 r14 CELL # add,
 rax PUSHT,

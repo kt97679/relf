@@ -64,31 +64,39 @@ both cell widths since Iteration 244, so offsets are plain bytes.
 
 | range | meaning |
 |---|---|
-| `0x00`–`0x22` | the 35 **direct** primitives, in `kernel.4`'s `PRIMITIVE` order: `NOOP EXIT LIT BRANCH ?BRANCH DROP DUP SWAP ROT OVER C@ @ C! ! AND OR XOR R> >R R@ = U< < + NEGATE LSHIFT RSHIFT UM* UM/MOD D+ TYPE SP@ SP! RP@ RP!` |
-| `0x23` | `LIT32`: a 4-byte signed operand |
-| `0x24` | `DOVAR`: a data word's body |
-| `0x25` | `DODOES`: a `DOES>` word's body |
-| `0x26` | `LIT8`: a 1-byte unsigned operand |
-| `0x27` | `LIT8;EXIT` |
-| `0x28`–`0x3E` | 23 **folded** `primitive;EXIT` opcodes, in the fold list's order: `+ = ! @ LSHIFT RSHIFT C@ C! AND OR XOR LIT < U< OVER DROP DUP SWAP ROT >R R> R@ NEGATE` |
+(The map as it is since Iteration 939; `engine/opcodes.tab` is its source.)
+
+| range | meaning |
+|---|---|
+| `0x00`–`0x19` | the 26 **direct** primitives, in `kernel.4`'s `PRIMITIVE` order: `NOOP EXIT LIT BRANCH ?BRANCH DROP DUP SWAP ROT OVER C@ @ C! ! AND OR XOR R> >R R@ = U< < + UM* SP@` |
+| `0x1A` | `LIT32`: a 4-byte signed operand |
+| `0x1B` | `DOVAR`: a data word's body |
+| `0x1C` | `DODOES`: a `DOES>` word's body |
+| `0x1D` | `LIT8`: a 1-byte unsigned operand |
+| `0x1E`–`0x3E` | free: 33 opcodes |
 | `0x3F` | `BRANCH8`: a 1-byte signed offset |
 | `0x40` | `?BRANCH8`: likewise |
-| `0x41`–`0x60` | free: 32 opcodes |
-| `0x61`–`0x7C` | 28 **specialised** opcodes (§6) |
+| `0x41`–`0x47` | tiny words: `+! ?DUP I (LOOP) (?DO) EXECUTE @XT` |
+| `0x48`–`0x5E` | 23 **folded returns**, an operation then `EXIT` in one opcode (Iteration 939): `DROP C@ @ C! ! AND OR XOR R> >R = U< + +! push0 push1 push-1 VAR! 0= - 2DROP 1+ 1-`, each `;EXIT` |
+| `0x5F`–`0x60` | free |
+| `0x61`–`0x69` | **specialised** opcodes (§6): `push0 push1 push-1 VAR@ VAR! LSAVE LRESTORE L! LZERO` |
+| `0x6A`–`0x77` | tiny words: `0= - <> 0< > 2DUP 2DROP 1+ CELL+ CELLS 1- COUNT` (`0x71`, `0x76` free) |
+| `0x79`, `0x7B` | `ADDI`, `EQI`: a 1-byte signed operand (`0x78`, `0x7A`, `0x7C` free) |
 | `0x7D` | `LIT64`: a full cell, little-endian |
-| `0x7E` | `ESC` and a selector byte: the 65 **escaped** primitives |
+| `0x7E` | `ESC` and a selector byte: the 80 **escaped** primitives |
 | `0x7F` | free |
 | `0x80`–`0xBF` | the first byte of a two-byte call |
 | `0xC0`–`0xFF` | the first byte of a three-byte call |
 
-Only two numbers in the map are fixed: the specialised band starts at
-`0x61`, and `LIT64` and `ESC` sit at `0x7D` and `0x7E`. Everything else
-is derived from the count of direct primitives, `NDIRECT`: the
-synthetic opcodes (`LIT32` through the folded band and the two short
-branches) start at `NSYN = NDIRECT`. So only a new **direct** primitive
-moves the map, by one, into the free band; `cv8.c` has a static
-assertion and `cross.4` a check (`MAP-FITS?`) that refuse a map whose
-branches reach `0x61`.
+Only the synthetic opcodes (`LIT32` to `LIT8`) move: they start at
+`NSYN = NDIRECT`, the count of direct primitives, so a new **direct**
+primitive moves them up by one into the free band, and `cross.4`'s
+`MAP-FITS?` refuses a map where they would reach the short branches at
+`0x3F`. Every other number is fixed: the short branches, the tiny words
+(their `N OPCODE` lines), the folded returns from `0x48` (`cross.4`'s
+`FOLD-BASE`), the specialised band from `0x61`, `ADDI`, `EQI`, `LIT64` and
+`ESC`. (This paragraph and the map were 491's until 939: the map moved
+at 536-539 - A15's 64 opcodes - and again with the folds.)
 
 **The escaped primitives cost no opcode.** They are the OS and libc
 interface - files, processes, signals, the terminal, memory
@@ -205,28 +213,28 @@ width, not aligned bodies again.
 ## 3. Worked examples
 
 Real bytes, compiled at the prompt of the 64-bit `kernel64.img` at
-Iteration 491. Opcode values are hexadecimal.
+Iteration 939. Opcode values are hexadecimal.
 
 | source | bytes | reading |
 |---|---|---|
-| `32 CONSTANT BL` | `27 20` | `LIT8;EXIT` 32: a constant is two bytes |
-| `: X OVER OVER ;` | `09 36` | `OVER`, then `OVER;EXIT` (`0x28` + 14): the `EXIT` disappears |
-| `: X DUP + ;` | `06 28` | `DUP`, then `+;EXIT` |
-| `: X 1 + ;` | `7A 01` | `ADDI;EXIT` 1: `LIT 1 +` became one opcode, and folded |
-| `: X 5 = ;` | `7C 05` | `EQI;EXIT` 5 |
-| `: X -1 ;` | `63 01` | push −1 in one byte, then `EXIT` |
+| `32 CONSTANT BL` | `1D 20 01` | `LIT8` 32, `EXIT`: a constant's `EXIT` is never folded, so `CONST-WORD?` can read it as literal and return |
+| `: X OVER OVER ;` | `09 09 01` | `OVER` has no folded form: `OVER`, `OVER`, `EXIT` |
+| `: X DUP + ;` | `06 54` | `DUP`, then `+;EXIT`: the `EXIT` disappears |
+| `: X 1 + ;` | `79 01 01` | `ADDI` 1: `LIT 1 +` became one opcode; `ADDI` has no folded form |
+| `: X -1 ;` | `58` | push −1 with the `EXIT` folded: one byte |
 | `: X $123456789 ;` | `7D 89 67 45 23 01 00 00 00 01` | `LIT64`, eight bytes little-endian, `EXIT` |
-| `VARIABLE VV` | `24 00 00 00 …` | `DOVAR`; the parameter field is at `align(xt + 4)` |
-| `: X VV @ ;` | `64 7F F0 01` | `VAR@`, slot `0x7FF0` = −16 from the operand: `VV`'s parameter field; then `EXIT` |
-| `: X IF 1 ELSE 2 THEN ;` | `04 06 00 62 03 04 00 26 02 01` | `?BRANCH` +6 to the `ELSE` part; push 1; `BRANCH` +4 past it; `LIT8 2`; `EXIT` |
+| `VARIABLE VV` | `1B 00 00 00 …` | `DOVAR`; the parameter field is at `align(xt + 4)` |
+| `: X VV @ ;` | `64 7F F2 01` | `VAR@`, slot `0x7FF2` = −14 from the operand: `VV`'s parameter field; then `EXIT` |
+| `: X VV ! ;` | `59 7F E8` | `VAR!;EXIT`, its slot after it |
+| `: X IF 1 ELSE 2 THEN ;` | `04 06 00 62 03 04 00 1D 02 01` | `?BRANCH` +6 to the `ELSE` part; push 1; `BRANCH` +4 past it; `LIT8 2`; `EXIT` |
+| `: X DUP 0= IF DROP 0 EXIT THEN 1- ;` | `06 6A 04 04 00 05 56 5E` | an `EXIT` in the middle folds as `;`'s does: `push0;EXIT`, then `1-;EXIT` |
 
-The last line shows the folding rule at work: `LIT8 2` is **not** folded
-into `LIT8;EXIT`, because `THEN` makes the `EXIT` a branch target.
+The `IF ... THEN ;` line shows the folding rule at work: `LIT8 2` and the
+`EXIT` stay apart, because `THEN` makes the `EXIT` a branch target.
 
-`: X 0 ?DO I DROP LOOP ;` shows a loop: `61` (push 0), `85 A7` (a
-two-byte call to `(?DO)`), `03 09 00` (its forward branch to the exit),
-`85 BB` (`I`), `05` (`DROP`), `85 E4` (`(LOOP)`), then `3F`, a one-byte
-branch back.
+`: X 0 ?DO I DROP LOOP ;` shows a loop: `61` (push 0), `45` (`(?DO)`),
+`03 07 00` (its forward branch to the exit), `43` (`I`), `05` (`DROP`),
+`44` (`(LOOP)`), then `3F FC`, a one-byte branch back, and `EXIT`.
 
 ## 4. The image file
 
@@ -237,7 +245,7 @@ branch back.
 | 0 | 4 | magic: `CV8` and `'0' + SCALE`, so `CV80` |
 | 4 | 1 | the cell width in bytes, 8 or 4 |
 | 5 | 1 | `'L'` when specialised opcodes are used |
-| 6 | 1 | the **format version**, 5 |
+| 6 | 1 | the **format version**, 11 |
 | 7 | 1 | the **feature bitmap**: 1 variable-width calls, 2 variable-width slots, 4 specialised opcodes, 8 `LIT64` - 15 in every image today |
 | 8 | cell | the number of threads in the hashed word list, 32 |
 | … | 32 cells | the thread heads, relative to `START` |
@@ -257,7 +265,10 @@ Versions: 2 (243) moved the locals cells into the image; 3 (247)
 renumbered the synthetic opcodes; 4 (258) added the short branches and
 unaligned operands; 5 (259) made slot operands relative to themselves;
 6 (517) moved the locals save stack into the engine, leaving one cell
-at offset 8 where there were five.
+at offset 8 where there were five; 7 (528) used the band at `0x41`; 8 (536)
+renumbered the folded returns and dropped the superinstructions; 9 (538)
+dropped the folded returns; 10 (539) cut the one-byte opcodes to 64; 11
+(939) brought 23 folded returns back at `0x48`.
 
 ### 4.2 Layout
 

@@ -129,6 +129,38 @@ awk '/^#/ || NF == 0 { next } $1 != "escaped" && $5 !~ /^(-|u8|i8|u16|i32|u64|b8
     printf "gen-opcodes: %s has no known operand format (\"%s\")\n", $3, $5; bad = 1 }
 END { exit bad }' "$tab" >&2 || problems=$((problems + 1))
 
+# the folded returns (Iteration 939): opcodes.tab's fold rows, in order,
+# are an operation then EXIT each - cross.4's FOLD-OPS-T lists the
+# operations by number, FOLD-BASE is the first row's and #FOLD the count.
+# Two sources of one numbering, as 536 found them unchecked before 538.
+awk '
+function num(s,   v, i) {
+    if (s !~ /^0[xX]/) return s + 0
+    v = 0; s = tolower(substr(s, 3))
+    for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1
+    return v
+}
+BEGIN { nf = 0 }      # a subscript: unset, it would be "", not 0
+/^#/ || NF == 0 { next }
+$1 != "escaped" { byname[$3] = num($2) }
+$1 == "fold" { n = $3; sub(/;EXIT$/, "", n); base[nf] = n; at[nf] = num($2); nf++ }
+END {
+    for (i = 0; i < nf; i++) {
+        if (!(base[i] in byname)) { printf "fold row %d names no opcode %s\n", i, base[i]; bad = 1; continue }
+        printf "%d ", byname[base[i]] > "/dev/stdout"
+        if (at[i] != at[0] + i) { printf "fold rows are not consecutive at %s\n", base[i] > "/dev/stderr"; bad = 1 }
+    }
+    printf "\n%d %d\n", nf, (nf ? at[0] : 0) > "/dev/stdout"
+    exit bad
+}' "$tab" > /tmp/gen-opcodes.fold.$$ || problems=$((problems + 1))
+fr=$(sed -n 1p /tmp/gen-opcodes.fold.$$)
+set -- $(sed -n 2p /tmp/gen-opcodes.fold.$$)
+rm -f /tmp/gen-opcodes.fold.$$
+fc=$(awk '/^CREATE FOLD-OPS-T/ { f = 1; next } f && /C,/ { for (i = 1; i <= NF; i++) if ($(i + 1) == "C,") printf "%s ", $i; next } f { exit }' "$dir/forth/cross.4")
+[ "$fr" = "$fc" ] || bad "forth/cross.4's FOLD-OPS-T ($fc) are not opcodes.tab's fold rows' operations ($fr)"
+grep -q "^$1 CONSTANT #FOLD\$" "$dir/forth/cross.4" || bad "forth/cross.4's #FOLD is not $1, the fold rows in engine/opcodes.tab"
+grep -q "^$2 CONSTANT FOLD-BASE\$" "$dir/forth/cross.4" || bad "forth/cross.4's FOLD-BASE is not $2, the first fold row"
+
 # kernel.4's primitives, in order
 awk '/^#/ || NF == 0 { next } $1 == "direct" || $1 == "escaped" { print $3 }' "$tab" > /tmp/gen-opcodes.tab.$$
 awk '/^ESCAPED/ { next } /^PRIMITIVE[ \t]/ { print $2 }' "$dir/forth/kernel.4" > /tmp/gen-opcodes.k4.$$

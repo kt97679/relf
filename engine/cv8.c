@@ -289,7 +289,10 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  BITMAP, so an engine can tell what an image needs instead of the
  *  widths being implied by the magic string. Widening a field in future
  *  sets a bit here rather than breaking the format.  */
-/*  Version 10 (Iteration 539): 64 one-byte opcodes - the nine least
+/*  Version 11 (Iteration 939): the folded returns again - 23 "then EXIT"
+ *  forms at 0x48-0x5E, chosen by relf's own counts; an image with one
+ *  fails on a version-10 engine, which has no handler there.
+ *  Version 10 (Iteration 539): 64 one-byte opcodes - the nine least
  *  executed direct primitives escaped, CHAR+ INVERT ALIGNED colon words
  *  again; the direct and synthetic bands renumbered (A15).
  *  Version 9 (Iteration 538): no folded returns - the nineteen "then
@@ -314,7 +317,7 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  NDIRECT rather than from the total primitive count, so the same
  *  byte means something else in a version-2 image - measured, each way
  *  round it ran and crashed. */
-#define CV8_VERSION 10
+#define CV8_VERSION 11
 #define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present                 */
@@ -961,6 +964,33 @@ L_onem: tos -= 1; NEXT();
 L_count: { UNS64 a_ = tos; tos = a_ + 1; PUSHT(BYTE(a_)); } NEXT();
 L_addi: tos += (UNS64)(INT64)(int8_t)BYTE(ip); ip += 1; NEXT();
 L_eqi: tos = -(UNS64)(tos == (UNS64)(INT64)(int8_t)BYTE(ip)); ip += 1; NEXT();
+/*  The folded returns (Iteration 939): an operation and the EXIT after it
+ *  in one dispatch - the compilers rewrite the operation's byte where a
+ *  body ends (EXIT,). The set is relf's own counts' (opcodes.tab).  */
+#define EXITNEXT() do { ip = RS; rp += CELL_BYTES; NEXT(); } while (0)
+LX_drop: POPT(); EXITNEXT();
+LX_cfetch: tos = BYTE(tos); EXITNEXT();
+LX_fetch: tos = CELL(tos); EXITNEXT();
+LX_cstore: BYTE(tos) = (UNS8)NOS; tos = CELL(dsp + CELL_BYTES); dsp += 2 * CELL_BYTES; EXITNEXT();
+LX_store: CELL(tos) = NOS; tos = CELL(dsp + CELL_BYTES); dsp += 2 * CELL_BYTES; EXITNEXT();
+LX_and: tos &= NOS; dsp += CELL_BYTES; EXITNEXT();
+LX_or: tos |= NOS; dsp += CELL_BYTES; EXITNEXT();
+LX_xor: tos ^= NOS; dsp += CELL_BYTES; EXITNEXT();
+LX_fromr: PUSHT(RS); rp += CELL_BYTES; EXITNEXT();
+LX_tor: RPUSH(tos); POPT(); EXITNEXT();
+LX_eq: tos = -(UNS64)(NOS == tos); dsp += CELL_BYTES; EXITNEXT();
+LX_ult: tos = -(UNS64)(NOS < tos); dsp += CELL_BYTES; EXITNEXT();
+LX_plus: tos += NOS; dsp += CELL_BYTES; EXITNEXT();
+LX_plusstore: CELL(tos) += CELL(dsp); tos = CELL(dsp + CELL_BYTES); dsp += 2 * CELL_BYTES; EXITNEXT();
+LX_lit0: PUSHT(0); EXITNEXT();
+LX_lit1: PUSHT(1); EXITNEXT();
+LX_litm1: PUSHT(~(UNS64)0); EXITNEXT();
+LX_vs: { UNS64 a = SLOT(); CELL(a) = tos; POPT(); } EXITNEXT();
+LX_zeq: tos = -(UNS64)(tos == 0); EXITNEXT();
+LX_sub: tos = NOS - tos; dsp += CELL_BYTES; EXITNEXT();
+LX_2drop: tos = CELL(dsp + CELL_BYTES); dsp += 2 * CELL_BYTES; EXITNEXT();
+LX_onep: tos += 1; EXITNEXT();
+LX_onem: tos -= 1; EXITNEXT();
 L_lit64: SPILL();   /* lit64: a full cell, little-endian. CELL_BYTES bytes.      */
     { UNS64 v = 0; int i_;
       for (i_ = CELL_BYTES - 1; i_ >= 0; i_--) v = (v << 8) | BYTE(ip + i_);
@@ -1782,7 +1812,6 @@ L_resize: SPILL(); /* a-addr u --- a-addr' ior */
     }
     FILLNEXT();
 }
-#define EXITNEXT() do { ip = RS; rp += CELL_BYTES; NEXT(); } while (0)
 
 }
 
