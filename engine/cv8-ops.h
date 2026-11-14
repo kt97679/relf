@@ -28,7 +28,11 @@
     &&L_xploop, &&L_pick
 #define CV8_OPS_OTHER \
     [0x1A] = &&L_lit32, [0x1B] = &&L_dovar, [0x1C] = &&L_dodoes, \
-    [0x1D] = &&L_lit8, [0x3F] = &&L_branch8, [0x40] = &&L_0branch8, \
+    [0x1D] = &&L_lit8, [0x2C] = &&L_vfplus, [0x2D] = &&L_vflt, \
+    [0x2E] = &&L_vfcfetch, [0x2F] = &&L_vfonep, [0x30] = &&L_vfzeq, \
+    [0x31] = &&L_vfswap, [0x32] = &&L_2vf, [0x33] = &&L_zeqbr, \
+    [0x34] = &&L_andbr, [0x35] = &&L_ltbr, [0x36] = &&L_ultbr, \
+    [0x37] = &&L_eqibr, [0x3F] = &&L_branch8, [0x40] = &&L_0branch8, \
     [0x41] = &&L_plusstore, [0x42] = &&L_qdup, [0x43] = &&L_i, \
     [0x44] = &&L_loop, [0x45] = &&L_qdo, [0x46] = &&L_execute, \
     [0x47] = &&L_atxt, [0x48] = &&LX_drop, [0x49] = &&LX_cfetch, \

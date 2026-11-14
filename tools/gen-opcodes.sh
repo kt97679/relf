@@ -125,41 +125,50 @@ END { exit bad }' "$tab" >&2 || problems=$((problems + 1))
 
 # every opcode's operand format is one the decoders know (Iteration 533):
 # a typo there would not fail, it would misdecode every image quietly
-awk '/^#/ || NF == 0 { next } $1 != "escaped" && $5 !~ /^(-|u8|i8|u16|i32|u64|b8|b16|slot|sel|data)$/ {
+awk '/^#/ || NF == 0 { next } $1 != "escaped" && $5 !~ /^(-|u8|i8|u16|i32|u64|b8|b16|slot|2slot|i8b16|sel|data)$/ {
     printf "gen-opcodes: %s has no known operand format (\"%s\")\n", $3, $5; bad = 1 }
 END { exit bad }' "$tab" >&2 || problems=$((problems + 1))
 
-# the folded returns (Iteration 939): opcodes.tab's fold rows, in order,
-# are an operation then EXIT each - cross.4's FOLD-OPS-T lists the
-# operations by number, FOLD-BASE is the first row's and #FOLD the count.
-# Two sources of one numbering, as 536 found them unchecked before 538.
-awk '
-function num(s,   v, i) {
-    if (s !~ /^0[xX]/) return s + 0
-    v = 0; s = tolower(substr(s, 3))
-    for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1
-    return v
-}
-BEGIN { nf = 0 }      # a subscript: unset, it would be "", not 0
-/^#/ || NF == 0 { next }
-$1 != "escaped" { byname[$3] = num($2) }
-$1 == "fold" { n = $3; sub(/;EXIT$/, "", n); base[nf] = n; at[nf] = num($2); nf++ }
-END {
-    for (i = 0; i < nf; i++) {
-        if (!(base[i] in byname)) { printf "fold row %d names no opcode %s\n", i, base[i]; bad = 1; continue }
-        printf "%d ", byname[base[i]] > "/dev/stdout"
-        if (at[i] != at[0] + i) { printf "fold rows are not consecutive at %s\n", base[i] > "/dev/stderr"; bad = 1 }
+# the opcodes that fuse an operation with another (Iteration 939: the
+# folded returns; 940: the superinstructions): each family's rows in
+# opcodes.tab, in order, name the operation they fuse - cross.4's list,
+# CREATE TABLE, gives those operations by number, BASE is the first row's
+# number and COUNT the rows'. Two sources of one numbering, as 536 found
+# the folds unchecked before 538. family KIND PATTERN TABLE BASE COUNT:
+# the rows of KIND whose name matches PATTERN, the operation that name
+# less PATTERN.
+family() {
+    awk -v kind="$1" -v pat="$2" '
+    function num(s,   v, i) {
+        if (s !~ /^0[xX]/) return s + 0
+        v = 0; s = tolower(substr(s, 3))
+        for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1
+        return v
     }
-    printf "\n%d %d\n", nf, (nf ? at[0] : 0) > "/dev/stdout"
-    exit bad
-}' "$tab" > /tmp/gen-opcodes.fold.$$ || problems=$((problems + 1))
-fr=$(sed -n 1p /tmp/gen-opcodes.fold.$$)
-set -- $(sed -n 2p /tmp/gen-opcodes.fold.$$)
-rm -f /tmp/gen-opcodes.fold.$$
-fc=$(awk '/^CREATE FOLD-OPS-T/ { f = 1; next } f && /C,/ { for (i = 1; i <= NF; i++) if ($(i + 1) == "C,") printf "%s ", $i; next } f { exit }' "$dir/forth/cross.4")
-[ "$fr" = "$fc" ] || bad "forth/cross.4's FOLD-OPS-T ($fc) are not opcodes.tab's fold rows' operations ($fr)"
-grep -q "^$1 CONSTANT #FOLD\$" "$dir/forth/cross.4" || bad "forth/cross.4's #FOLD is not $1, the fold rows in engine/opcodes.tab"
-grep -q "^$2 CONSTANT FOLD-BASE\$" "$dir/forth/cross.4" || bad "forth/cross.4's FOLD-BASE is not $2, the first fold row"
+    BEGIN { nf = 0 }      # a subscript: unset, it would be "", not 0
+    /^#/ || NF == 0 { next }
+    $1 != "escaped" { byname[$3] = num($2) }
+    $1 == kind && $3 ~ pat { n = $3; sub(pat, "", n); base[nf] = n; at[nf] = num($2); nf++ }
+    END {
+        for (i = 0; i < nf; i++) {
+            if (!(base[i] in byname)) { printf "%s row %d names no opcode %s\n", kind, i, base[i] > "/dev/stderr"; bad = 1; continue }
+            printf "%d ", byname[base[i]]
+            if (at[i] != at[0] + i) { printf "%s rows are not consecutive at %s\n", kind, base[i] > "/dev/stderr"; bad = 1 }
+        }
+        printf "\n%d %d\n", nf, (nf ? at[0] : 0)
+        exit bad
+    }' "$tab" > /tmp/gen-opcodes.fam.$$ || problems=$((problems + 1))
+    fr=$(sed -n 1p /tmp/gen-opcodes.fam.$$)
+    fn=$(sed -n 2p /tmp/gen-opcodes.fam.$$ | cut -d' ' -f1); fb=$(sed -n 2p /tmp/gen-opcodes.fam.$$ | cut -d' ' -f2)
+    rm -f /tmp/gen-opcodes.fam.$$
+    fc=$(awk -v t="$3" '$1 == "CREATE" && $2 == t { f = 1; next } f && /C,/ { for (i = 1; i <= NF; i++) if ($(i + 1) == "C,") printf "%s ", $i; next } f { exit }' "$dir/forth/cross.4")
+    [ "$fr" = "$fc" ] || bad "forth/cross.4's $3 ($fc) are not opcodes.tab's $1 rows' operations ($fr)"
+    grep -q "^$fn CONSTANT $5\$" "$dir/forth/cross.4" || bad "forth/cross.4's $5 is not $fn, the $1 rows matching $2 in engine/opcodes.tab"
+    grep -q "^$fb CONSTANT $4\$" "$dir/forth/cross.4" || bad "forth/cross.4's $4 is not $fb, the first of those rows"
+}
+family fold ';EXIT$' FOLD-OPS-T FOLD-BASE '#FOLD'
+family super '^VAR@' VARX-OPS-T VARX-BASE '#VARX'
+family super '[?]BRANCH$' BRX-OPS-T BRX-BASE '#BRX'
 
 # kernel.4's primitives, in order
 awk '/^#/ || NF == 0 { next } $1 == "direct" || $1 == "escaped" { print $3 }' "$tab" > /tmp/gen-opcodes.tab.$$
@@ -211,6 +220,7 @@ forth/cross.4 ESC-OP ESC
 forth/cross.4 LOOP-OP (LOOP)
 forth/cross.4 BRANCH8-OP BRANCH8
 forth/cross.4 0BRANCH8-OP ?BRANCH8
+forth/cross.4 2VAR@-OP 2VAR@
 forth/shadow.4 LSAVE-OP LSAVE
 forth/shadow.4 LRESTORE-OP LRESTORE
 forth/shadow.4 L!-OP L!

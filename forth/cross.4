@@ -97,11 +97,33 @@ CREATE FOLD-OPS-T
   5 C, 10 C, 11 C, 12 C, 13 C, 14 C, 15 C, 16 C, 17 C, 18 C, 20 C, 21 C,
   23 C, 65 C, 97 C, 98 C, 99 C, 101 C, 106 C, 107 C, 112 C, 114 C, 117 C,
 ALIGN
+
+\ The superinstructions (Iteration 940), as the folds: VAR@ and the k-th
+\ of VARX-OPS-T is VARX-BASE + k, the k-th of BRX-OPS-T and ?BRANCH is
+\ BRX-BASE + k, and two VAR@s are 2VAR@ - opcodes.tab's super rows, in
+\ these orders, which --check holds these lists to.
+44 CONSTANT VARX-BASE
+6 CONSTANT #VARX
+CREATE VARX-OPS-T
+  23 C, 22 C, 10 C, 114 C, 106 C, 7 C,
+ALIGN
+50 CONSTANT 2VAR@-OP
+51 CONSTANT BRX-BASE
+5 CONSTANT #BRX
+CREATE BRX-OPS-T
+  106 C, 14 C, 22 C, 21 C, 123 C,
+ALIGN
+
+: OP-POS-T ( op a n --- k -1 | op 0 )   \ op's place among the n bytes at a
+  0 DO  OVER OVER I + C@ = IF 2DROP I -1 UNLOOP EXIT THEN  LOOP DROP 0 ;
+: TABLE-T ( a n --- )   \ host-side: TRANSIENT words cannot see each other
+\ Overwrite the cell a VARIABLE just reserved with n opcode bytes from
+\ a, for kernel.4's lists (as FOLD-TABLE did until 538).
+  -1 CELLS-T ALLOT-T
+  0 DO DUP I + C@ C,-T LOOP DROP ALIGN-T ;
 : FOLD-OP-T ( op --- op2 -1 | op 0 )
 \ The folded form of op, if it has one.
-  #FOLD 0 DO
-    DUP FOLD-OPS-T I + C@ = IF DROP I FOLD-BASE + -1 UNLOOP EXIT THEN
-  LOOP 0 ;
+  FOLD-OPS-T #FOLD OP-POS-T IF FOLD-BASE + -1 ELSE 0 THEN ;
 : TCELLSHIFT ( --- n ) TARGET-CELL-BYTES @ 8 = IF 3 ELSE 2 THEN ;
 \ Calls and slot operands name a byte offset: the call scale is 0,
 \ because bodies are not aligned (CV8.md 2.4).
@@ -121,7 +143,8 @@ VARIABLE FETCH-IDX  VARIABLE STORE-IDX
 VARIABLE LAST-OP-T
 VARIABLE LAST-LIT-T   VARIABLE LAST-LITV-T
 VARIABLE LAST-CALL-T  VARIABLE LAST-CALLXT-T
-: NO-PEEP-T ( --- ) 0 LAST-OP-T ! 0 LAST-LIT-T ! 0 LAST-CALL-T ! ;
+VARIABLE LAST-VAR-T   VARIABLE PREV-VAR-T     \ kernel.4's LAST-VAR, PREV-VAR (940)
+: NO-PEEP-T ( --- ) 0 LAST-OP-T ! 0 LAST-LIT-T ! 0 LAST-CALL-T ! 0 LAST-VAR-T ! 0 PREV-VAR-T ! ;
 NO-PEEP-T
 \ An image offset of 0 is the prologue, which no pattern ever starts at,
 \ so 0 is a safe "none".
@@ -145,7 +168,8 @@ NO-PEEP-T
 
 : CALL,-T ( t-addr --- )
 \ A call to the target body at t-addr: near if it fits 14 bits.
-  NO-PEEP-T THERE LAST-CALL-T ! DUP LAST-CALLXT-T !
+  LAST-VAR-T @ >R NO-PEEP-T R> PREV-VAR-T !    \ a VAR@ right before it (940)
+  THERE LAST-CALL-T ! DUP LAST-CALLXT-T !
   DUP 16384 < IF DUP 8 RSHIFT 128 OR C,-T 255 AND C,-T
   ELSE THERE SWAP CALLBYTES-T 3 ALLOT-T THEN ;
 
@@ -198,18 +222,33 @@ NO-PEEP-T
   LAST-LIT-T @ REWIND-T  SWAP >R  NO-PEEP-T
   THERE LAST-OP-T ! C,-T R> 255 AND C,-T -1 ;
 
-: PEEP-VAR-T ( idx --- f )
+: PEEP-VAR-T ( idx --- f )   \ kernel.4's PEEP-VAR: 2VAR@ too (940)
   LAST-CALL-T @ 0= IF DROP 0 EXIT THEN
   LAST-CALLXT-T @ C@-T DOVAR-OP = 0= IF DROP 0 EXIT THEN
   DUP FETCH-IDX @ = IF DROP VAR@-OP ELSE
   STORE-IDX @ = IF VAR!-OP ELSE 0 EXIT THEN THEN
-  LAST-CALL-T @ REWIND-T LAST-CALLXT-T @ >R NO-PEEP-T
-  THERE LAST-OP-T ! C,-T R> 4 + ALIGNED-T SLOT,-T -1 ;   \ >BODY-T, defined later
+  LAST-CALL-T @ REWIND-T  LAST-CALLXT-T @ 4 + ALIGNED-T   \ >BODY-T, defined later
+  OVER VAR@-OP = PREV-VAR-T @ AND IF
+    2VAR@-OP PREV-VAR-T @ C!-T  NO-PEEP-T  SLOT,-T  DROP -1 EXIT
+  THEN
+  NO-PEEP-T  THERE LAST-OP-T !  OVER VAR@-OP = IF THERE LAST-VAR-T ! THEN
+  SWAP C,-T SLOT,-T -1 ;
+
+: PEEP-VARX-T ( op --- f )   \ kernel.4's PEEP-VARX (940)
+  LAST-VAR-T @ 0= IF DROP 0 EXIT THEN
+  VARX-OPS-T #VARX OP-POS-T 0= IF DROP 0 EXIT THEN
+  VARX-BASE + LAST-VAR-T @ C!-T  NO-PEEP-T -1 ;
+
+: ?BRANCH,-T ( --- )   \ kernel.4's ?BRANCH,: fused with the comparison before it (940)
+  LAST-OP-T @ ?DUP IF
+    DUP C@-T BRX-OPS-T #BRX OP-POS-T IF BRX-BASE + SWAP C!-T NO-PEEP-T EXIT THEN 2DROP
+  THEN NO-PEEP-T 0BRANCH-OP C,-T ;
 
 : PRIM,-T ( idx --- )
 \ Compile primitive number idx into the current target definition.
   DUP DIRECT? 0= IF NO-PEEP-T ESC-OP C,-T #DIRECT @ - C,-T EXIT THEN
   DUP EXIT-OP = IF DROP EXIT,-T EXIT THEN    \ an EXIT folds as `;`'s (939)
+  DUP PEEP-VARX-T IF DROP EXIT THEN          \ VAR@ and it, one opcode (940)
   DUP PEEP-IMM-T IF DROP EXIT THEN
   DUP PEEP-VAR-T IF DROP EXIT THEN
   NO-PEEP-T THERE LAST-OP-T ! C,-T ;
@@ -259,7 +298,7 @@ VARIABLE IMAGE-FID
   48 IMAGE-HDR 3 + C!                                     \ call scale 0
   TARGET-CELL-BYTES @ IMAGE-HDR 4 + C!
   76 IMAGE-HDR 5 + C!         \ 'L': specialised opcodes
-  11 IMAGE-HDR 6 + C!         \ format version (11 since Iteration 939)
+  12 IMAGE-HDR 6 + C!         \ format version (12 since Iteration 940)
   15 IMAGE-HDR 7 + C!         \ varcall | varslot | spec | lit64
   IMAGE-HDR 8 IMAGE-FID @ WRITE-FILE ABORT" Can't write file"
   #TTHREADS HDR,
@@ -319,7 +358,8 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
   \ `-` is one of these, not a PRIMITIVE, so 935's MINUS-IDX was never set
   \ and `LIT n -` stayed two operations in the kernel's own code (939)
   S" -" TNAME= IF DUP MINUS-IDX ! THEN  DROP
-  DOES> CELL+ @ DUP PEEP-IMM-T IF DROP EXIT THEN
+  DOES> CELL+ @ DUP PEEP-VARX-T IF DROP EXIT THEN
+        DUP PEEP-IMM-T IF DROP EXIT THEN
         NO-PEEP-T THERE LAST-OP-T ! C,-T ;
 
 \ Literals kernel.4's compiler needs, compiled into its definitions.
@@ -334,11 +374,14 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 : LIT8-TOK   LIT8-OP LITERAL-T ;
 : FOLD-BASE-TOK FOLD-BASE LITERAL-T ;
 : #FOLD-TOK  #FOLD LITERAL-T ;
-: FOLD-TABLE ( --- )
-\ Overwrite the cell a VARIABLE just reserved with the fold list as
-\ opcode bytes, for kernel.4's FOLD-OP (as until 538).
-  -1 CELLS-T ALLOT-T
-  #FOLD 0 DO FOLD-OPS-T I + C@ C,-T LOOP ALIGN-T ;
+: VARX-BASE-TOK VARX-BASE LITERAL-T ;
+: #VARX-TOK  #VARX LITERAL-T ;
+: 2VAR@-TOK  2VAR@-OP LITERAL-T ;
+: BRX-BASE-TOK BRX-BASE LITERAL-T ;
+: #BRX-TOK  #BRX LITERAL-T ;
+: FOLD-TABLE ( --- )  FOLD-OPS-T #FOLD TABLE-T ;
+: VARX-TABLE ( --- )  VARX-OPS-T #VARX TABLE-T ;
+: BRX-TABLE ( --- )   BRX-OPS-T #BRX TABLE-T ;
 : BRANCH8-TOK BRANCH8-OP LITERAL-T ;
 : 0BRANCH8-TOK 0BRANCH8-OP LITERAL-T ;
 : [OP] ( "name" --- )
@@ -409,10 +452,10 @@ T]
 
 : BEGIN NO-PEEP-T THERE ;
 : UNTIL 0BRANCH-OP 0BRANCH8-OP BACK-T ;
-: IF NO-PEEP-T 0BRANCH-OP C,-T >MARK-T ;
+: IF ?BRANCH,-T >MARK-T ;
 : THEN >RESOLVE-T ;
 : ELSE NO-PEEP-T BRANCH-OP C,-T >MARK-T SWAP >RESOLVE-T ;
-: WHILE NO-PEEP-T 0BRANCH-OP C,-T >MARK-T SWAP ;
+: WHILE ?BRANCH,-T >MARK-T SWAP ;
 : REPEAT BRANCH-OP BRANCH8-OP BACK-T >RESOLVE-T ;
 
 FORWARD (DO)
@@ -531,8 +574,8 @@ THERE   T' DP             >BODY-T !-T
 \ 538 the folded band followed it, and this guarded that). Each primitive
 \ added moves it up one; past the headroom the two would share opcodes
 \ and the engine would decode one as the other, silently.
-: MAP-FITS? ( --- )
-  NSYN 3 + BRANCH8-OP < 0= ABORT" cross: synthetic band reaches the short branches" ;
+: MAP-FITS? ( --- )   \ the superinstructions since 940, not the short branches, above it
+  NSYN 3 + VARX-BASE < 0= ABORT" cross: synthetic band reaches the superinstructions" ;
 MAP-FITS?
 
 SAVE-IMAGE built.img \ Save the newly constructed Forth system to disk.

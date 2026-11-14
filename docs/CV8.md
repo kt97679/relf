@@ -64,7 +64,7 @@ both cell widths since Iteration 244, so offsets are plain bytes.
 
 | range | meaning |
 |---|---|
-(The map as it is since Iteration 939; `engine/opcodes.tab` is its source.)
+(The map as it is since Iteration 940; `engine/opcodes.tab` is its source.)
 
 | range | meaning |
 |---|---|
@@ -73,7 +73,10 @@ both cell widths since Iteration 244, so offsets are plain bytes.
 | `0x1B` | `DOVAR`: a data word's body |
 | `0x1C` | `DODOES`: a `DOES>` word's body |
 | `0x1D` | `LIT8`: a 1-byte unsigned operand |
-| `0x1E`–`0x3E` | free: 33 opcodes |
+| `0x1E`–`0x2B` | free: 14 opcodes, where the synthetic band moves when a primitive is made direct |
+| `0x2C`–`0x32` | **superinstructions** (Iteration 940): `VAR@` and the operation after it - `VAR@+ VAR@< VAR@C@ VAR@1+ VAR@0= VAR@SWAP`, a slot - and `2VAR@`, two slots |
+| `0x33`–`0x37` | **compare-and-branch** (940): `0= AND < U< EQI`, each with the `?BRANCH` after it - `IF`'s and `WHILE`'s - and its 16-bit offset (`EQI`'s byte before it) |
+| `0x38`–`0x3E` | free: 7 opcodes |
 | `0x3F` | `BRANCH8`: a 1-byte signed offset |
 | `0x40` | `?BRANCH8`: likewise |
 | `0x41`–`0x47` | tiny words: `+! ?DUP I (LOOP) (?DO) EXECUTE @XT` |
@@ -92,10 +95,11 @@ Only the synthetic opcodes (`LIT32` to `LIT8`) move: they start at
 `NSYN = NDIRECT`, the count of direct primitives, so a new **direct**
 primitive moves them up by one into the free band, and `cross.4`'s
 `MAP-FITS?` refuses a map where they would reach the short branches at
-`0x3F`. Every other number is fixed: the short branches, the tiny words
-(their `N OPCODE` lines), the folded returns from `0x48` (`cross.4`'s
-`FOLD-BASE`), the specialised band from `0x61`, `ADDI`, `EQI`, `LIT64` and
-`ESC`. (This paragraph and the map were 491's until 939: the map moved
+`0x2C`, the superinstructions. Every other number is fixed: the
+superinstructions (`cross.4`'s `VARX-BASE`, `2VAR@-OP`, `BRX-BASE`), the
+short branches, the tiny words (their `N OPCODE` lines), the folded returns
+from `0x48` (`FOLD-BASE`), the specialised band from `0x61`, `ADDI`, `EQI`,
+`LIT64` and `ESC`. (This paragraph and the map were 491's until 939: the map moved
 at 536-539 - A15's 64 opcodes - and again with the folds.)
 
 **The escaped primitives cost no opcode.** They are the OS and libc
@@ -245,7 +249,7 @@ The `IF ... THEN ;` line shows the folding rule at work: `LIT8 2` and the
 | 0 | 4 | magic: `CV8` and `'0' + SCALE`, so `CV80` |
 | 4 | 1 | the cell width in bytes, 8 or 4 |
 | 5 | 1 | `'L'` when specialised opcodes are used |
-| 6 | 1 | the **format version**, 11 |
+| 6 | 1 | the **format version**, 12 |
 | 7 | 1 | the **feature bitmap**: 1 variable-width calls, 2 variable-width slots, 4 specialised opcodes, 8 `LIT64` - 15 in every image today |
 | 8 | cell | the number of threads in the hashed word list, 32 |
 | … | 32 cells | the thread heads, relative to `START` |
@@ -268,7 +272,8 @@ unaligned operands; 5 (259) made slot operands relative to themselves;
 at offset 8 where there were five; 7 (528) used the band at `0x41`; 8 (536)
 renumbered the folded returns and dropped the superinstructions; 9 (538)
 dropped the folded returns; 10 (539) cut the one-byte opcodes to 64; 11
-(939) brought 23 folded returns back at `0x48`.
+(939) brought 23 folded returns back at `0x48`; 12 (940) added twelve
+superinstructions at `0x2C`.
 
 ### 4.2 Layout
 

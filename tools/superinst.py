@@ -109,13 +109,14 @@ for name, c_, xt, end in bodies:
         op = img[ip]; a = ip; kind = 'op'; key = opname.get(op, '?%02X' % op)
         # operand lengths from opcodes.tab's fifth column (Iteration 533)
         f = FMT.get(op, '-') if op < 0x80 else 'call'
-        if f in ('b16', 'b8'):
-            if f == 'b16':
-                off = s16(img[ip + 1] | img[ip + 2] << 8); ln = 3
-            else:
+        if f in ('b16', 'b8', 'i8b16'):
+            k = 2 if f == 'i8b16' else 1                # EQI?BRANCH: its byte, then the offset (940)
+            if f == 'b8':
                 off = img[ip + 1] - 256 if img[ip + 1] >= 128 else img[ip + 1]; ln = 2
-            targets.add(ip + 1 + off)
-            if off > 0: far = max(far, ip + 1 + off)
+            else:
+                off = s16(img[ip + k] | img[ip + k + 1] << 8); ln = k + 2
+            targets.add(ip + k + off)
+            if off > 0: far = max(far, ip + k + off)
             ip += ln; kind = 'branch'
         elif f == 'u16': ip += 3
         elif f in ('u8', 'i8'): ip += 2
@@ -125,6 +126,8 @@ for name, c_, xt, end in bodies:
             key = 'ESC:' + escname.get(img[ip + 1], '?'); ip += 2
         elif f == 'slot':
             ip += 4 if img[ip + 1] & 0x80 else 3
+        elif f == '2slot':                              # 2VAR@ (940)
+            ip += 1; ip += 3 if img[ip] & 0x80 else 2; ip += 3 if img[ip] & 0x80 else 2
         elif f == 'call':
             ln = 2 if op < 0xC0 else 3
             t = ((op & 63) << 8) | img[ip + 1] if ln == 2 else ((op & 63) << 16) | img[ip + 1] << 8 | img[ip + 2]

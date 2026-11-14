@@ -34,6 +34,8 @@ LABEL LX_drop LABEL LX_cfetch LABEL LX_fetch LABEL LX_cstore LABEL LX_store LABE
 LABEL LX_or LABEL LX_xor LABEL LX_fromr LABEL LX_tor LABEL LX_eq LABEL LX_ult LABEL LX_plus
 LABEL LX_plusstore LABEL LX_lit0 LABEL LX_lit1 LABEL LX_litm1 LABEL LX_vs LABEL LX_zeq
 LABEL LX_sub LABEL LX_2drop LABEL LX_onep LABEL LX_onem
+LABEL L_vfplus LABEL L_vflt LABEL L_vfcfetch LABEL L_vfonep LABEL L_vfzeq LABEL L_vfswap
+LABEL L_2vf LABEL L_zeqbr LABEL L_andbr LABEL L_ltbr LABEL L_ultbr LABEL L_eqibr
 LABEL bad_hdr LABEL bad_magic LABEL bad_version LABEL copy40 LABEL die LABEL dispatch256
 LABEL do_call LABEL ehdr LABEL env_badname LABEL env_find LABEL env_init LABEL esc_tab
 LABEL file_end LABEL free_block LABEL heap_init LABEL locals_failed LABEL m_argv0 LABEL m_badesc
@@ -88,7 +90,7 @@ MEMSIZE RSTACK_BYTES - DSTACK_BYTES - CONSTANT DGUARD
 MEMSIZE RSTACK_BYTES - PAGE - CONSTANT RGUARD
 8 CONSTANT CELL
 4096 CONSTANT LSAVE_MAX
-11 CONSTANT CV8_VERSION                 \ 11 since Iteration 939: the folded returns
+12 CONSTANT CV8_VERSION                 \ 11 since 939: the folded returns; 12 since 940: supers
 15 CONSTANT FEATURES                     \ varcall varslot spec lit64
 
 0 CONSTANT SYS_read
@@ -930,6 +932,102 @@ LX_onep L:  r12 inc,
 EXITNEXT,
 LX_onem L:  r12 dec,
 EXITNEXT,
+
+\ the superinstructions (Iteration 940): cv8.c's, VAR@ and the operation
+\ after it, two VAR@s, and a comparison with the ?BRANCH after it
+L_vfplus L:  SLOT,
+r12 [ rdx ] add,
+NEXT,
+L_vflt L:  SLOT,
+eax eax xor,
+[ rdx ] r12 cmp,                         \ v - n: n < v is v > n
+al setg,
+rax neg,
+r12 rax mov,
+NEXT,
+L_vfcfetch L:  SLOT,
+rax [ rdx ] mov,
+eax [ rax ] byte-ptr movzx,
+rax PUSHT,
+NEXT,
+L_vfonep L:  SLOT,
+rax [ rdx ] mov,
+rax inc,
+rax PUSHT,
+NEXT,
+L_vfzeq L:  SLOT,
+rcx [ rdx ] mov,
+eax eax xor,
+rcx rcx test,
+al sete,
+rax neg,
+rax PUSHT,
+NEXT,
+L_vfswap L:  SLOT,                       \ VAR@ SWAP: the value under the top
+rax [ rdx ] mov,
+r13 CELL # sub,
+[ r13 ] rax mov,
+NEXT,
+L_2vf L:  SLOT,
+rax [ rdx ] mov,
+rax PUSHT,
+SLOT,
+rax [ rdx ] mov,
+rax PUSHT,
+NEXT,
+L_zeqbr L:  rax r12 mov,                 \ 0= ?BRANCH: on when x is 0
+POPT,
+rax rax test,
+1 F jnz,
+r14 2 # add,
+NEXT,
+1 L:  rax [ r14 ] word-ptr movsx,
+r14 rax add,
+NEXT,
+L_andbr L:  rax [ r13 ] mov,
+rax r12 and,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+rax rax test,
+1 F jz,
+r14 2 # add,
+NEXT,
+1 L:  rax [ r14 ] word-ptr movsx,
+r14 rax add,
+NEXT,
+L_ltbr L:  rax [ r13 ] mov,
+rcx r12 mov,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+rax rcx cmp,
+1 F jge,
+r14 2 # add,
+NEXT,
+1 L:  rax [ r14 ] word-ptr movsx,
+r14 rax add,
+NEXT,
+L_ultbr L:  rax [ r13 ] mov,
+rcx r12 mov,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+rax rcx cmp,
+1 F jae,
+r14 2 # add,
+NEXT,
+1 L:  rax [ r14 ] word-ptr movsx,
+r14 rax add,
+NEXT,
+L_eqibr L:  rcx [ r14 ] byte-ptr movsx,  \ EQI ?BRANCH: the byte, then the offset
+r14 inc,
+rax r12 mov,
+POPT,
+rax rcx cmp,
+1 F jne,
+r14 2 # add,
+NEXT,
+1 L:  rax [ r14 ] word-ptr movsx,
+r14 rax add,
+NEXT,
 L_lit64 L:  rax [ r14 ] mov,
 r14 CELL # add,
 rax PUSHT,

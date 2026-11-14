@@ -289,7 +289,9 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  BITMAP, so an engine can tell what an image needs instead of the
  *  widths being implied by the magic string. Widening a field in future
  *  sets a bit here rather than breaking the format.  */
-/*  Version 11 (Iteration 939): the folded returns again - 23 "then EXIT"
+/*  Version 12 (Iteration 940): twelve superinstructions at 0x2C-0x37 -
+ *  VAR@ and the operation after it, VAR@ VAR@, compare-and-branch.
+ *  Version 11 (Iteration 939): the folded returns again - 23 "then EXIT"
  *  forms at 0x48-0x5E, chosen by relf's own counts; an image with one
  *  fails on a version-10 engine, which has no handler there.
  *  Version 10 (Iteration 539): 64 one-byte opcodes - the nine least
@@ -317,7 +319,7 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  NDIRECT rather than from the total primitive count, so the same
  *  byte means something else in a version-2 image - measured, each way
  *  round it ran and crashed. */
-#define CV8_VERSION 11
+#define CV8_VERSION 12
 #define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present                 */
@@ -991,6 +993,24 @@ LX_sub: tos = NOS - tos; dsp += CELL_BYTES; EXITNEXT();
 LX_2drop: tos = CELL(dsp + CELL_BYTES); dsp += 2 * CELL_BYTES; EXITNEXT();
 LX_onep: tos += 1; EXITNEXT();
 LX_onem: tos -= 1; EXITNEXT();
+/*  The superinstructions (Iteration 940): the pairs relf's counts put first,
+ *  each one dispatch. VAR@ and the operation after it - the slot after the
+ *  opcode is the VAR@'s, as for VAR@ - and two VAR@s, a slot each.  */
+L_vfplus:   { UNS64 a = SLOT(); tos += CELL(a); } NEXT();                       /* VAR@ +    */
+L_vflt:     { UNS64 a = SLOT(); tos = -(UNS64)((INT64)tos < (INT64)CELL(a)); } NEXT();  /* VAR@ < */
+L_vfcfetch: { UNS64 a = SLOT(); PUSHT(BYTE(CELL(a))); } NEXT();                 /* VAR@ C@   */
+L_vfonep:   { UNS64 a = SLOT(); PUSHT(CELL(a) + 1); } NEXT();                   /* VAR@ 1+   */
+L_vfzeq:    { UNS64 a = SLOT(); PUSHT(-(UNS64)(CELL(a) == 0)); } NEXT();        /* VAR@ 0=   */
+L_vfswap:   { UNS64 a = SLOT(); dsp -= CELL_BYTES; CELL(dsp) = CELL(a); } NEXT();  /* VAR@ SWAP: under the top */
+L_2vf:      { UNS64 a = SLOT(); UNS64 b = SLOT(); PUSHT(CELL(a)); PUSHT(CELL(b)); } NEXT();   /* VAR@ VAR@ */
+/*  A comparison and ?BRANCH's test - which branches when the flag is FALSE -
+ *  in one dispatch; the offset after it is ?BRANCH's, from its own place.  */
+L_zeqbr:  t = tos; POPT(); if (!t) ip += 2; else ip += BROFF(ip); NEXT();
+L_andbr:  t = NOS & tos; POPT(); POPT(); if (t) ip += 2; else ip += BROFF(ip); NEXT();
+L_ltbr:   t = (INT64)NOS < (INT64)tos; POPT(); POPT(); if (t) ip += 2; else ip += BROFF(ip); NEXT();
+L_ultbr:  t = NOS < tos; POPT(); POPT(); if (t) ip += 2; else ip += BROFF(ip); NEXT();
+L_eqibr:  t = tos == (UNS64)(INT64)(int8_t)BYTE(ip); ip += 1; POPT();
+          if (t) ip += 2; else ip += BROFF(ip); NEXT();
 L_lit64: SPILL();   /* lit64: a full cell, little-endian. CELL_BYTES bytes.      */
     { UNS64 v = 0; int i_;
       for (i_ = CELL_BYTES - 1; i_ >= 0; i_--) v = (v << 8) | BYTE(ip + i_);

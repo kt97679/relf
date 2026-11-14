@@ -1378,6 +1378,12 @@ VARIABLE LAST-CALL ( --- a-addr )
 \ Where the last call starts, or 0...
 VARIABLE LAST-CALLXT ( --- a-addr )
 \ ...and its target.
+VARIABLE LAST-VAR ( --- a-addr )
+\ Where the last VAR@ starts, or 0 (Iteration 940): the superinstructions
+\ rewrite its byte when the operation after it is one they fuse...
+VARIABLE PREV-VAR ( --- a-addr )
+\ ...and where the VAR@ right before the last call starts: a second VAR@,
+\ the call rewound, makes the two one 2VAR@.
 
 \ The compiler rewrites four two-operation patterns into one opcode
 \ (CV8.md 6): `LIT n +` and `LIT n =` into ADDI/EQI, and
@@ -1388,7 +1394,7 @@ VARIABLE LAST-CALLXT ( --- a-addr )
 \ not one of the halves, calls NO-PEEP. `;` folds a final operation and
 \ its EXIT into one opcode under the same rule.
 : NO-PEEP ( --- )
-  0 LAST-OP ! 0 LAST-LIT ! 0 LAST-CALL ! ;
+  0 LAST-OP ! 0 LAST-LIT ! 0 LAST-CALL ! 0 LAST-VAR ! 0 PREV-VAR ! ;
 
 : REWIND ( a-addr --- )
 \ Discard everything compiled from a-addr to HERE.
@@ -1461,11 +1467,21 @@ FOLD-TABLE
 : UNFOLD ( op --- op' )   \ a folded return's operation; any other op as it is
   DUP FOLDED? IF FOLD-BASE-TOK - FOLD-OPS + C@ THEN ;
 
+VARIABLE VARX-OPS ( --- a-addr )
+\ The operations fused with a VAR@ before them (Iteration 940), as opcode
+\ bytes: VARX-BASE-TOK + k is VAR@ and the k-th, one opcode.
+VARX-TABLE
+VARIABLE BRX-OPS ( --- a-addr )
+\ The comparisons fused with the ?BRANCH after them (940): BRX-BASE-TOK +
+\ k is the k-th and ?BRANCH, one opcode.
+BRX-TABLE
+
+: OP-POS ( op a n --- k -1 | op 0 )   \ op's place among the n opcode bytes at a (940)
+  0 DO  OVER OVER I + C@ = IF 2DROP I -1 UNLOOP EXIT THEN  LOOP DROP 0 ;
+
 : FOLD-OP ( op --- op2 -1 | op 0 )
 \ The folded form of op, if it has one.
-  #FOLD-TOK 0 DO
-    DUP FOLD-OPS I + C@ = IF DROP I FOLD-BASE-TOK + -1 UNLOOP EXIT THEN
-  LOOP 0 ;
+  FOLD-OPS #FOLD-TOK OP-POS IF FOLD-BASE-TOK + -1 ELSE 0 THEN ;
 
 : EXIT, ( --- )
 \ Append a return, folded into the last operation where that has a "then
@@ -1480,7 +1496,8 @@ FOLD-TABLE
 \ A call to the body at a-addr: its offset from the image base, two
 \ bytes if it fits 14 bits, else three. The call scale is 0, because
 \ bodies are not aligned (CV8.md 2.4).
-  NO-PEEP HERE LAST-CALL ! DUP LAST-CALLXT !
+  LAST-VAR @ >R NO-PEEP R> PREV-VAR !     \ a VAR@ right before it (940)
+  HERE LAST-CALL ! DUP LAST-CALLXT !
   START @ -
   DUP 16384 < IF DUP 8 RSHIFT 128 OR C, 255 AND C,
   ELSE DUP 16 RSHIFT 192 OR C, DUP 8 RSHIFT 255 AND C, 255 AND C, THEN ;
@@ -1499,13 +1516,40 @@ FOLD-TABLE
 
 : PEEP-VAR ( op --- f )
 \ Rewrite `var @` or `var !` just compiled, where var is a plain data
-\ word: its body starts with DOVAR, so its parameter field is fixed.
+\ word: its body starts with DOVAR, so its parameter field is fixed. A
+\ VAR@ right after another makes the two one 2VAR@, the second slot laid
+\ after the first (Iteration 940).
   LAST-CALL @ 0= IF DROP 0 EXIT THEN
   LAST-CALLXT @ C@ DOVAR-TOK = 0= IF DROP 0 EXIT THEN
   DUP [OP] @ = IF DROP 100 ELSE
-  [OP] ! = IF 101 ELSE 0 EXIT THEN THEN
-  LAST-CALL @ REWIND LAST-CALLXT @ >R NO-PEEP
-  HERE LAST-OP ! OP, R> 4 + ALIGNED SLOT, -1 ;   \ >BODY, defined later
+  [OP] ! = IF 101 ELSE 0 EXIT THEN THEN               ( op' )
+  LAST-CALL @ REWIND  LAST-CALLXT @ 4 + ALIGNED       ( op' pfa )  \ >BODY, defined later
+  OVER 100 = PREV-VAR @ AND IF
+    2VAR@-TOK PREV-VAR @ C!  NO-PEEP  SLOT,  DROP -1 EXIT
+  THEN
+  NO-PEEP  HERE LAST-OP !  OVER 100 = IF HERE LAST-VAR ! THEN
+  SWAP OP, SLOT, -1 ;
+
+: PEEP-VARX ( op --- f )
+\ (940) Fold the operation just compiled into the VAR@ right before it,
+\ where the engines have the pair as one opcode: the VAR@'s byte is
+\ rewritten, its slot stays - relative to itself, so still right - and
+\ nothing is laid. NO-PEEP clears LAST-VAR, so no branch target lies
+\ between the two.
+  LAST-VAR @ 0= IF DROP 0 EXIT THEN
+  VARX-OPS #VARX-TOK OP-POS 0= IF DROP 0 EXIT THEN
+  VARX-BASE-TOK + LAST-VAR @ C!  NO-PEEP -1 ;
+
+: ?BRANCH, ( --- )
+\ (940) A conditional branch, fused with the comparison just compiled
+\ where the engines have the pair as one opcode: that opcode's byte is
+\ rewritten, anything after it (EQI's immediate) stays, and the offset
+\ >MARK lays next belongs to the fused opcode. LAST-OP is only ever the
+\ last instruction, and NO-PEEP - which every branch target calls -
+\ clears it, so nothing can land between the halves.
+  LAST-OP @ ?DUP IF
+    DUP C@ BRX-OPS #BRX-TOK OP-POS IF BRX-BASE-TOK + SWAP C! NO-PEEP EXIT THEN 2DROP
+  THEN NO-PEEP [OP] ?BRANCH OP, ;
 
 : DOES-FETCH? ( xt --- f )
 \ Is xt a `CREATE ... DOES> @ ;` word - a buffer from pool.4's BUFFER:,
@@ -1545,20 +1589,26 @@ FOLD-TABLE
   DUP 5 - 12 U<  OVER 20 - 6 U< OR  OVER 65 - 2 U< OR  OVER 70 - 2 U< OR
   OVER 97 - 3 U< OR  OVER 106 - 7 U< OR  OVER 114 - 4 U< OR  SWAP 119 = OR ;
 
+: SLOT-OP? ( op --- f )   \ one slot after it: VAR@, VAR! and VAR@'s pairs (940)
+  DUP 100 = OVER 101 = OR  SWAP VARX-BASE-TOK - #VARX-TOK U< OR ;
+: SLOT-LEN ( a --- n )   \ a slot operand's bytes: two, or three with the top bit set
+  C@ 128 AND IF 3 ELSE 2 THEN ;
+
 : INL-OP ( a --- a' )   \ past one instruction a copied body may hold, or 0
   DUP C@  DUP 128 AND IF                             \ a call: two bytes, or three
     DUP 64 AND IF  63 AND 16 LSHIFT  OVER 1+ C@ 8 LSHIFT OR  OVER 2 + C@ OR  3
     ELSE  63 AND 8 LSHIFT  OVER 1+ C@ OR  2  THEN
     SWAP START @ + C@  DUP 17 = SWAP 19 = OR IF 2DROP 0 EXIT THEN  + EXIT
   THEN
-  DUP FOLDED? IF  UNFOLD 101 = IF DUP 1+ C@ 128 AND IF 4 ELSE 3 THEN + ELSE 1+ THEN EXIT  THEN
+  DUP FOLDED? IF  UNFOLD SLOT-OP? IF DUP 1+ SLOT-LEN 1+ + ELSE 1+ THEN EXIT  THEN
   \ a folded return, VAR!;EXIT with its slot: only ever the last one (939)
+  DUP 2VAR@-TOK = IF  DROP 1+ DUP SLOT-LEN + DUP SLOT-LEN +  EXIT  THEN   \ (940)
   DUP 2 = IF DROP 3 + EXIT THEN                      \ LIT, two bytes
   DUP 26 = IF DROP 5 + EXIT THEN                     \ LIT32
   DUP 125 = IF DROP 9 + EXIT THEN                    \ LIT64
   DUP 29 = OVER 121 = OR OVER 123 = OR IF DROP 2 + EXIT THEN   \ LIT8 ADDI EQI
-  DUP 100 = OVER 101 = OR IF                         \ VAR@ VAR!: a slot of two bytes, or three
-    DROP DUP 1+ C@ 128 AND IF 4 ELSE 3 THEN + EXIT THEN
+  DUP SLOT-OP? IF                      \ VAR@ VAR! and VAR@'s pairs: a slot of two bytes, or three
+    DROP DUP 1+ SLOT-LEN 1+ + EXIT THEN
   DUP 126 = IF                                       \ ESC: any selector but RP@ and RP!
     DROP DUP 1+ C@ DUP 72 = SWAP 73 = OR IF DROP 0 ELSE 2 + THEN EXIT THEN
   INL-PLAIN? IF 1+ ELSE DROP 0 THEN ;
@@ -1604,13 +1654,17 @@ FOLD-TABLE
   \ last one laid, so a `;` after it can fold it in turn.
   OVER + SWAP
   BEGIN 2DUP SWAP U< WHILE
-    HERE LAST-OP !
+    HERE LAST-OP !  0 LAST-VAR !
     DUP INL-OP
-    OVER C@ UNFOLD  DUP 100 = OVER 101 = OR IF
+    OVER C@ UNFOLD
+    DUP 100 = IF HERE LAST-VAR ! THEN          \ a VAR@ last: its pair can follow (940)
+    DUP SLOT-OP? IF
       C,  OVER 1+ SLOT@ SLOT,
+    ELSE DUP 2VAR@-TOK = IF
+      C,  OVER 1+ DUP SLOT@ SLOT,  DUP SLOT-LEN + SLOT@ SLOT,
     ELSE
       >R  2DUP SWAP - >R  OVER HERE R@ MOVE  HERE R> ALLOT  R> SWAP C!
-    THEN
+    THEN THEN
     SWAP DROP
   REPEAT 2DROP ;
 
@@ -1624,6 +1678,7 @@ FOLD-TABLE
       NO-PEEP DUP C@ OP, 1+ C@ OP,
     ELSE
       C@ DUP [OP] EXIT = IF DROP EXIT, EXIT THEN   \ folds as `;`'s (939)
+      DUP PEEP-VARX IF DROP EXIT THEN                \ VAR@ and it, one opcode (940)
       DUP PEEP-IMM IF DROP EXIT THEN
       DUP PEEP-VAR IF DROP EXIT THEN
       NO-PEEP HERE LAST-OP ! OP,
@@ -1638,7 +1693,7 @@ FOLD-TABLE
     \ and the return were four - 6.7% of the shell's loop was that, for
     \ its buffers (Iteration 260).
     DUP DOES-FETCH? IF
-      NO-PEEP 100 OP, 4 + ALIGNED SLOT, NO-PEEP EXIT
+      NO-PEEP HERE >R 100 OP, 4 + ALIGNED SLOT, NO-PEEP R> LAST-VAR ! EXIT
     THEN
     \ (683) a small straight word: its body, copied, in place of the call
     DUP INLINE-LEN ?DUP IF  NO-PEEP INLINE-COPY EXIT  THEN   \ LAST-OP: its last
@@ -1748,7 +1803,7 @@ VARIABLE 'LEAVE ( --- a-addr)
 \ otherwise the part between ELSE and THEN. If there is no ELSE, the part
 \ between IF and THEN is executed only if flag is true.
   ?COMP
-  NO-PEEP [OP] ?BRANCH OP, >MARK ; IMMEDIATE
+  ?BRANCH, >MARK ; IMMEDIATE
 
 : THEN ( x ---)
 \ End an IF THEN or IF ELSE THEN construction.

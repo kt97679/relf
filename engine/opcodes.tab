@@ -19,6 +19,8 @@
 #   b8     a one-byte branch offset, from the operand
 #   b16    a two-byte branch offset, from the operand
 #   slot   a variable's slot: two bytes, or three if the first has bit 7
+#   2slot  two slots, each from its own position (2VAR@, 940)
+#   i8b16  a signed byte, then a two-byte branch offset (EQI?BRANCH, 940)
 #   sel    ESC's selector     data    the body is data, not code
 #
 # kind     number  name        handler         operand
@@ -52,6 +54,25 @@ synth     0x1A    LIT32       L_lit32         i32
 synth     0x1B    DOVAR       L_dovar         data
 synth     0x1C    DODOES      L_dodoes        data
 synth     0x1D    LIT8        L_lit8          u8
+# The superinstructions (Iteration 940): two operations in one dispatch, the
+# pairs relf's own counts put first (tools/knee-model.py; relf had nine at
+# 532-535, given up at 536). VAR@ and the operation after it - the VAR@'s
+# byte rewritten, its slot staying - in the order of cross.4's VARX-OPS-T;
+# two VAR@s in a row, the second slot after the first; a comparison and the
+# ?BRANCH after it - IF's and WHILE's - in the order of BRX-OPS-T, EQI's
+# immediate staying before the branch offset. --check holds both lists.
+super     0x2C    VAR@+       L_vfplus        slot
+super     0x2D    VAR@<       L_vflt          slot
+super     0x2E    VAR@C@      L_vfcfetch      slot
+super     0x2F    VAR@1+      L_vfonep        slot
+super     0x30    VAR@0=      L_vfzeq         slot
+super     0x31    VAR@SWAP    L_vfswap        slot
+super     0x32    2VAR@       L_2vf           2slot
+super     0x33    0=?BRANCH   L_zeqbr         b16
+super     0x34    AND?BRANCH  L_andbr         b16
+super     0x35    <?BRANCH    L_ltbr          b16
+super     0x36    U<?BRANCH   L_ultbr         b16
+super     0x37    EQI?BRANCH  L_eqibr         i8b16
 branch8   0x3F    BRANCH8     L_branch8       b8
 branch8   0x40    ?BRANCH8    L_0branch8      b8
 tiny      0x41    +!          L_plusstore     -

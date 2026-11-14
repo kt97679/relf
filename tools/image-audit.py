@@ -70,14 +70,15 @@ for name, cnt, xt, end in bodies:
         # 533); this loop listed opcode numbers until then. The statistics
         # and the paths through the end-of-body check are as they were.
         f = FMT.get(op, '-') if op < 0x80 else 'call'
-        if f == 'b16':                                 # BRANCH ?BRANCH, s16 from operand
-            off = s16(img[ip+1] | img[ip+2] << 8)
-            tgt = ip + 1 + off
+        if f in ('b16', 'i8b16'):                      # BRANCH ?BRANCH, s16 from operand
+            k = 2 if f == 'i8b16' else 1               # EQI?BRANCH: its byte first (940)
+            off = s16(img[ip+k] | img[ip+k+1] << 8)
+            tgt = ip + k + off
             kind = ('back' if off < 0 else 'fwd')
             S['branch '+kind] += 1
             hist['branch '+kind].append(abs(off))
             if off > 0: far_target = max(far_target, tgt)
-            ip += 3; continue
+            ip += k + 2; continue
         if f == 'b8':
             off = img[ip+1] - 256 if img[ip+1] >= 128 else img[ip+1]
             kind = 'branch8 back' if off < 0 else 'branch8 fwd'
@@ -91,15 +92,20 @@ for name, cnt, xt, end in bodies:
         elif f == 'u64': S['LIT64'] += 1; ip += 9; continue
         elif f == 'i8': ip += 2
         elif f == 'sel': ip += 2; S['ESC'] += 1; continue
-        elif f == 'slot':
-            if img[ip+1] & 0x80:
-                v = ((img[ip+1] & 0x7F) << 16) | img[ip+2] << 8 | img[ip+3]
-                v = (v ^ 0x400000) - 0x400000              # 23 bits signed, from the operand
-                S['slot far'] += 1; SLOTS.append((ip, ip+4, ip + 1 + v)); ip += 4
-            else:
-                v = (img[ip+1] << 8) | img[ip+2]
-                v = (v ^ 0x4000) - 0x4000                  # 15 bits signed, from the operand
-                S['slot near'] += 1; SLOTS.append((ip, ip+3, ip + 1 + v)); ip += 3
+        elif f in ('slot', '2slot'):                    # 2VAR@: two, each from itself (940)
+            at = ip; ip += 1
+            for _ in range(2 if f == '2slot' else 1):
+                if img[ip] & 0x80:
+                    v = ((img[ip] & 0x7F) << 16) | img[ip+1] << 8 | img[ip+2]
+                    v = (v ^ 0x400000) - 0x400000          # 23 bits signed, from the operand
+                    S['slot far'] += 1; SLOTS.append((at, ip+3, ip + v)); ip += 3
+                else:
+                    v = (img[ip] << 8) | img[ip+1]
+                    v = (v ^ 0x4000) - 0x4000              # 15 bits signed, from the operand
+                    S['slot near'] += 1; SLOTS.append((at, ip+2, ip + v)); ip += 2
+            # VAR!;EXIT ends a body (939): the end check, which this
+            # branch skipped until 940, as for every other instruction
+            if op in EXITS and ip > far_target: break
             continue
         elif op == NOOPOP: S['NOOP'] += 1; ip += 1; continue
         elif op >= 0x80:

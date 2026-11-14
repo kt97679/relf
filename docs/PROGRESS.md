@@ -963,6 +963,7 @@ do not trust the absence of a line below.
 - 937 — AArch64 and RISC-V under qemu: CORE as x86's, rill3 197/197; tools/xarch-check.sh
 - 938 — portable-knee on relf's workloads: its sets 2.6 % (shell) and 3.5 % (rill3) of dispatches; level with relf's engines on calls and branches; tools/knee-model.py
 - 939 — 23 folded returns back (A39), the set relf's counts choose: -3.67 % dispatches on the shell, -5.47 % on rill3; 2-5 % and 4-12 % faster; format 11
+- 940 — twelve superinstructions from relf's hottest pairs (VAR@ and its follower, 2VAR@, compare-and-branch): the realistic script -12.36 % dispatches, the shell 9-13 % and rill3 7-11 % faster; format 12
 
 ### Not tied to an iteration
 
