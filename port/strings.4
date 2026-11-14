@@ -9,7 +9,7 @@
 \ equality, so two lengths that differ end it at once.
 
 BASE @  DECIMAL
-1 CELLS CONSTANT PORT-CELL                     \ a cell's bytes: a design may have four
+1 CELLS CONSTANT PORT-CELL                     \ a cell's bytes, the host's - not taken as 8
 : CSTRLEN ( c-addr --- u )  DUP [ -1 1 RSHIFT ] LITERAL 0 SCAN DROP SWAP - ;
 : SCAN ( c-addr1 u1 c --- c-addr2 u2 )   \ the design's, defined: not this one
   DUP 32 = 0= IF SCAN EXIT THEN

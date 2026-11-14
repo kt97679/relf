@@ -36,6 +36,6 @@ VARIABLE WL-RELOCATE-XT   ' WL-RELOCATE WL-RELOCATE-XT !XT   \ not ['], absolute
   0 ENV-V !  0 SIG-CAUGHT !  0 SIG-SEEN !  -1 SIG-FD !  LSAVE-INIT
   0 TIO-SAVED? !  -1 RAW-FD !  0 HANDLER !  SP@ DSTACK-TOP !
   ARGV0-DEFAULT                                    \ os.4's
-  MAIN ;
+  PORT-MAIN ;                                      \ build.sh's: the shell's MAIN, or rill3's R-BOOT
 JIT-NEVER       \ interpreted: a JIT would translate MAIN and the rest before RELOCATE ran
 BASE !

@@ -46,6 +46,9 @@ From relf's top:
     sh port/gforth/build.sh OUT.fi              # gforth 0.7.3 and its gforthmi; a C compiler
     gforth-fast --appl-image OUT.fi [shell arguments]   # or gforth
 
+    PROGRAM=rill3 sh port/lab/build.sh DESIGN-DIR OUT.img      # rill3 in place of the shell
+    RILL3_PATH=lib DESIGN-DIR/forth OUT.img script.cm          # as bin/cm runs relf64 kernel64-cm.img
+
 The lab build loads the port and the shell on the design's own kernel and writes the design's image
 header (lab/header.py) and the body (lab/save.4's SAVE-BODY, START to HERE, the heads made relative);
 on a design with the JIT gene (its Makefile's -DX_JIT=1) jit.4 first records each word's JIT header, so
@@ -53,6 +56,24 @@ the saved image starts as an unrun one. The gforth build is gforthmi's: a reloca
 either engine, with the data and return stacks at 256 and 64 KB (gforth's 16 KB default is the forth
 command's gap). Both start the shell from a boot word that resets the port's state (PORT-BOOT) and
 gives $0 as relf's engine does (RELF_ARGV0).
+
+## rill3
+
+rill3 (cm/, rill/rt.4) builds on a design the same way, from tools/build-cm-image.sh's sources (the shell's
+character widths and its line editor less TAB completion cut out of shell/shell.4 and shell/edit.4), its
+boot word R-BOOT; tests/cm's 192 checks (the runtime's own tests, the scripts, the prompt's sessions) pass
+on every design. What it asks beyond the shell is port/rill.4's, which loads rill/rt.4 itself: safety.4's
+TRAPPED (rt.4's trap word hands it the traps it does not take, though no engine here traps), kernel.4's
+EXIT, (cm/ir.4 lays a made word's bytecode with COMPILE, LIT, CALL, STRING, and ends it with it), and the
+cell at image offset 8 - relf's engine calls the word there when a frame of locals fails, rt.4 puts its
+own there, and on a design those bytes are the kernel's start vectors: kept, and rt.4's word given to
+shadow.4's LOCALS-FAILED through LF-HOOK. lab/host.4 has kernel.4's >NAME (the made code shown, IR.).
+
+Not on gforth: cm/ir.4 keeps a word in its tokens as a three-byte offset from START, as relf's CALL, does,
+and a gforth primitive's xt is in gforth's binary, not within 16 MB of its dictionary. Nor on relf32:
+rill3's numbers are 64-bit (`cm: a number past 64 bits`). A script is compiled when it runs, by the
+design's own compiler - the front end is the build's only - and a made word has no JIT header, so a JIT
+design interprets a script's own code, its runtime's words native.
 
 ## What differs from relfsh
 

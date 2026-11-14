@@ -1,0 +1,31 @@
+\ port/rill.4 - what rill3 (rill/rt.4 and cm/) asks of relf beyond what the shell does, and rt.4
+\ itself, loaded from here: build.sh's PROGRAM=rill3 loads this in rt.4's place.
+\ - safety.4's TRAPPED: relf's engine calls it on a trap (a bad address, a stack's guard page); rt.4's
+\   R-TRAP, the trap word it registers, hands it every trap but the stacks'. A host's engine here calls
+\   neither (a fault ends the process, port/README.md), but R-TRAP must compile.
+\ - the cell at image offset 8: relf's engine calls the word whose offset is there when a frame of
+\   locals fails (shadow.4's LOCALS-FAILED, kernel.4's LOCALS-CELLS), and rt.4 puts its own there.
+\   Here the cell is the host's own (a design's start vectors), so it is kept, and what rt.4 wrote goes
+\   to port/shadow.4's LF-HOOK, which its LOCALS-FAILED calls.
+\ - kernel.4's EXIT,.
+
+BASE @  DECIMAL
+: TRAPPED ( n --- )   \ safety.4's
+  DUP -28 = 0= IF
+    DUP -10 = IF S" relf: division by zero" ELSE
+    DUP -3 = IF S" relf: data stack overflow" ELSE
+    DUP -5 = IF S" relf: return stack overflow or data stack underflow" ELSE
+    DUP -256 = IF S" relf: invalid instruction - a jump into what is not code" ELSE
+      S" relf: invalid memory address (segmentation fault)" THEN THEN THEN THEN
+    ETYPE 10 ECHAR
+  THEN
+  HANDLER @ DUP DICT-LIMIT U> SWAP R0 @ U< AND 0= IF 70 SYS-EXIT THEN
+  (THROW) ;
+
+\ kernel.4's EXIT,: cm/ir.4 lays a made word's bytecode itself, and ends it so
+: EXIT, ( --- )  POSTPONE EXIT ;
+
+VARIABLE IMAGE-CELL8   START @ 8 + @ IMAGE-CELL8 !
+BASE !
+S" rill/rt.4" INCLUDED
+START @ 8 + @ LF-HOOK !  IMAGE-CELL8 @ START @ 8 + !

@@ -16,7 +16,11 @@ BASE @  DECIMAL
   DOES> DUP @ 0= IF DROP EXIT THEN  @XT EXECUTE ;
 : IS ( xt "name" --- )  ' >BODY !XT ;
 
+\ LF-HOOK: relf's cell at image offset 8, the word its engine calls when a
+\ frame fails - kept as an offset; 0, this one (port/rill.4 sets rill3's)
+VARIABLE LF-HOOK   0 LF-HOOK !
 : LOCALS-FAILED ( n --- )
+  LF-HOOK @ ?DUP IF START @ + EXECUTE EXIT THEN
   DUP 1 = ABORT" shadow: save stack overflow"
   2 = ABORT" shadow: save stack underflow" ;
 

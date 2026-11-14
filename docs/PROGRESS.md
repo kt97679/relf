@@ -966,6 +966,7 @@ do not trust the absence of a line below.
 - 940 — twelve superinstructions from relf's hottest pairs (VAR@ and its follower, 2VAR@, compare-and-branch): the realistic script -12.36 % dispatches, the shell 9-13 % and rill3 7-11 % faster; format 12
 - 941 — relfsh on the lab's ten designs and on gforth (port/: relf's primitives over one SYSCALL): every build relfsh64's output and the shell suite but the forth command's own Forth; the designs 1.9-3.0 times slower (their kernel's compiler: 3.8 times the dispatches), 252-284 KB resident against 1,900; gforth-fast 1.29
 - 942 — why the designs ran relfsh slower: their kernel's compiler (3.8 times relf's dispatches) and a JIT that translated almost nothing (one word without a stencil refuses every word above it); port/lab/compile.4, a front end: fastest-x86-64 0.25-0.28 of relfsh64 (941: 2.4-2.7), fastest-x86-32 0.33-0.40, best-all-round 0.48-0.55, the interpreted designs 11-18 % faster; the lab JIT's THROW across native code reported
+- 943 — rill3 on every Forth it runs on: relf64, relfasm64 (0.80-0.92), a native build (0.22-0.26, new) and the ten designs through port/ (PROGRAM=rill3; port/rill.4: TRAPPED, EXIT, and the locals' offset-8 cell); tests/cm's 192 pass on each; the designs 1.04-1.59 (JIT) and 1.16-3.58 (interpreted) of relf64, a script's own code interpreted everywhere; not gforth (rill3's 3-byte START-relative tokens) nor relf32 (64-bit numbers); 942's 4-byte-cell claim corrected
 
 ### Not tied to an iteration
 

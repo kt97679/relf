@@ -17,6 +17,10 @@ BASE @  DECIMAL
 VARIABLE DSTACK-TOP   0 DSTACK-TOP !
 : DICT-LIMIT ( --- a-addr )  DSTACK-TOP @ DSTACK-BYTES - 4096 + 1024 +  8192 - ;
 
+\ kernel.4's >NAME: the design's headers are relf's of then, a name's count
+\ byte the only one with bit 7 set back from the code (rill3's IR.)
+: >NAME ( xt --- nfa )  BEGIN 1- DUP C@ 128 AND UNTIL ;
+
 \ ---- extend.4's search order, on the design's word list ---------------
 \ The design's word list is relf's of before the link cell: [count][heads],
 \ the wid being the count's address, the heads absolute (COLD relocates
