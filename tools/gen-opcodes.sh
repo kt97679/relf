@@ -89,12 +89,11 @@ generate_forth_consts() {
     function hex(s,   v, i) { v = 0; s = tolower(s); sub(/^0x/, "", s)
         for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1
         return v }
-    BEGIN {
-        print "\\ engine/relfasm-consts.4 - GENERATED from engine/opcodes.tab by tools/gen-opcodes.sh"
-        print "\\ --forth-consts; do not edit." }
     /^#/ || NF == 0 { next }
-    $3 == "BRANCH8" { printf "%d CONSTANT OPC_BRANCH8      \\ the loop opcodes step over it\n", hex($2) }
-    $3 == "NRET" { printf "%d CONSTANT OPC_NRET         \\ native code returns into CV8 through it (952)\n", hex($2) }' "$tab"
+    $3 == "BRANCH8" {
+        print "\\ engine/relfasm-consts.4 - GENERATED from engine/opcodes.tab by tools/gen-opcodes.sh"
+        print "\\ --forth-consts; do not edit."
+        printf "%d CONSTANT OPC_BRANCH8      \\ the loop opcodes step over it\n", hex($2) }' "$tab"
 }
 
 case "${1:-}" in

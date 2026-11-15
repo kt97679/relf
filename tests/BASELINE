@@ -3,7 +3,6 @@ asm:diff:failed 0
 asm:fixpoint reproduces
 asm:forthfuzz:failures 0
 asm:fuzz-mismatches 0
-asm:hybrid same
 asm:interactive:failed 0
 asm:intrfuzz:failures 0
 asm:kernels reproduces
@@ -18,7 +17,6 @@ cm:failed 0
 cm:passed 198
 core:4byte 1
 core:8byte 1
-core:hybrid-refused -21
 core:libc 1
 core:okmarkers 2136
 crosspath:kernel64-shell.img reproduces
@@ -29,8 +27,8 @@ ext:4byte 1
 ext:8byte 1
 forthfuzz:failures 0
 i386:utf8:failed 0
-image-sum:kernel32-shell.img 1698987031/110091
-image-sum:kernel64-shell.img 3124970926/118915
+image-sum:kernel32-shell.img 2861437598/110067
+image-sum:kernel64-shell.img 3716415783/118883
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 image:narrow-host reproduces
@@ -114,15 +112,15 @@ shell:assertions 1130
 shell:dead-words 0
 shell:files 94
 shell:host-sh-tests 0
-size:asm-engine 18680
-size:asm-shell 137611
-size:engine-code-i386 31233
-size:engine-code-x86_64 30274
-size:i386 143291
-size:image-i386 110091
-size:image-rill3 79429
-size:image-x86_64 118915
-size:x86_64 152475
+size:asm-engine 18400
+size:asm-shell 137299
+size:engine-code-i386 31473
+size:engine-code-x86_64 30290
+size:i386 143267
+size:image-i386 110067
+size:image-rill3 79405
+size:image-x86_64 118883
+size:x86_64 152443
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>
 verify:skip-rows complete

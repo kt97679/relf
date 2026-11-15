@@ -279,9 +279,10 @@ the account of what each gained and cost.
 
 17. **Hybrid-native** - the subproject from 950: CV8 bytecode and native
    code in one image, the words that hold the time native, on the assembly
-   engine only (A47). *Paused after 952*: the owner, at 953, wary of a
-   complicated and specialized answer; the shell's profile is flat, which
-   is where a hybrid pays least (954's measurements, the log). Priced at 950 (NATIVE.md 18, tools/native-knee.py):
+   engine only (A47). *Stopped*: paused after 952, the owner at 953 wary
+   of a complicated and specialized answer to a flat profile, which is
+   where a hybrid pays least (954-955); its engine code removed at 957
+   (commit e8227b1 keeps it), the measurements and tools kept. Priced at 950 (NATIVE.md 18, tools/native-knee.py):
    the shell is flat - 19-23 words for half its dispatches, 85-91 for nine
    tenths - and its own set, modelled, gives 0.31 of its time for 25.5 KB
    net (+21 % of its image) and 0.22 for 51 KB; rill3 0.35 for 6 KB,

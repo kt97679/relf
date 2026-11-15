@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """tools/native-c.py [ROUNDS] [N] - C, the cost of a call that crosses between CV8 and native code, measured.
 
+Runs on Iteration 952's tree (commit e8227b1): NATIVE, NRET, CODE-MAP and CODE-SEAL were removed at 957,
+when the hybrid was stopped. Kept as the record of how bench/reports/native-c-952.txt was made.
+
 Iteration 952 (NATIVE.md 18.9): NATIVE.md 18's model takes a crossing at C dispatches beyond what it counts.
 On the assembly engine, with tests/native/hybrid.4's mechanism (CODE-MAP, [NATIVE][disp32], cv8_call and
 NRET), six loops of N turns, each a Forth file of its own with the same prelude, so the start and the

@@ -46,7 +46,6 @@ LABEL m_nl LABEL m_open LABEL m_passwd LABEL m_selfexe LABEL m_unimpl LABEL m_us
 LABEL m_version LABEL open_modes LABEL parse_ipv4 LABEL phdr LABEL read_all LABEL ru_ms
 LABEL ru_ms_sys LABEL sa_fill LABEL set_argv0 LABEL sig_catch LABEL int_throw LABEL trap_code LABEL sig_restorer LABEL strlen_rdi LABEL trap_handler LABEL L_trapxt
 LABEL term_restore LABEL ud_ior LABEL unimpl
-LABEL L_native LABEL L_nret LABEL cv8_call LABEL nret_stub LABEL L_codemap LABEL L_codeseal LABEL codemap_fail
 4194304 65536 ASM-BUFFER                  \ 0x400000: where the Makefile links it
 \ relfasm64.S - the CV8 engine in x86-64 assembly, on raw Linux system
 \  calls, with no libc (ASM-ENGINE.md; GOALS.md "What comes next", item
@@ -1313,70 +1312,6 @@ rcx dec,
 r12 rcx mov,
 NEXT,
 L_pick L:  r12 [ r13 r12 *8 ] mov,       \ PICK ( xu .. x0 u --- xu .. x0 xu ), since 936
-NEXT,
-
-\ ---- hybrid-native (Iteration 952, docs/NATIVE.md 18) -------------------
-\ A native body is [NATIVE][disp32], written over a word's CV8 body in memory:
-\ the machine code at the operand's end plus disp32 is called with the stacks
-\ as this engine holds them - the top in r12, the rest from r13, the image
-\ base in rbx - and returns with rbx, r14 and r15 as it found them; then
-\ EXIT's work. A caller cannot tell which kind it called.
-L_native L:  rax [ r14 ] dword-ptr movsxd,
-r14 4 # add,
-rax r14 add,
-rax call,
-EXITNEXT,
-\ Native code runs a CV8 word by calling cv8_call with its xt in rax. The word
-\ returns into nret_stub, whose NRET takes back the ip kept on the machine
-\ stack and returns into the native caller. rax, rcx, rdx, rsi, rdi and r8-r11
-\ are the CV8 code's to change, as they are any handler's.
-cv8_call L:  r14 push,
-rcx [ nret_stub ] lea,
-rcx RPUSH,
-r14 rax mov,
-NEXT,
-L_nret L:  r14 pop,
-ret,
-nret_stub L:  OPC_NRET C,A
-\ CODE-MAP ( u --- a-addr xt ior ): u bytes, read-write, asked for at 256 MB
-\ so that a rel32 reaches this engine's code and the image from them; xt is
-\ cv8_call. CODE-SEAL ( a-addr u --- ior ): read-execute from then on.
-L_codemap L:  rsi r12 mov,
-edi 268435456 # mov,                     \ the hint: 0x10000000
-edx 3 # mov,                             \ PROT_READ | PROT_WRITE
-r10d 34 # mov,                           \ MAP_PRIVATE | MAP_ANONYMOUS
-r8 1 NEGATE # mov,
-r9d r9d xor,
-eax SYS_mmap # mov,
-syscall,
-rax 4096 NEGATE # cmp,
-codemap_fail jae,
-rcx [ rax rsi ] lea,                     \ its end, which a rel32 must reach
-rcx 2147483647 # cmp,
-1 F jbe,
-rdi rax mov,                             \ placed out of reach: given back
-eax SYS_munmap # mov,
-syscall,
-rax 12 NEGATE # mov,                     \ ENOMEM
-codemap_fail jmp,
-1 L:  r12 rax mov,
-rcx [ cv8_call ] lea,
-rcx PUSHT,
-eax eax xor,
-rax PUSHT,
-NEXT,
-codemap_fail L:  r12d r12d xor,
-rcx rcx xor,
-rcx PUSHT,
-rax PUSHT,
-NEXT,
-L_codeseal L:  rdi [ r13 ] mov,
-rsi r12 mov,
-edx 5 # mov,                             \ PROT_READ | PROT_EXEC
-eax SYS_mprotect # mov,
-syscall,
-r13 CELL # add,
-r12 rax mov,
 NEXT,
 L_ctablefind L:                          \ ( c-addr table count width --- i | -1 ) (676)
 rsi [ r13 2 CELL * ] mov,                \ the name

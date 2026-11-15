@@ -64,7 +64,7 @@ both cell widths since Iteration 244, so offsets are plain bytes.
 
 | range | meaning |
 |---|---|
-(The map as it is since Iteration 952; `engine/opcodes.tab` is its source.)
+(The map as it is since Iteration 946; `engine/opcodes.tab` is its source.)
 
 | range | meaning |
 |---|---|
@@ -85,10 +85,9 @@ both cell widths since Iteration 244, so offsets are plain bytes.
 | `0x5F`–`0x60` | free |
 | `0x61`–`0x69` | **specialised** opcodes (§6): `push0 push1 push-1 VAR@ VAR! LSAVE LRESTORE L! LZERO` |
 | `0x6A`–`0x77` | tiny words: `0= - <> 0< > 2DUP 2DROP 1+ CELL+ CELLS 1- COUNT`, and at `0x71` and `0x76` the pairs `DUP1-` and `OVER+` (946) |
-| `0x79`, `0x7B` | `ADDI`, `EQI`: a 1-byte signed operand (`0x78` the pair `DUP>R`, 946) |
-| `0x7A`, `0x7C` | `NATIVE` and `NRET` (952, hybrid-native, NATIVE.md 18): never in an image file - an engine that runs native code writes `NATIVE` and a 4-byte distance to the code over a word's body in memory, and native code returns into CV8 through `NRET`; the C engine has neither |
+| `0x79`, `0x7B` | `ADDI`, `EQI`: a 1-byte signed operand (`0x78` the pair `DUP>R`, 946; `0x7A`, `0x7C` free) |
 | `0x7D` | `LIT64`: a full cell, little-endian |
-| `0x7E` | `ESC` and a selector byte: the 82 **escaped** primitives (`CODE-MAP` and `CODE-SEAL`, 952, memory for native code - on the assembly engine; -21 on the C engine) |
+| `0x7E` | `ESC` and a selector byte: the 80 **escaped** primitives |
 | `0x7F` | free |
 | `0x80`–`0xBF` | the first byte of a two-byte call |
 | `0xC0`–`0xFF` | the first byte of a three-byte call |

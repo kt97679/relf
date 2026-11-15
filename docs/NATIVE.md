@@ -1641,6 +1641,11 @@ neither.
 
 ### 18.9 The crossing, built and measured (Iteration 952)
 
+*Removed at 957*, the hybrid stopped by the owner's choice (953-955: a complicated and specialized answer
+to a flat profile): NATIVE, NRET, CODE-MAP, CODE-SEAL, tests/native/hybrid.4 and its rows are out, the
+engine 18,400 bytes again and the kernels the bytes they were at 951. Commit e8227b1 has the mechanism
+as described here; tools/native-c.py runs on that tree. The measurements below stand.
+
 **The mechanism**, in relfasm64 (engine/opcodes.tab, engine/relfasm64.4):
 - `NATIVE` (0x7A) and a 4-byte distance, written over a word's CV8 body in
   memory - never in an image file (18.8, rule 2). Its handler:

@@ -980,6 +980,7 @@ do not trust the absence of a line below.
 - 954 — two measurements: command-heavy scripts (tests/bench-cmd/, new) - relfsh's bytecode 1.35-1.37 of dash's time, bash 1.20, the native shell 1.03, the bytecode 0.99-1.19 on four of the five, 3.0-3.4 only where the shell's own loops are half the work; byte-at-a-time loops (tools/byte-loops.py) 12.8 % of the bytecode shell's dispatches and 10 % of its time - general primitives would buy about 1.1 times; one loop turn about 7,300 dispatches, no more steps than dash's, each a dispatch
 - 955 — relfsh at 932 (before the lab's mechanisms) against 954: the bytecode shell 20 % faster at its own work, 5-8 % on command-heavy scripts, the C engine 13 % smaller and an eighth as resident, the native shell unchanged; relfsh's read already a block and a seek back (dash reads a byte at a time); recursion still stops at 32 levels (GOALS.md 13)
 - 956 — functions nest 1,000 levels, as dash's (32 until now): MAX-POS-PARAM-DEPTH 1,000, the return stack 1 MB in both engines and the native kernel (64 KB; a level is 352-792 bytes); no file larger, no memory more; loops nest 3,000 deep; run-limits 900 run and 1,100 diagnosed; rill3's R-DEEP? left as it was
+- 957 — the hybrid's engine code removed (952's NATIVE, NRET, CODE-MAP, CODE-SEAL, hybrid.4): relfasm64 18,400 bytes again, relfshasm64 137,299, the kernels as at 951 byte for byte; NATIVE.md 18, the tools and reports kept as the record
 
 ### Not tied to an iteration
 

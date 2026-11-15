@@ -201,8 +201,6 @@ emit io:8byte     "$(width_state '8-byte cells' 'PASS (8-byte cells I/O suite)')
 emit io:4byte     "$(width_state '4-byte cells' 'PASS (4-byte cells\(, i386\)\? I/O suite)')"
 # Part of the 8-byte half, so `skipped` where that half is (Iteration 404).
 emit core:okmarkers "$(if grep -q 'SKIP: this host is 32-bit' /tmp/verify-run.log; then echo skipped; else sed -n 's/.*PASS (8-byte cells): \([0-9]*\) OK.*/\1/p' /tmp/verify-run.log | head -1; fi)"
-# (952) hybrid-native: the C engine refuses CODE-MAP (-21, unsupported), so no body there is native
-emit core:hybrid-refused "$(timeout 60 ./relf64 forth/kernel64.img < tests/native/hybrid.4 2>&1 | tr -d '\r' | sed -n 's/^CODE-MAP: \(-*[0-9]*\).*/\1/p')"
 # Both base images are now regenerated from cross.4 + kernel.4 on every
 # run and compared against the committed artifacts. The 8-byte one is
 # the fixpoint the bootstrap rests on: it is simultaneously the image
@@ -330,7 +328,7 @@ echo "== the assembly engine =="
 # then native:str, native:fold and native:inline (644-646, found at 655).
 # The second time is a check (prompts/15): verify:skip-rows below names
 # any row the section emitted that this list lacks.
-SKIP_ROWS="asm:kernels asm:shell-image asm:core asm:hybrid asm:diff:failed asm:shell
+SKIP_ROWS="asm:kernels asm:shell-image asm:core asm:diff:failed asm:shell
 asm:interactive:failed asm:fixpoint asm:fuzz-mismatches
 asm:forthfuzz:failures asm:intrfuzz:failures docs:sizes native:n1a
 native:prims native:headers native:kernel-cut native:compiler
@@ -400,11 +398,6 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     if cmp -s /tmp/verify-asm-core.out /tmp/verify-c-core.out
     then emit asm:core identical
     else emit asm:core DIFFERS; fi
-    # (952) hybrid-native's mechanism: native code in CODE-MAP's memory, written over CV8 bodies, calls
-    # crossing both ways and nested (tests/native/hybrid.4)
-    ho=$(timeout 60 ./relfasm64 forth/kernel64.img < tests/native/hybrid.4 2>&1 | tr -d '\r' | grep -v '^OK$\|^Redefining\|^Welcome\|^$')
-    if [ "$ho" = "$(cat tests/native/hybrid.expected)" ]; then emit asm:hybrid same
-    else emit asm:hybrid differs; printf '%s\n' "$ho" | head -5 | sed 's/^/  hybrid: /' >&2; fi
     rm -f /tmp/verify-asm-core.out /tmp/verify-c-core.out
     AD=$(THIS_SH="$PWD/relfshasm64" timeout 300 tests/diff/run-all 2>&1 | tail -1)
     emit asm:diff:failed "$(echo "$AD" | sed -n 's/.*, \([0-9]*\) failed.*/\1/p')"
