@@ -3,7 +3,7 @@
  *  dispatch tables - the direct primitives in order, the escaped
  *  ones in order, every other opcode at its number (CV8.md 2.2).  */
 #define NDIRECT 26
-#define NESC    80
+#define NESC    82
 #define CV8_OPS_DIRECT \
     &&L_noop, &&L_exit, &&L_lit, &&L_branch, &&L_0branch, &&L_drop, \
     &&L_dup, &&L_swap, &&L_rot, &&L_over, &&L_cfetch, &&L_fetch, \
@@ -25,7 +25,7 @@
     &&L_tcplisten, &&L_tcpaccept, &&L_tcpconnect, &&L_negate, &&L_lshift, \
     &&L_rshift, &&L_umdiv, &&L_dplus, &&L_type, &&L_spstore, &&L_rpfetch, \
     &&L_rpstore, &&L_dictlimit, &&L_chmod, &&L_trapxt, &&L_ctablefind, \
-    &&L_xploop, &&L_pick
+    &&L_xploop, &&L_pick, &&L_codemap, &&L_codeseal
 #define CV8_OPS_OTHER \
     [0x1A] = &&L_lit32, [0x1B] = &&L_dovar, [0x1C] = &&L_dodoes, \
     [0x1D] = &&L_lit8, [0x2C] = &&L_vfplus, [0x2D] = &&L_vflt, \
@@ -53,6 +53,6 @@
     [0x70] = &&L_2drop, [0x71] = &&L_dup1m, [0x72] = &&L_onep, \
     [0x73] = &&L_cellp, [0x74] = &&L_cells, [0x75] = &&L_onem, \
     [0x76] = &&L_overplus, [0x77] = &&L_count, [0x78] = &&L_duptor, \
-    [0x79] = &&L_addi, [0x7B] = &&L_eqi, [0x7D] = &&L_lit64, \
-    [0x7E] = &&L_esc
+    [0x79] = &&L_addi, [0x7B] = &&L_eqi, [0x7A] = &&L_native, \
+    [0x7C] = &&L_nret, [0x7D] = &&L_lit64, [0x7E] = &&L_esc
 #define OPC_BRANCH8 0x3F   /* the loop opcodes step over it */

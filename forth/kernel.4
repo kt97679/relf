@@ -265,6 +265,15 @@ PRIMITIVE PICK ( xu .. x0 u --- xu .. x0 xu )
 \ 936: a colon word of six instructions until then, 1.5 % of the realistic
 \ script's dispatches, and called in rill3's runtime 98 times - its for
 \ loop's test among them).
+PRIMITIVE CODE-MAP ( u --- a-addr xt ior )
+\ Hybrid-native (Iteration 952, docs/NATIVE.md 18): u bytes of memory for
+\ native code, read-write until CODE-SEAL, within a 32-bit reach of this
+\ engine's code and image; xt the engine's routine a native word calls to run
+\ a CV8 word (its address in rax). ior -21, unsupported, on an engine without
+\ native code - the C engine (A47).
+PRIMITIVE CODE-SEAL ( a-addr u --- ior )
+\ That memory made read-execute, never writable again: W^X as Iteration 523
+\ has it for the engine's own code.
 
 
 \ PART 2: RUNTIME PARTS THE VARIOUS DEFINITION CLASSES.

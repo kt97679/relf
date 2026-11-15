@@ -1,0 +1,50 @@
+\ tests/native/hybrid.4 - hybrid-native's mechanism (Iteration 952, docs/NATIVE.md 18): native code laid
+\ by hand with forth/asm64.4 into CODE-MAP's memory, sealed, and written over CV8 bodies as
+\ [NATIVE][disp32]; calls crossing both ways, nested, and a word that runs on either kind of code.
+\     ./relfasm64 forth/kernel64.img < tests/native/hybrid.4      (tests/native/hybrid.expected)
+\ On the C engine CODE-MAP answers -21, unsupported, and the file stops there (hybrid-c.expected).
+S" forth/extend.4" INCLUDED  S" forth/asm64.4" INCLUDED
+ALSO ASSEMBLER  DECIMAL
+: ?MAPPED ( a xt ior --- a xt )   ?DUP IF ." CODE-MAP: " . CR BYE THEN ;
+4096 CODE-MAP ?MAPPED  CONSTANT CV8-CALL  CONSTANT CODE
+CODE 4096 ASM-BUFFER
+: NBODY, ( addr --- )   \ [NATIVE][disp32] at HERE - NATIVE is 122, 0x7A (engine/opcodes.tab) - then no peephole
+  122 C,  HERE 4 + -  DUP C,  DUP 8 RSHIFT C,  DUP 16 RSHIFT C,  24 RSHIFT C,  NO-PEEP ;
+
+\ ---- the native code, its stacks the engine's: the top r12, the rest from r13 ----
+HERE-A CONSTANT N-NOP  ret,                                   \ ( --- )
+HERE-A CONSTANT N-SQUARE                                      \ ( n --- n*n )
+  rax r12 mov,  rax r12 imul,  r12 rax mov,  ret,
+HERE-A CONSTANT N-PLUS                                        \ ( a b --- a+b )
+  r12 [ r13 ] add,  r13 8 # add,  ret,
+HERE-A CONSTANT N-CALLS                                       \ ( x xt n --- x' ): xt run n times
+  rcx r12 mov,  rax [ r13 ] mov,  r12 [ r13 8 ] mov,  r13 16 # add,
+  1 L:  rcx rcx test,  2 F jz,
+  rcx push,  rax push,  CV8-CALL call,  rax pop,  rcx pop,
+  rcx dec,  1 B jmp,
+  2 L:  ret,
+\ copied into the mapped memory, which is then read-execute and never writable again
+ABUF @ CODE THERE @ ABUF @ - MOVE
+CODE 4096 CODE-SEAL . CR
+PREVIOUS                            \ the assembler's [ ] and # are operands: Forth's from here
+
+: NNOP [ N-NOP NBODY, ] ;
+: SQUARE [ N-SQUARE NBODY, ] ;
+: PLUS [ N-PLUS NBODY, ] ;
+: NCALLS [ N-CALLS NBODY, ] ;
+: C-INC ( n --- n+1 )   1+ ;
+: C-OUTER ( n --- n' )   ['] C-INC 3 NCALLS ;              \ CV8 -> native -> CV8
+: C-SQ ( n --- n' )   SQUARE ;                             \ CV8 -> native
+
+7 SQUARE . CR                       \ 49
+2 3 PLUS 4 PLUS . CR                \ 9
+NNOP DEPTH . CR                     \ 0
+0 ' C-INC 5 NCALLS . CR             \ 5: native -> CV8
+0 ' C-OUTER 4 NCALLS . CR           \ 12: native -> CV8 -> native -> CV8
+3 ' C-SQ 2 NCALLS . CR              \ 81: native -> CV8 -> native
+: LOOPED ( --- n )   0 1000 0 DO I PLUS LOOP ;
+LOOPED . CR                         \ 499500
+11 ' SQUARE EXECUTE . CR            \ 121: by EXECUTE
+1 2 3 ' PLUS 1 NCALLS . . CR        \ 5 1: native running native through CV8's entry
+DEPTH . CR                          \ 0
+BYE

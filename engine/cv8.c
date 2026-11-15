@@ -1386,6 +1386,13 @@ L_xploop: { /* (+LOOP) ( n --- ), since 934 - a colon word of 29 before (forth-v
     NEXT();
 }
 L_pick: tos = CELL(dsp + (tos << CELL_SHIFT)); NEXT();   /* PICK ( xu .. x0 u --- xu .. x0 xu ), since 936: a colon word of 6 */
+/*  Hybrid-native (Iteration 952, docs/NATIVE.md 18): native code runs on the
+ *  assembly engine alone (A47). Here CODE-MAP and CODE-SEAL answer -21,
+ *  unsupported, so nothing writes NATIVE into a body; NATIVE and NRET, which
+ *  no image file holds, are refused as an unknown opcode is.  */
+L_codemap: tos = 0; PUSHT(0); PUSHT((UNS64)(INT64)-21); NEXT();   /* ( u --- 0 0 -21 ) */
+L_codeseal: dsp += CELL_BYTES; tos = (UNS64)(INT64)-21; NEXT();   /* ( a-addr u --- -21 ) */
+L_native: L_nret: goto L_badop;
 L_ctablefind: SPILL(); { /* c-addr table count width --- i | -1 (Iteration 676): the first */
     /* of count NUL-terminated names, width bytes apart, that is c-addr's */
     /* not t: NEXT's own opcode variable is t */

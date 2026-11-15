@@ -1638,3 +1638,85 @@ built ahead of time, or made at load by a compiler the image carries - is
 decided after C is known. The measurement build (18.7, step 1) installs
 hand-laid native code at run time over a plain CV8 image, which needs
 neither.
+
+### 18.9 The crossing, built and measured (Iteration 952)
+
+**The mechanism**, in relfasm64 (engine/opcodes.tab, engine/relfasm64.4):
+- `NATIVE` (0x7A) and a 4-byte distance, written over a word's CV8 body in
+  memory - never in an image file (18.8, rule 2). Its handler:
+  `movsxd rax,[r14]; add r14,4; add rax,r14; call rax` - the target is
+  the operand's end plus the distance - then EXIT's work. The native code
+  runs on the engine's own registers - the top in r12, the rest from r13,
+  rbx the image base - and returns with rbx, r14 and r15 as it found
+  them, so nothing is translated at the crossing.
+- Native code runs a CV8 word by calling `cv8_call` with its xt in rax:
+  r14 is pushed on the machine stack, the CV8 return stack is given the
+  address of a one-byte stub holding `NRET` (0x7C), and the word is
+  dispatched. When it returns into the stub, NRET's handler is `pop r14;
+  ret`. rax, rcx, rdx, rsi, rdi and r8-r11 are the CV8 code's to change,
+  as they are any handler's.
+- `CODE-MAP ( u --- a-addr xt ior )` maps u bytes read-write, asked for at
+  256 MB so that a rel32 reaches the engine and the image (anything placed
+  out of reach is given back, -12); xt is cv8_call. `CODE-SEAL ( a-addr u
+  --- ior )` makes them read-execute for good - W^X as 523 has it. The C
+  engine answers -21, unsupported, to both, and refuses NATIVE and NRET
+  as unknown opcodes.
+
+The inliner never copies a native body - 0x7A is no opcode INL-PLAIN?
+or INL-OP accepts. tests/native/hybrid.4 lays native words by hand with
+asm64.4: calls both ways, nested both ways (CV8 -> native -> CV8 ->
+native -> CV8), by EXECUTE, inside a DO loop, and native code calling
+native code through CV8's entry - `asm:hybrid` in the verify, and
+`core:hybrid-refused` (-21) on the C engine, which runs everywhere.
+Not handled yet: a THROW out of CV8 code that native code called leaves
+the native frames on the machine stack, and a ^C (A31's restart) inside
+native code; the first hybrid with compiled words must handle both.
+
+**C**, tools/native-c.py (bench/reports/native-c-952.txt): loops of 50
+million turns, 20 rounds interleaved, CPU time, differences per round:
+
+| | ns |
+| --- | ---: |
+| a CV8 call and EXIT, in a loop of one word | 0.43 |
+| CV8 -> native and back, one native word | 1.05 |
+| a native call and ret | 0.27 |
+| native -> CV8 and back (cv8_call, NRET) | 1.04 |
+| eight CV8 words in turn: a call and EXIT | 1.18 |
+| eight native words in turn: CV8 -> native and back | 2.84 |
+
+A loop of one word hides what costs most: NATIVE's one `call` is shared by
+every native word, and with eight in turn its target changes at every
+call - 1.67 ns more a crossing than eight CV8 calls. (A loop's own marginal
+dispatch is no unit: it is work the processor overlaps, and C divided by
+it read 3.0 in one run and 4.0 in the next; the figures here are from the
+second, on the committed build, the first within 0.02 ns of them.) In the model's units
+- each family's own time per dispatch, 951's CPU times over 950's counts
+on the workloads both measured at one size: the Forth programs 0.74 ns,
+rill3 0.79, the shell 3.47, the system 4.32 (the last two spend more per
+dispatch in their primitives and system calls) - C is 2.26 dispatches for
+the Forth programs, 2.12 for rill3, 0.48 for the shell and 0.39 for the
+system: 950's C 2, nowhere near its 8 (the curve below took 2.27 and 2.13,
+from the first run).
+
+**The curve with both measured** (bench/reports/native-knee-952.txt), each
+image's own set; native bytes, which a portable hybrid adds whole (18.8):
+
+| image | native bytes | modelled time |
+| --- | --- | --- |
+| shell (118,915) | 16.4 KB: 0.432; 32.0 KB (+27 %): 0.247; 65.2 KB (+55 %): 0.148 | the native shell 0.088 |
+| rill3 (79,429) | 4.0 KB: 0.527; 8.0 KB (+10 %): 0.446 | ceiling 0.438 |
+| system (the kernel, 10,906) | 4.0 KB: 0.527; 8.1 KB: 0.461 | |
+| Forth programs | 2.0 KB: 0.221 | their own words |
+
+The generic set, the four families alike, at 32 KB: the Forth programs
+0.226, the system 0.478, rill3 0.464, the shell 0.399. A33's bad case was
++50 % for +5 %; these are about +27 % of the shell's image for four times
+its speed, if the compiled words cost what the native builds' do.
+
+**Next**: native.4 retargeted to the engine's registers (r12, r13; its
+absolute addresses inside an image become rbx-relative, 18.6), a set of
+real words compiled and installed at run time over a plain image, THROW
+and ^C across native frames handled, and the model checked against the
+hybrid's own A/B - the shell first, the words 18.3 chooses. The shared
+`call` is a lever if the A/B finds it: a per-word entry would give each
+native word its own prediction.

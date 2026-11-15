@@ -282,10 +282,17 @@ the account of what each gained and cost.
    constants, a native word's cost per CV8 dispatch (tools/native-r.py):
    shell 0.088, Forth programs 0.197, rill3 0.259, system 0.422 - the
    shell's own set then 0.27 for 32 KB, rill3's 0.44 for 8 KB at a crossing
-   of 2 dispatches, but 0.87 at 8. The crossing is the next measurement:
-   NATIVE and NRET in relfasm64, hand-laid native code installed at run
-   time. A48: portable by design (NATIVE.md 18.8) - a hybrid image stays a
-   CV8 image, its native code per architecture beside the bodies.
+   of 2 dispatches, but 0.87 at 8. 952 built the crossing - NATIVE and
+   NRET in relfasm64, CODE-MAP and CODE-SEAL (W^X kept), tests/native/
+   hybrid.4 - and measured it: 1.04 ns a round trip either way, 2.84 with
+   eight native words in turn (NATIVE's one call shared), so C is 2.1-2.3
+   dispatches for the Forth programs and rill3, 0.5 for the shell, 0.4 for
+   the system. With both measured: the shell 0.25 of its time for 32 KB
+   of native code (+27 %), rill3 0.45 for 8 KB. Next: native.4 on the
+   engine's registers, real words compiled and installed, THROW and ^C
+   across native frames, the model checked by the hybrid's own A/B. A48:
+   portable by design (NATIVE.md 18.8) - a hybrid image stays a CV8 image,
+   its native code per architecture beside the bodies.
 
 ## The second end state, reached (Iteration 548)
 

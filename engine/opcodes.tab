@@ -153,6 +153,14 @@ tiny      0x77    COUNT       L_count         -
 pair      0x78    DUP>R       L_duptor        -
 spec      0x79    ADDI        L_addi          i8
 spec      0x7B    EQI         L_eqi           i8
+# Hybrid-native (Iteration 952, NATIVE.md 18): never in an image file - an
+# engine that runs native code writes NATIVE over a word's body in memory, and
+# its native code returns into CV8 through NRET. NATIVE's operand is the
+# native code's distance from the operand's end; NRET has none. The C engine
+# has neither: native code runs on the assembly engine only (A47). At 0x7A and
+# 0x7C, which no band grows into: 0x1E-0x2B is where the synthetic opcodes move.
+hybrid    0x7A    NATIVE      L_native        i32
+hybrid    0x7C    NRET        L_nret          -
 lit64     0x7D    LIT64       L_lit64         u64
 esc       0x7E    ESC         L_esc           sel
 escaped   0       BYE         L_bye           -
@@ -235,3 +243,5 @@ escaped   0x4C    TRAP-XT!    L_trapxt        -
 escaped   0x4D    CTABLE-FIND L_ctablefind    -
 escaped   0x4E    (+LOOP)     L_xploop        -
 escaped   0x4F    PICK        L_pick          -
+escaped   0x50    CODE-MAP    L_codemap       -
+escaped   0x51    CODE-SEAL   L_codeseal      -
