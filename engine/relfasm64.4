@@ -29,7 +29,7 @@ LABEL L_swap LABEL L_sysarg LABEL L_sysargc LABEL L_sysexit LABEL L_system LABEL
 LABEL L_tcpaccept LABEL L_tcpconnect LABEL L_tcplisten LABEL L_tcsetpgrp LABEL L_termraw LABEL L_termrestore
 LABEL L_tor LABEL L_type LABEL L_ult LABEL L_umask LABEL L_umdiv LABEL L_ummult
 LABEL L_unsetenv LABEL L_vf LABEL L_vs LABEL L_waitjob LABEL L_waitnohang LABEL L_waitpid
-LABEL L_write LABEL L_xor LABEL L_zeq LABEL L_zlt LABEL _start LABEL alloc_block
+LABEL L_write LABEL L_xor LABEL L_zeq LABEL L_zlt LABEL _start LABEL alloc_block LABEL alloc_big LABEL free_big
 LABEL LX_drop LABEL LX_cfetch LABEL LX_fetch LABEL LX_cstore LABEL LX_store LABEL LX_and
 LABEL LX_or LABEL LX_xor LABEL LX_fromr LABEL LX_tor LABEL LX_eq LABEL LX_ult LABEL LX_plus
 LABEL LX_plusstore LABEL LX_lit0 LABEL LX_lit1 LABEL LX_litm1 LABEL LX_vs LABEL LX_zeq
@@ -135,6 +135,7 @@ MEMSIZE RSTACK_BYTES - PAGE - CONSTANT RGUARD
 50 CONSTANT SYS_listen
 54 CONSTANT SYS_setsockopt
 13 CONSTANT SYS_rt_sigaction
+11 CONSTANT SYS_munmap
 15 CONSTANT SYS_rt_sigreturn
 65 CONSTANT NSIG_FLAGS
 217 CONSTANT SYS_getdents64
@@ -1458,6 +1459,8 @@ NEXT,
 
 alloc_block L:                           \ rdi bytes -> rax pointer, or 0
 rcx [ rdi 16 ] lea,
+rcx 32768 # cmp,                         \ (948) past 32 KB: a mapping of its own
+NEAR alloc_big ja,
 eax 5 # mov,
 rcx 32 # cmp,
 1 F jbe,
@@ -1533,11 +1536,46 @@ rdi rdi test,
 1 F jz,
 rdx [ rdi 16 NEGATE ] lea,
 rax [ rdx ] mov,
+rax rax test,                            \ class 0: a mapping of its own (948)
+NEAR free_big jz,
 r8 [ rax *8 free_lists ] lea,
 rcx [ r8 ] mov,
 [ rdx 8 ] rcx mov,
 [ r8 ] rdx mov,
 1 L:  ret,
+\ (948) A block past 32 KB is a mapping of its own, class 0 in its header
+\ and its length after it, given back to the system when freed - as
+\ engine/rt-linux.c's. They were classes of the reservation like the rest,
+\ zeroed on reuse: rill3's collector frees its 128 MB arena and asks for
+\ another at every collection, and each was a 256 MB block zeroed whole -
+\ collected every megabyte, its scripts ran up to seven times slower.
+alloc_big L:                             \ rcx: bytes and header -> rax pointer, or 0
+rcx 4095 # add,
+rcx 4096 NEGATE # and,
+rcx push,
+rsi rcx mov,
+edi edi xor,
+edx 3 # mov,                             \ PROT_READ | PROT_WRITE
+r10d 34 # mov,                           \ MAP_PRIVATE | MAP_ANONYMOUS
+r8 1 NEGATE # mov,
+r9d r9d xor,
+eax SYS_mmap # mov,
+syscall,
+rcx pop,
+rax 4096 NEGATE # cmp,
+1 F jae,
+[ rax ] qword-ptr 0 # mov,               \ class 0
+[ rax 8 ] rcx mov,                       \ the mapping's length
+rax 16 # add,
+ret,
+1 L:  eax eax xor,
+ret,
+free_big L:                              \ rdx: a class-0 block's header
+rdi rdx mov,
+rsi [ rdx 8 ] mov,
+eax SYS_munmap # mov,
+syscall,
+ret,
 L_allocate L:  rdi r12 mov,              \ ( u --- a-addr ior )
 alloc_block call,
 r13 CELL # sub,
@@ -1555,10 +1593,13 @@ L_resize L:  rdi [ r13 ] mov,            \ ( a-addr u --- a-addr' ior )
 rdi rdi test,
 5 F jz,
 rax [ rdi 16 NEGATE ] mov,
+r9 [ rdi 8 NEGATE ] mov,                 \ class 0 (948): its mapping's length
+rax rax test,
+7 F jz,
 ecx eax mov,
 r9d 1 # mov,
 r9 cl shl,
-r9 16 # sub,                             \ what the block holds
+7 L:  r9 16 # sub,                       \ what the block holds
 r12 r9 cmp,
 4 F jbe,                                 \ still fits: the same block
 r9 push,

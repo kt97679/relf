@@ -73,6 +73,8 @@ native:os-ported 62
 native:peep same
 native:posix:failed 0
 native:prims same
+native:rill3 192/192
+native:rill3-bytes 273656
 native:self-built same
 native:shell 1
 native:shell-bytes 417152
@@ -110,13 +112,13 @@ shell:assertions 1128
 shell:dead-words 0
 shell:files 94
 shell:host-sh-tests 0
-size:asm-engine 18272
-size:asm-shell 144006
+size:asm-engine 18400
+size:asm-shell 144134
 size:engine-code-i386 31473
 size:engine-code-x86_64 30290
 size:i386 150450
 size:image-i386 117250
-size:image-rill3 82136
+size:image-rill3 82168
 size:image-x86_64 125718
 size:x86_64 159278
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0

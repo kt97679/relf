@@ -29,7 +29,11 @@ VARIABLE CT-ON   VARIABLE CT-BUF   VARIABLE CT-LEN   VARIABLE CT-CAP   VARIABLE 
 VARIABLE R-TOP   VARIABLE R-END
 VARIABLE R-ARENA0  VARIABLE R-GC-AT  VARIABLE G-STRESS   \ the arena's start; where the next collection is due (776)
 134217728 CONSTANT R-ARENA-SIZE
-: R-ARENA-INIT ( --- )   R-ARENA-SIZE ALLOCATE THROW  DUP R-ARENA0 !  DUP R-TOP !  DUP R-ARENA-SIZE + R-END !  16777216 + R-GC-AT ! ;   \ 128 MB of address space, touched only as used (755: 16 MB filled by the pilot)
+\ The first collection, and the least room between two: 1 MB since Iteration 948 - it was 16, and every
+\ script that made more than a few MB was 16 MB resident whatever it kept; collected sooner, what it keeps,
+\ and the next after four times what it keeps (R-GC)
+1048576 CONSTANT R-GC-ROOM
+: R-ARENA-INIT ( --- )   R-ARENA-SIZE ALLOCATE THROW  DUP R-ARENA0 !  DUP R-TOP !  DUP R-ARENA-SIZE + R-END !  R-GC-ROOM + R-GC-AT ! ;   \ 128 MB of address space, touched only as used (755: 16 MB filled by the pilot)
 DEFER R-FULL   \ the arena full: R-FULL-IMPL below says why, and where (791)
 : R-ALLOT ( n --- addr )
   7 + -8 AND  R-TOP @ SWAP OVER + DUP R-END @ U> IF R-FULL THEN  R-TOP ! ;   \ the test a branch, its message only when full (768)
@@ -824,7 +828,8 @@ DEFER G-MORE ( --- )   \ roots beyond the registered variables - a runtime may a
   G-BITS @ FREE THROW  R-ARENA0 @ FREE THROW
   XN @ 0 ?DO  I X-CHUNK DUP 2 CELLS + @ FREE THROW  @ FREE THROW  LOOP  0 XN !
   R> DUP R-ARENA0 !  G-SIZE @ + R-END !  G-TOP @ R-TOP !
-  R-TOP @ R-ARENA0 @ - 2* 16777216 MAX R-TOP @ + R-END @ MIN R-GC-AT !
+  R-TOP @ R-ARENA0 @ - 4 * R-GC-ROOM MAX R-TOP @ + R-END @ MIN R-GC-AT !   \ four times what lives (948: twice, a list grown
+  \ big was copied again and again - a third slower collected from 1 MB; eight times, a churn of short texts grew past 16 MB)
   G-STRESS @ IF R-TOP @ 65536 + R-GC-AT ! THEN  1 G-RUNS +! ;     \ under stress: again after 64 KB more
 : R-GC? ( --- )   R-TOP @ R-GC-AT @ U> IF R-GC THEN  SIG-ON @ IF R-SIG-POLL THEN ;   \ a safe point: the compilers put one before each top-level statement
 \ SIGNALS-PENDING scans every flag (~27 ns): looked at every 1024th safe point, and at the first after each command

@@ -338,6 +338,7 @@ native:shell-forth-errors:failed native:shell-bytes native:shell
 native:interactive:failed native:mrsh:failed native:posix:failed
 native:forthfuzz:failures native:intrfuzz:failures size:asm-engine
 size:asm-shell native:str native:locals native:cmpbr native:memop native:slit native:peep native:data native:ctab native:inl native:short native:data-bytes native:self-built native:fold native:inline
+native:rill3 native:rill3-bytes
 verify:skip-rows"
 SKIP_FROM=$(wc -l < "$OUT")
 # The native kernel's comparison rows (Iteration 656, prompts/15): a
@@ -540,7 +541,13 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
             emit native:intrfuzz:failures "$(timeout 280 python3 tools/intrfuzz.py 20 598 ./relfsh-native 2>&1 | tail -1 | sed -n 's/.*cases, \([0-9]*\) failures.*/\1/p')"
         else emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:data-bytes "not built"; emit native:shell "not built"
             for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi
+        # (Iteration 948) rill3 on the native kernel, one executable: tests/cm's three loops
+        if make -s rill3-native >/dev/null 2>&1; then
+            emit native:rill3 "$(timeout 900 sh tests/cm/run-native ./rill3-native 2>&1 | tail -1 | awk '{print $1 "/" $1 + $3}')"
+            emit native:rill3-bytes "$(wc -c < rill3-native | tr -d ' ')"
+        else emit native:rill3 "not built"; emit native:rill3-bytes "not built"; fi
     else emit native:core "not built"; emit native:kernel-bytes "not built"
+         emit native:rill3 "not built"; emit native:rill3-bytes "not built"
          emit native:os "not built"; emit native:os-ported "not built"; emit native:signals "not built"; emit native:str "not built"; emit native:locals "not built"; emit native:cmpbr "not built"; emit native:memop "not built"; emit native:slit "not built"; emit native:peep "not built"; emit native:data "not built"; emit native:ctab "not built"; emit native:inl "not built"; emit native:short "not built"; emit native:self-built "not built"; emit native:fold "not built"; emit native:inline "not built"; emit native:shell-run "not built"
          emit native:shell-diff:failed "not built"; emit native:shell-forth-errors:failed "not built"; emit native:shell-bytes "not built"; emit native:shell "not built"
             for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi

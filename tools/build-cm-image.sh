@@ -9,19 +9,33 @@
 cd "$(dirname "$0")/.." || exit 2
 engine=${1:-./relf64} kernel=${2:-forth/kernel64.img} out=${3:-kernel64-cm.img}
 tmp=$out.tmp.$$
+# NATIVE=1 (Iteration 948): rill3 on the native kernel - $engine is ./native-kernel, which needs no image,
+# and forth/save-system-native.4 saves an ELF executable, as tools/build-native-shell.sh's relfsh-native
+native=${NATIVE:-}
+ssn=; [ -n "$native" ] && ssn=forth/save-system-native.4
 awk '/^\\ Characters. widths on screen/ {p = 1} p {print} p && /^: CHAR-COLS/ {c = 1} c && / ;$/ {exit}' shell/shell.4 > "$tmp.widths.4"
 awk '/^\\ ---- completion: TAB ----/ {skip = 1} /^\\ ---- reverse incremental history search/ {skip = 0} !skip {print}' shell/edit.4 > "$tmp.edit.4"
 {
-    for f in forth/extend.4 forth/safety.4 forth/pool.4 forth/shadow.4 forth/save-system.4 rill/rt.4 "$tmp.widths.4" cm/edit-shim.4 "$tmp.edit.4" cm/values.4 cm/rt-cm.4 cm/out.4 cm/ctl.4 cm/case.4 cm/lib.4 cm/pipe.4 cm/ir.4 cm/cmc.4 cm/complete.4 cm/prompt.4; do
+    for f in forth/extend.4 forth/safety.4 forth/pool.4 forth/shadow.4 forth/save-system.4 $ssn rill/rt.4 "$tmp.widths.4" cm/edit-shim.4 "$tmp.edit.4" cm/values.4 cm/rt-cm.4 cm/out.4 cm/ctl.4 cm/case.4 cm/lib.4 cm/pipe.4 cm/ir.4 cm/cmc.4 cm/complete.4 cm/prompt.4; do
         printf 'S" %s" INCLUDED\n' "$f"
     done
     printf ": CM-SUFFIX ( --- c-addr u )   S\" .cm\" ;  ' CM-COMPILE IS R-COMPILE  ' CM-SUFFIX IS R-SUFFIX  ' CM-REPL IS R-REPL-D\n"
     printf "' R-BOOT SET-BOOT\nS\" %s\" SAVE-SYSTEM\nBYE\n" "$tmp"
-} | "$engine" "$kernel" > "$tmp.log" 2>&1
+} | if [ -n "$native" ]; then "$engine"; else "$engine" "$kernel"; fi > "$tmp.log" 2>&1
 if [ ! -s "$tmp" ] || grep -qE 'Undefined word|[Uu]nderflow|[Oo]verflow|not unique|Incomplete control' "$tmp.log"; then
     echo "build-cm-image: $out not built; the build said:" >&2
     tr -d '\r' < "$tmp.log" | grep -vE '^(Redefining: |OK$|Welcome to Forth)' | grep -v '^[[:space:]]*$' | head -20 | sed 's/^/    /' >&2
     rm -rf "$tmp" "$tmp.log" "$tmp.widths.4" "$tmp.edit.4" "$tmp.values.4"; exit 1
+fi
+if [ -n "$native" ]; then        # an executable: it must start, and run a script
+    chmod 755 "$tmp"
+    case $tmp in /*) run=$tmp ;; *) run=./$tmp ;; esac
+    printf 'echo rill3-ok\n' > "$tmp.probe.cm"
+    probe=$("$run" "$tmp.probe.cm" 2>&1 < /dev/null); rm -f "$tmp.probe.cm"
+    if [ "$probe" != rill3-ok ]; then
+        echo "build-cm-image: $out built, but it does not run a script: $probe" | head -3 >&2
+        rm -rf "$tmp" "$tmp.log" "$tmp.widths.4" "$tmp.edit.4"; exit 1
+    fi
 fi
 mv -f "$tmp" "$out"; rm -rf "$tmp.log" "$tmp.widths.4" "$tmp.edit.4" "$tmp.values.4"
 echo "$out: $(wc -c < "$out") bytes"

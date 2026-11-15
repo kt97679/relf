@@ -1,0 +1,27 @@
+#!/bin/sh
+# tests/cm/run-native [EXE] - tests/cm/run's three loops - the runtime's own .4 tests, the scripts, the
+# prompt's sessions - run by an executable with rill3 in it, rill3-native (Iteration 948), in place of
+# an engine and kernel64-cm.img. The checks that build an image of their own (the TAB check, the
+# reference's examples) stay with tests/cm/run. Prints the failures and a count; exits 1 on any.
+exe=${1:-./rill3-native}
+cd "$(dirname "$0")/../.." || exit 2
+case $exe in /*) ;; *) exe=$PWD/$exe ;; esac
+[ -x "$exe" ] || { echo "run-native: $exe is not built (make rill3-native)"; exit 2; }
+RILL3_PATH=$PWD/lib; export RILL3_PATH
+pass=0 fail=0 t1=$(mktemp) t2=$(mktemp)
+for t in tests/cm/*.4; do
+    printf 'S" %s" INCLUDED\n' "$t" > "$t2.4"
+    timeout 60 "$exe" "$t2.4" 2>&1 | tr -d '\r' > "$t1"
+    if cmp -s "$t1" "${t%.4}.expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $t"; fi
+done
+for t in tests/cm/scripts/*.cm; do
+    { timeout 60 "$exe" "$t" 2>&1; echo "status $?"; } > "$t1"
+    if cmp -s "$t1" "${t%.cm}.expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $t"; fi
+done
+for t in tests/cm/prompt/*.in; do
+    { timeout 60 "$exe" < "$t" 2>&1; echo "status $?"; } > "$t1"
+    if cmp -s "$t1" "${t%.in}.expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $t"; fi
+done
+rm -f "$t1" "$t2" "$t2.4"
+echo "$pass passed, $fail failed (tests/cm, native)"
+[ "$fail" = 0 ]

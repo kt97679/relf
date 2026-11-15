@@ -307,6 +307,13 @@ native-n1c: forth/native-n1c.4 forth/native-cross.4 forth/cross-core.4 forth/nat
 relfsh-native: native-kernel forth/save-system-native.4 $(SHELL_SOURCES) tools/build-native-shell.sh
 	@sh tools/build-native-shell.sh $@
 
+# rill3 on the native kernel (Iteration 948; built by hand at 943): rill3's
+# image's sources loaded into the native kernel and saved as one ELF, as
+# relfsh-native is the shell. tests/cm/run-native is its suite; it finds its
+# library through RILL3_PATH, as bin/cm sets it.
+rill3-native: native-kernel forth/save-system-native.4 $(CM_SOURCES)
+	@NATIVE=1 sh tools/build-cm-image.sh ./native-kernel - $@ > /dev/null
+
 # N1c-3 (Iteration 624): the native kernel - kernel.4 entire, kernel-native.4's
 # back end in part 9's place - booting to its own prompt; CORE against CV8's.
 native-kernel: forth/native-kernel.4 forth/kernel-native.4 forth/native-cross.4 forth/native.4 forth/native-rt.4 forth/native-locals.4 forth/native-sig.4 forth/kernel.4 engine/relfasm64.4 engine/relfasm-ops.4 tools/gen-native-os.py relf64
@@ -488,6 +495,7 @@ clean:
 	@rm -f relfasm64 relfshasm64 engine/relfasm-ops.4 engine/relfasm-consts.4 relfasm64.forth relfasm64.log
 	@rm -f relfasm-ops.S relfasm-consts.S relfasm64.o
 	@rm -f kernel64-shell.img kernel32-shell.img engine/cv8-ops.h.tmp
+	@rm -f rill3-native
 
 distclean: clean
 	@rm -f kernel64-shell.img kernel32-shell.img
