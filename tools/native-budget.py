@@ -23,6 +23,8 @@ Prints the totals, the classes, and the TOP (default 25) words by code
 bytes with their classes.
 """
 import bisect, collections, os, re, struct, subprocess, sys, tempfile
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import opcodes as _names               # unpack_name: packed header names (949)
 
 N_BASE = 0x401000
 path = sys.argv[1] if len(sys.argv) > 1 else 'relfsh-native'
@@ -40,11 +42,10 @@ for v, off, fz in segs:
     img[lo - N_BASE: v + fz - N_BASE] = d[off + lo - v: off + fz]
 
 # the dictionary: FORTH-WORDLIST's 32 heads, each chain followed by links
-name = b'FORTH-WORDLIST'
-i = img.find(bytes([0x80 | len(name)]) + name)
+i = _names.find_header(img, 'FORTH-WORDLIST')   # its name packed (949)
 if i < 0:
     sys.exit('native-budget: no FORTH-WORDLIST header in %s' % path)
-xt0 = i + 1 + len(name)
+xt0 = i + 1
 heads = struct.unpack_from('<33q', img, struct.unpack_from('<I', img, xt0 + 8)[0] - N_BASE)[1:]
 def link(nfa):                         # (the previous name, the link's bytes)
     tag = img[nfa - 1]
@@ -59,9 +60,9 @@ words = {}                             # header start -> (name, xt)
 for h in heads:
     nfa = h
     while nfa:
-        n = img[nfa] & 31
         prv, ln = link(nfa)
-        words.setdefault(N_BASE + nfa - ln, (img[nfa + 1:nfa + 1 + n].decode('latin-1'), N_BASE + nfa + 1 + n))
+        nm, _, _, st, xt = _names.header(img, nfa)   # [name][link][count] (949)
+        words.setdefault(N_BASE + st, (nm, N_BASE + xt))
         nfa = prv
 hdr_starts = sorted(words)
 spans = []                             # (xt, end, name)

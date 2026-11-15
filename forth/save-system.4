@@ -66,7 +66,7 @@ CREATE SS-MAGIC 8 ALLOT
   [CHAR] 0 SS-MAGIC 3 + C!      \ call scale 0
   1 CELLS  SS-MAGIC 4 + C!
   [CHAR] L SS-MAGIC 5 + C!
-  13       SS-MAGIC 6 + C!      \ format version (13 since Iteration 946)
+  14       SS-MAGIC 6 + C!      \ format version (14 since Iteration 949)
   15       SS-MAGIC 7 + C! ;
 
 : SS-CELL, ( x --- )
@@ -124,7 +124,9 @@ CREATE SS-MAGIC 8 ALLOT
   \ absolute address (so it differs every run) or holds leftover text
   \ from whatever the builder was doing.
   TIB             1 CELLS 80 +  SS-BLANK   \ terminal input buffer
-  NAMEBUF         1 CELLS 28 +  SS-BLANK   \ FIND's name scratch
+  NAMEBUF         1 CELLS 60 +  SS-BLANK   \ FIND's name scratch
+  NAME-OUT        1 CELLS 28 +  SS-BLANK   \ NAME>STRING's (949)
+  PK-ACC SS-CELL  PK-NB SS-CELL  PK-N SS-CELL   \ and the packer's
   POCKET          1 CELLS 252 + SS-BLANK   \ interpreted S" strings
   INCLUDE-BUFFER  1 CELLS 508 + SS-BLANK   \ lines of the included file
   CONTEXT         1 CELLS 28 +  SS-BLANK   \ search order (WARM resets)

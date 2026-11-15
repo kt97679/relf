@@ -22,6 +22,8 @@ at each of its samples - the caller, for a routine that pushes nothing
 there, as the runtime's string routines do.
 """
 import ctypes, os, signal, struct, sys, time, collections
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import opcodes as _names               # unpack_name: packed header names (949)
 
 N_BASE = 0x401000                     # native-cross.4's N-BASE: the image's START
 
@@ -36,12 +38,11 @@ def symbols(path):
     for v, off, fz in segs:
         lo = max(v, N_BASE)
         img[lo - N_BASE: v + fz - N_BASE] = d[off + lo - v: off + fz]
-    name = b'FORTH-WORDLIST'
     syms = {}
-    i = img.find(bytes([0x80 | len(name)]) + name)
+    i = _names.find_header(img, 'FORTH-WORDLIST')   # its name packed (949)
     if i < 0:
         sys.exit('native-prof: no FORTH-WORDLIST header in %s' % path)
-    xt = i + 1 + len(name)
+    xt = i + 1
     data = struct.unpack_from('<I', img, xt + 8)[0] - N_BASE      # its stub's mov (+11 until 697, +10 until 698)
     heads = struct.unpack_from('<33q', img, data)[1:]
     def prev(nfa):                    # the link, read backward from the name
@@ -56,9 +57,8 @@ def symbols(path):
     for h in heads:
         nfa = h
         while nfa:
-            n = img[nfa] & 31
-            nm = img[nfa + 1:nfa + 1 + n].decode('latin-1')
-            syms.setdefault(N_BASE + nfa + 1 + n, nm)
+            nm, _, _, _, xt = _names.header(img, nfa)   # [name][link][count] (949)
+            syms.setdefault(N_BASE + xt, nm)
             nfa = prev(nfa)
     return sorted(syms.items())
 

@@ -317,7 +317,7 @@ VARIABLE IMAGE-FID
   48 IMAGE-HDR 3 + C!                                     \ call scale 0
   TARGET-CELL-BYTES @ IMAGE-HDR 4 + C!
   76 IMAGE-HDR 5 + C!         \ 'L': specialised opcodes
-  13 IMAGE-HDR 6 + C!         \ format version (13 since Iteration 946)
+  14 IMAGE-HDR 6 + C!         \ format version (14 since Iteration 949)
   15 IMAGE-HDR 7 + C!         \ varcall | varslot | spec | lit64
   IMAGE-HDR 8 IMAGE-FID @ WRITE-FILE ABORT" Can't write file"
   #TTHREADS HDR,
@@ -327,10 +327,8 @@ VARIABLE IMAGE-FID
   IMAGE-FID @ CLOSE-FILE ABORT" Can't close file" ;
 
 : TNAME= ( c-addr u --- f )
-\ Is the newest target name c-addr u?
-  TLINK @ C@-T 31 AND OVER = IF
-    TLINK @ 1+ IMAGE + OVER COMPARE 0=
-  ELSE 2DROP 0 THEN ;
+\ Is the newest target name c-addr u? As written, not packed (949).
+  TNAME-RAW COUNT COMPARE 0= ;
 
 ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 \ Now define the words that do compile code.
@@ -405,6 +403,7 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 : #PAIR-TOK  #PAIR LITERAL-T ;
 : LOOPB8-TOK LOOPB8-OP LITERAL-T ;
 : PAIR-TABLE ( --- )  PAIR-OPS-T #PAIR 3 * TABLE-T ;
+: NAME-CODES-TABLE ( --- )  NAME-CODES TABLE-T ;   \ from cross-core.4's NAME-SYMBOLS (949)
 : BRANCH8-TOK BRANCH8-OP LITERAL-T ;
 : 0BRANCH8-TOK 0BRANCH8-OP LITERAL-T ;
 : [OP] ( "name" --- )

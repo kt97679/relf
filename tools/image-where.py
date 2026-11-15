@@ -8,7 +8,9 @@ offset of a saved image, for turning a crash into a Forth backtrace.
 Written for Iteration 421, when `case x in 2)` segfaulted in a `@` of 0
 and the question was which of 1600 words had done it. The dictionary
 walk is tools/image-audit.py's."""
-import sys, struct
+import os, sys, struct
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import opcodes as _names               # unpack_name: packed header names (949)
 path = sys.argv[1]
 args = sys.argv[2:]
 C = 8
@@ -30,14 +32,14 @@ words = {}
 for h in heads:
     n = h
     while n:
-        cnt = img[n]; ln = cnt & 31
-        words[n] = (img[n+1:n+1+ln].decode('latin1'), cnt, prev(n)[1])
+        nm, cnt, ll, st, _ = _names.header(img, n)   # [name][link][count] (949)
+        words[n] = (nm, cnt, n - st)
         n = prev(n)[0]
 nfas = sorted(words)
 spans = []
 for i, n in enumerate(nfas):
     name, cnt, ll = words[n]
-    xt = n + 1 + (cnt & 31)
+    xt = n + 1
     end = (nfas[i+1] - words[nfas[i+1]][2]) if i + 1 < len(nfas) else len(img)
     spans.append((xt, end, name))
 for a in args:

@@ -29,15 +29,15 @@ for h in heads:
     while n:
         cnt = img[n]
         p, ll = prev(n)
-        words[n] = (cnt, ll)
+        words[n] = (cnt, ll + (cnt & 31))   # the header before nfa: [name][link] (949)
         n = p
 nfas = sorted(words)
 cats = collections.Counter(); counts = collections.Counter(); pad = 0
 for i, n in enumerate(nfas):
     cnt, ll = words[n]
-    xt = n + 1 + (cnt & 31)
+    xt = n + 1
     end = (nfas[i + 1] - words[nfas[i + 1]][1]) if i + 1 < len(nfas) else len(img)
-    cats['headers (links, names)'] += ll + 1 + (cnt & 31)
+    cats['headers (links, names)'] += ll + 1
     body = max(end - xt, 0)
     if cnt & 32 or body == 0:
         cats['opcode words (no body)'] += body

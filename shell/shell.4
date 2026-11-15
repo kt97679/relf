@@ -5094,7 +5094,14 @@ VARIABLE USER-XT-FLOOR     \ xts from here up were defined after the image
   \ Reported as the guard would, and thrown as -3.
   SP@ STACK-GAP - DICT-LIMIT 8192 + U< IF
     S" relf: data stack overflow" ETYPE 10 ECHAR  -3 THROW
-  THEN ;
+  THEN
+  \ And each page of the gap read, from the top down (Iteration 949): the
+  \ native kernel's dictionary ends in data's region, far below its data
+  \ stack, so the test above never fires there - and the jump passed its
+  \ guard page by whenever the stack lay 4-16 KB above it, as a change of
+  \ stack depth elsewhere made it lie. A read of the guard faults as a
+  \ push would.
+  SP@ STACK-GAP 0 DO  DUP I - 4096 - C@ DROP  4096 +LOOP DROP ;
 
 : DO-FORTH ( --- )
   \ forth WORDS... - hand the rest of the line to the Forth

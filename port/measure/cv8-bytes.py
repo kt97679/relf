@@ -20,12 +20,12 @@ words = {}
 for h in heads:
     n = h
     while n:
-        cnt = img[n]; ln = cnt & 31; p, ll = prev(n)
-        words[n] = (img[n + 1:n + 1 + ln].decode('latin1'), cnt, ll); n = p
+        p, _ = prev(n); nm, cnt, ll, st, _ = _opcodes.header(img, n)   # [name][link][count] (949)
+        words[n] = (nm, cnt, n - st); n = p
 nfas = sorted(words); xt_of = {}
 rows = []
 for i, n in enumerate(nfas):
-    name, cnt, ll = words[n]; xt = n + 1 + (cnt & 31)
+    name, cnt, ll = words[n]; xt = n + 1
     end = (nfas[i + 1] - words[nfas[i + 1]][2]) if i + 1 < len(nfas) else len(img)
     xt_of[name] = xt; rows.append((name, cnt, ll, n, xt, end))
 STRINGS = {xt_of[k] for k in ('(S")', '(.")', '(ABORT")') if k in xt_of}
@@ -70,7 +70,7 @@ def strings_in(xt, end):   # bytes of inline strings, call included, in a colon 
     return sb
 part = collections.Counter(); big = []
 for name, cnt, ll, n, xt, end in rows:
-    hdr = ll + 1 + (cnt & 31); body = max(0, end - xt)
+    hdr = ll + 1; body = max(0, end - xt)
     if n < KEND: part['kernel words (kernel64.img)'] += hdr + body; continue
     part['names and headers'] += hdr
     if cnt & 32 or xt >= end: part['opcode words (no body)'] += body

@@ -6,7 +6,9 @@ Walks the dictionary, decodes every colon body, and reports branches (and
 which of them could use a shorter form), calls and variable slots with
 what base-relative, pc-relative or either would cost, inline operands and
 padding. Written for Iteration 258's audit; see PROGRESS.md."""
-import sys, struct, collections
+import os, sys, struct, collections
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import opcodes as _opcodes             # unpack_name: packed header names (949)
 OPCODES = '--opcodes' in sys.argv                     # per-opcode static counts (Iteration 501)
 if OPCODES: sys.argv.remove('--opcodes')
 path = sys.argv[1]; C = int(sys.argv[2]) if len(sys.argv) > 2 else 8
@@ -27,16 +29,15 @@ words = {}
 for h in heads:
     n = h
     while n:
-        cnt = img[n]; ln = cnt & 31
-        name = img[n+1:n+1+ln].decode('latin1')
-        p, ll = prev(n)
-        words[n] = (name, cnt, ll)
+        name, cnt, ll, st, _ = _opcodes.header(img, n)   # [name][link][count] (949)
+        p, _ = prev(n)
+        words[n] = (name, cnt, n - st)
         n = p
 nfas = sorted(words)
 xt_of = {}; bodies = []
 for i, n in enumerate(nfas):
     name, cnt, ll = words[n]
-    xt = n + 1 + (cnt & 31)
+    xt = n + 1
     end = (nfas[i+1] - words[nfas[i+1]][2]) if i + 1 < len(nfas) else len(img)
     xt_of[name] = xt
     bodies.append((name, cnt, xt, end))

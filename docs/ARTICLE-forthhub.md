@@ -1,6 +1,6 @@
 # relfsh: a POSIX shell written in Forth, on a Forth that assembles its own engine
 
-relfsh is a POSIX shell written in Forth: on x86-64, one static file of 144,134 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth.
+relfsh is a POSIX shell written in Forth: on x86-64, one static file of 137,299 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth.
 
 ## Why
 

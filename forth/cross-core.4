@@ -157,9 +157,61 @@ TTHREADS #TTHREADS CELLS 0 FILL
    THEN XOR
   R> 1- AND ;
 
+\ Names are packed (Iteration 949): kernel.4's NAME>BUF, which TPACK must
+\ match bit for bit - the target hashes and compares the packed bytes, so
+\ a name packed differently here is one its FIND never finds. The code
+\ (CV8.md 4.2), in nibbles filled into bytes high first: the first 15
+\ symbols below take 4 bits, the next 15 take 8 (1111 then 1..15), any
+\ other character 16 (1111 0000 and its byte); an odd last nibble is
+\ followed by 1111. A name that does not pack shorter than it is is laid
+\ as written, bit 7 of its count byte set. The symbols are the
+\ characters most frequent in names - over kernel.4, the shell, rill3
+\ and gforth's 1,836 words, each weighed alike (tools/name-symbols.py) -
+\ in that order: this string is their one source; the target's
+\ NAME-CODES is laid from it, and tools/opcodes.py reads it here.
+: NAME-SYMBOLS ( --- c-addr u )   S" E-RTASLOINDCPMFUHBGXKWV?Y>(#)+" ;
+VARIABLE PACK-NAMES  -1 PACK-NAMES !   \ 0: every name as written (native-n1c.4)
+CREATE TPK-BUF 64 ALLOT                \ TPACK's bytes: two a character at most
+VARIABLE TPK-ACC   VARIABLE TPK-NB   VARIABLE TPK-N
+CREATE TNAME-RAW 32 ALLOT              \ the newest name, as written
+CREATE TNAME-CODES 128 ALLOT           \ kernel.4's NAME-CODES
+
+: TPK-INDEX ( c --- i | -1 )   \ c's place among NAME-SYMBOLS
+  NAME-SYMBOLS 0 DO  OVER OVER I + C@ = IF 2DROP I UNLOOP EXIT THEN  LOOP 2DROP -1 ;
+
+: TPK-CODE ( c --- code )   \ kernel.4's NAME-CODES entry for c
+  TPK-INDEX DUP 0< IF DROP 15 EXIT THEN
+  DUP 15 < IF EXIT THEN  226 + ;                       \ 1111, then i-14
+
+: NAME-CODES ( --- c-addr 128 )   \ the table, from NAME-SYMBOLS
+  128 0 DO I TPK-CODE TNAME-CODES I + C! LOOP  TNAME-CODES 128 ;
+
+: TPK-BITS ( x n --- )
+\ Append the n bits x; each whole byte goes out.
+  DUP TPK-NB +!  TPK-ACC @ SWAP LSHIFT OR TPK-ACC !
+  BEGIN TPK-NB @ 7 > WHILE
+    -8 TPK-NB +!  TPK-ACC @ TPK-NB @ RSHIFT 255 AND TPK-BUF TPK-N @ + C!
+    1 TPK-N +!
+  REPEAT ;
+
+: TPK-CHAR ( c --- )
+  DUP 128 U< IF DUP TPK-CODE ELSE 15 THEN              ( c code )
+  DUP 15 < IF SWAP DROP 4 TPK-BITS EXIT THEN
+  DUP 15 = IF DROP 61440 OR 16 TPK-BITS EXIT THEN     \ 1111 0000, the byte
+  SWAP DROP 8 TPK-BITS ;
+
+: TPACK ( c-addr u --- c-addr' k count )
+\ The name c-addr u, at most 31 characters, as the target lays it: its
+\ k bytes, and its count byte without the flags.
+  0 TPK-ACC !  0 TPK-NB !  0 TPK-N !
+  2DUP OVER + SWAP ?DO I C@ TPK-CHAR LOOP
+  TPK-NB @ IF 15 4 TPK-BITS THEN
+  TPK-N @ OVER < IF 2DROP TPK-BUF TPK-N @ DUP EXIT THEN   \ shorter: packed
+  DUP 128 OR ;                                            \ else as written
+
 VARIABLE THIS-THREAD
 VARIABLE LINKCELL
-VARIABLE NAMELEN
+VARIABLE NAMECOUNT
 
 : PUBLISH-WORDLIST ( t-addr --- )
 \ Copy the host-side thread heads into the target's word list array.
@@ -187,21 +239,24 @@ VARIABLE NAMELEN
 VARIABLE LINKLEN
 
 : "HEADER >IN @ CREATE >IN ! \ Create the shadow definition.
-\ The target header is [link][count][name], nothing padded - see
-\ kernel.4's HEADER, which this must lay out identically. LINKCELL
-\ holds the previous name field in the thread, 0 if there is none: no
-\ name field is ever at target address 0, where the prologue is.
+\ The target header is [name][link][count], nothing padded, the name
+\ packed (TPACK, 949) - see kernel.4's HEADER, which this must lay out
+\ identically. TNAME-RAW keeps the name as written, for cross.4's TNAME=
+\ and native-cross.4's stubs. LINKCELL holds the previous name field in
+\ the thread, 0 if there is none: no name field is ever at target
+\ address 0, where the prologue is.
   BL WORD COUNT               ( c-addr u )
+  DUP 31 > ABORT" cross: name too long"
+  2DUP TNAME-RAW 1+ SWAP MOVE  DUP TNAME-RAW C!
+  PACK-NAMES @ IF TPACK ELSE DUP 128 OR THEN NAMECOUNT !   ( c-addr k )
   2DUP THASH THIS-THREAD !
-  DUP NAMELEN !
   THIS-THREAD @ CELLS TTHREADS + @ LINKCELL !
+  0 ?DO DUP I + C@ C,-T LOOP DROP                          \ the name's bytes
   LINKCELL @ IF THERE 3 + LINKCELL @ - TLINK-LEN ELSE 1 THEN LINKLEN !
   LINKCELL @ IF THERE LINKLEN @ + LINKCELL @ - ELSE 0 THEN LINKLEN @ TLINK,
-  THERE PLACE-T               \ Place name in target dictionary.
   THERE TLINK !
   THERE THIS-THREAD @ CELLS TTHREADS + !
-  THERE C@-T 128 OR THERE C!-T \ Set bit 7 of count byte as a marker.
-  NAMELEN @ 1+ ALLOT-T ;
+  NAMECOUNT @ C,-T ;          \ the count byte
 
 ALSO TRANSIENT DEFINITIONS
 

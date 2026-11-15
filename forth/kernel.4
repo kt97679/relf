@@ -1042,23 +1042,53 @@ VARIABLE RL-NEWLINE?   \ did the line just read end at a newline
 \ hashes to (see HASH). Names are compared a byte at a time; they are
 \ not padded to a cell (Iteration 243).
 
-\ Dictionary definitions are built as follows:
+\ Dictionary definitions are built as follows (Iteration 949; until then
+\ the link came first and the name after the count byte):
 \
-\ LINK field: 1-3 bytes, the distance back to the name field of the
+\ NAME:       the name, packed (NAME>BUF): at most 31 bytes, not padded.
+\ LINK:       1-3 bytes, the distance back to the name field of the
 \             previous word in the same thread; see PREV-NFA.
-\ NAME field: counted string of at most 31 characters, not padded.
-\             bits 5-7 of length byte have special meaning.
-\                   7 is always set to mark start of name ( for >NAME)
+\ NAME field: the count byte - the name's bytes in bits 0-4 - whose
+\             address is the name field address, nfa. Bits 5-7:
+\                   7 is set if the name is as written, not packed.
 \                   6 is set if the word is immediate.
 \                   5 is set if the word is a macro.
-\ CODE field: the byte after the name, is execution token for word.
-\             here the executable code for the word starts. Not aligned.
+\ CODE field: the byte after the count byte, the execution token: so
+\             >NAME is 1- and NAME> is 1+. Not aligned.
 \ PARAMETER field: (body) Contains the data of variables etc.; always
 \             cell-aligned, at align(xt+4) - see CREATE.
 
 VARIABLE NAMEBUF ( --- a-addr)
-\ An aligned buffer that holds a copy of the name that is searched.
+\ An aligned buffer that holds the name that is searched, as a header
+\ has it: the count byte, then the bytes - 62 while it is packed.
+60 ALLOT-T
+
+\ Names are packed (Iteration 949): the shell's 21,027 characters of
+\ names in 13,205 bytes. A name is a string of 4-bit nibbles, filled into
+\ its bytes high nibble first, a last odd one followed by 15:
+\     the symbol at i < 15                     i                  4 bits
+\     the symbol at i, 15 <= i < 30            15, i - 14         8 bits
+\     any other character c                    15, 0, c          16 bits
+\ The symbols are E-RTASLOINDCPMF and UHBGXKWV?Y>(#)+, the characters
+\ most frequent in names over kernel.4, the shell, rill3 and gforth's
+\ 1,836 words, each weighed alike. A name that would not pack shorter
+\ than it is - a lower-case one - is laid as written, and bit 7 of its
+\ count byte says so. FIND hashes and compares the bytes; cross-core.4's
+\ TPACK packs the target's names the same way and holds the symbols'
+\ one copy, NAME-SYMBOLS.
+
+VARIABLE NAME-CODES ( --- c-addr )
+\ Character c's code, for c < 128: a 4-bit code i < 15, an 8-bit code
+\ 15 << 4 + i - 14, or 15 for the 16 bits of any other.
+NAME-CODES-TABLE
+
+VARIABLE NAME-OUT ( --- c-addr )
+\ NAME>STRING's result.
 28 ALLOT-T
+
+VARIABLE PK-ACC ( --- a-addr )   \ the nibble waiting; NAME>STRING: the nibbles
+VARIABLE PK-NB ( --- a-addr )    \ true if one is; NAME>STRING: those read
+VARIABLE PK-N ( --- a-addr )     \ the next byte's address; NAME>STRING: the first
 
 VARIABLE WORDLISTS ( --- a-addr)
 \ Head of the chain of wordlists OTHER than FORTH-WORDLIST: the
@@ -1114,20 +1144,40 @@ VARIABLE CURRENT ( --- addr)
 
 : >NAME ( addr1 --- addr2 )
 \ Convert execution token addr1 (address of code) to address of name:
-\ the count byte is the only header byte with bit 7 set that is reached
-\ scanning back from the body, since names are 7-bit.
-  BEGIN 1- DUP C@ 128 AND UNTIL ;
+\ the count byte before it (949; a scan back to bit 7 until then).
+  1- ;
 
 : NAME> ( addr1 --- addr2 )
-\ Convert address of name to address of code: the body follows the
-\ name directly.
-  COUNT 31 AND + ;
+\ Convert address of name to address of code: the byte after it.
+  1+ ;
+
+: PK-BYTE ( b --- )
+\ Append byte b to NAMEBUF's name, after the nibble waiting if one is.
+  PK-NB @ IF DUP 4 RSHIFT PK-ACC @ OR PK-N @ C!  1 PK-N +!  4 LSHIFT PK-ACC ! EXIT THEN
+  PK-N @ C!  1 PK-N +! ;
+
+: PK-CHAR ( c --- )
+\ Append character c's code. PK-NB is true while a nibble waits, in
+\ PK-ACC's bits 4-7; C! drops what is above them.
+  DUP 128 U< IF DUP NAME-CODES + C@ ELSE 15 THEN    ( c code )
+  DUP 15 < IF SWAP DROP
+    PK-NB @ IF PK-ACC @ OR PK-N @ C!  1 PK-N +!  0 PK-NB ! EXIT THEN
+    4 LSHIFT PK-ACC !  -1 PK-NB ! EXIT THEN
+  DUP 15 = IF DROP 240 PK-BYTE PK-BYTE EXIT THEN    \ 1111 0000, the byte
+  SWAP DROP PK-BYTE ;
 
 : NAME>BUF ( c-addr u ---)
-\ Move the name c-addr u to the buffer NAMEBUF.
-  NAMEBUF 32 0 FILL 32 MIN NAMEBUF PLACE ;
+\ Move the name c-addr u to the buffer NAMEBUF, as a header has it. A
+\ name no header can have, over 31 characters, gets the count 255,
+\ which no count byte matches: FIND compares them with bits 5 and 6 0.
+  DUP 31 > IF 2DROP 255 NAMEBUF C! EXIT THEN
+  NAMEBUF 1+ PK-N !  0 PK-NB !
+  DUP IF 2DUP OVER + SWAP DO I C@ PK-CHAR LOOP THEN
+  PK-NB @ IF 15 PK-ACC @ OR PK-N @ C!  1 PK-N +! THEN   \ an odd last nibble, then 15
+  PK-N @ NAMEBUF 1+ -  2DUP > IF NAMEBUF C! 2DROP EXIT THEN   \ shorter: packed
+  DROP DUP 128 OR NAMEBUF C!  NAMEBUF 1+ SWAP MOVE ;         \ else as written
 
-\ A dictionary header is [link][count][name][body], with nothing
+\ A dictionary header is [name][link][count][body], with nothing
 \ padded. The link is the distance BACK from this word's name field to
 \ the previous one in the same thread, 1-3 bytes with the tag byte
 \ LAST, so it is read backward from the name field:
@@ -1136,7 +1186,8 @@ VARIABLE CURRENT ( --- addr)
 \     tag >= 192          d = (tag AND 63) << 16 OR [nfa-2] << 8
 \                           OR [nfa-3]                            22 bits
 \ and d = 0 ends the thread (CV8.md 4.2). Until Iteration 243 the
-\ link was a cell and names were padded to one.
+\ link was a cell and names were padded to one; until 949 the name came
+\ after the count byte.
 
 : PREV-NFA ( nfa --- nfa' | 0 )
 \ The name field of the previous word in this thread, or 0.
@@ -1145,6 +1196,35 @@ VARIABLE CURRENT ( --- addr)
   DUP 192 U< IF 63 AND 8 LSHIFT OVER 2 - C@ OR - EXIT THEN
   63 AND 16 LSHIFT OVER 2 - C@ 8 LSHIFT OR OVER 3 - C@ OR - ;
 
+: NAME-BYTES ( nfa --- c-addr u )
+\ The name's bytes, packed or as written: before the link.
+  DUP C@ 31 AND >R
+  DUP 1- C@ DUP 128 U< IF DROP 1 ELSE 192 U< IF 2 ELSE 3 THEN THEN
+  - R@ - R> ;
+
+: PK-NIB ( --- n )
+\ NAME>STRING's next nibble.
+  PK-NB @ DUP 1 RSHIFT PK-N @ + C@ SWAP 1 AND IF 15 AND ELSE 4 RSHIFT THEN
+  1 PK-NB +! ;
+
+: PK-SYM ( code --- c )
+\ The character whose code this is.
+  NAME-CODES 128 ROT SCAN DROP NAME-CODES - ;
+
+: NAME>STRING ( nfa --- c-addr u )
+\ The name of the definition whose name field is at nfa, as it was
+\ written (Forth 200x's NAME>STRING, with an nfa for its nt): in
+\ NAME-OUT, overwritten by the next.
+  DUP NAME-BYTES ROT C@ 128 AND IF EXIT THEN          ( a k )
+  2* PK-ACC !  PK-N !  0 PK-NB !
+  0 BEGIN PK-NB @ PK-ACC @ < OVER 31 < AND WHILE      ( u )
+    PK-NIB DUP 15 < IF PK-SYM ELSE DROP
+      PK-NB @ PK-ACC @ < 0= IF NAME-OUT SWAP EXIT THEN   \ the 15 after the last
+      PK-NIB ?DUP IF 240 + PK-SYM ELSE PK-NIB 4 LSHIFT PK-NIB OR THEN
+    THEN
+    OVER NAME-OUT + C!  1+
+  REPEAT NAME-OUT SWAP ;
+
 : NAME=? ( a1 a2 u --- f )
 \ Are the u bytes at a1 and a2 equal?
   BEGIN DUP WHILE
@@ -1152,28 +1232,34 @@ VARIABLE CURRENT ( --- addr)
     1+ SWAP 1+ SWAP R> 1-
   REPEAT DROP 2DROP -1 ;
 
-: SEARCH-WORDLIST ( c-addr u wid --- 0 | xt 1 xt -1)
-\ Search the wordlist with address wid for the name c-addr u.
+: SEARCH-NAMEBUF ( wid --- 0 | xt 1 xt -1)
+\ Search the wordlist with address wid for the name in NAMEBUF.
 \ Return 0 if not found, the execution token xt and -1 for non-immediate
 \ words and xt and 1 for immediate words. Only the thread the name
 \ hashes to is walked.
-  ROT ROT NAME>BUF
-  DUP >R NAMEBUF COUNT R@ @ HASH 1+ CELLS + @ R> DROP   ( nfa | 0 )
+  DUP @ NAMEBUF 1+ NAMEBUF C@ 31 AND ROT HASH 1+ CELLS + @   ( nfa | 0 )
   BEGIN DUP WHILE
-    \ Bits 5-7 of the count byte are flags, not length.
-    DUP C@ 31 AND NAMEBUF C@ = IF
-      DUP 1+ NAMEBUF 1+ NAMEBUF C@ NAME=? IF
+    \ Bits 5 and 6 of the count byte are flags; bit 7 is the form's.
+    DUP C@ 159 AND NAMEBUF C@ = IF
+      DUP NAME-BYTES NAMEBUF 1+ SWAP NAME=? IF
         DUP NAME> SWAP C@ 64 AND IF 1 ELSE -1 THEN EXIT
       THEN
     THEN
     PREV-NFA
   REPEAT ;
 
+: SEARCH-WORDLIST ( c-addr u wid --- 0 | xt 1 xt -1)
+\ Search the wordlist with address wid for the name c-addr u, as
+\ SEARCH-NAMEBUF does.
+  ROT ROT NAME>BUF SEARCH-NAMEBUF ;
+
 : FIND ( c-addr --- c-addr 0| xt 1|xt -1 )
 \ Search all word lists in the search order for the name in the
 \ counted string at c-addr. If not found return the name address and 0.
 \ If found return the execution token xt and -1 if the word is non-immediate
-\ and 1 if the word is immediate.
+\ and 1 if the word is immediate. The name is packed once, for all, and
+\ left in NAMEBUF: HEADER lays it from there.
+  DUP COUNT NAME>BUF
   #ORDER @ DUP 1 > IF
    CONTEXT #ORDER @ 1- CELLS + DUP @ SWAP CELLBYTES-TOK - @ =
   ELSE 0 THEN
@@ -1182,8 +1268,7 @@ VARIABLE CURRENT ( --- addr)
    DUP
   WHILE
    1- >R
-   DUP COUNT
-   R@ CELLS CONTEXT + @ SEARCH-WORDLIST
+   R@ CELLS CONTEXT + @ SEARCH-NAMEBUF
    DUP
    IF
     R> DROP ROT DROP EXIT \ Exit if found.
@@ -1339,27 +1424,27 @@ VARIABLE HDR-LEN  ( --- a-addr )
 \ Create a header for a new definition without a code field. Refused
 \ within 4 KB of the dictionary's end (545): that margin is what covers
 \ the , and C, of the definition after it, which are not checked. The name
-\ is parsed first - WORD leaves it counted at HERE - because the link
-\ depends on the thread the name hashes to. The link's length depends
-\ on the distance, which depends on where the name lands, which
-\ depends on the link's length: bound it from above by sizing for a
-\ name at HERE+3, so the real distance always fits. Then the name is
-\ moved up and the link written into the gap.
+\ is parsed first - WORD leaves it counted at HERE - and packed, by FIND,
+\ because the link depends on the thread the name hashes to. Its bytes go where
+\ WORD left it, then the link: whose length depends on the distance,
+\ which depends on where the count byte lands, which depends on the
+\ link's length - so it is sized for a count byte at HERE+3, and the
+\ real distance always fits. Then the count byte.
   UNUSED 4096 < ABORT" dictionary full"
   32 WORD DUP C@ 31 > ABORT" name too long"   \ the count byte's low five bits
   DUP FIND IF ." Redefining: " HERE COUNT TYPE CR THEN DROP DROP
-  HERE COUNT CURRENT @ @ HASH 1+ CELLS CURRENT @ + @ HDR-HEAD !
+  \ FIND left the name in NAMEBUF, as a header has it
+  NAMEBUF 1+ NAMEBUF C@ 31 AND CURRENT @ @ HASH 1+ CELLS CURRENT @ + @ HDR-HEAD !
+  NAMEBUF 1+ HERE NAMEBUF C@ 31 AND DUP >R MOVE  R> ALLOT   \ the name's bytes
   HDR-HEAD @ IF HERE 3 + HDR-HEAD @ - LINK-LEN ELSE 1 THEN HDR-LEN !
-  HERE DUP HDR-LEN @ + HERE C@ 1+ CMOVE>
   HDR-HEAD @ IF HERE HDR-LEN @ + HDR-HEAD @ - ELSE 0 THEN HDR-LEN @ LINK,
   HERE LAST !             \ Set LAST so the definition can be linked by REVEAL
-  HERE C@ 1+ HERE C@ 128 + HERE C! ALLOT ;
-                          \ Allot the name and set bit 7 in the count byte.
+  NAMEBUF C@ C, ;         \ the count byte: the bytes, and bit 7 if as written
 
 : REVEAL ( --- )
 \ Add the last created definition to the CURRENT wordlist, at the head
 \ of the thread its name hashes to.
-  LAST @ DUP COUNT 31 AND CURRENT @ @ HASH
+  LAST @ DUP NAME-BYTES CURRENT @ @ HASH
   1+ CELLS CURRENT @ + ! ;
 
 

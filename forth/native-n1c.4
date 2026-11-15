@@ -8,6 +8,7 @@
 
 S" forth/extend.4" INCLUDED
 S" forth/native-cross.4" INCLUDED
+0 PACK-NAMES !   \ every name as written: WALK prints them as they are (949)
 DECIMAL
 
 \ ---- the runtime's routines, at the image's start ------------------------------
@@ -29,7 +30,10 @@ NH: PREV  ( name --- name' | 0 )   \ the link, read backward from the name
   DUP 64 AND 0= IF 63 AND 8 LSHIFT OVER 2 - C@ OR ELSE    \ two
   63 AND 16 LSHIFT OVER 2 - C@ 8 LSHIFT OR OVER 3 - C@ OR THEN THEN   \ three
   DUP IF - ELSE 2DROP 0 THEN N;
-NH: .NAME  ( name --- )   COUNT 31 AND TYPE 32 EMIT N;
+NH: .NAME  ( name --- )   \ the characters, before the link (949)
+  DUP C@ 31 AND  SWAP                                     ( k name )
+  DUP 1- C@  DUP 128 AND 0= IF DROP 1 ELSE 64 AND 0= IF 2 ELSE 3 THEN THEN
+  -  OVER -  SWAP TYPE 32 EMIT N;
 NH: WALK  32 0 DO  WL I 1+ CELLS + @  ?DUP IF >ABS BEGIN DUP .NAME PREV ?DUP 0= UNTIL THEN  LOOP N;
 NH: MAIN  3 CUBE 27 = IF WALK THEN 10 EMIT 0 N;
 

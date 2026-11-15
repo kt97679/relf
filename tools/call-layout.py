@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """tools/call-layout.py - how many calls a better word order would make near (FINDINGS.md, Iteration 542)."""
 import os, sys, struct, collections
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import opcodes as _names               # unpack_name: packed header names (949)
 os.chdir('/home/claude/relf'); sys.argv = ['image-audit.py', 'kernel64-shell.img', '8']
 g = {'__file__': 'tools/image-audit.py', '__name__': 'audit'}
 import io, contextlib
@@ -20,7 +22,7 @@ words = {}
 for h in heads:
     n = h
     while n:
-        c = img[n]; p, ll = prev(n); words[n] = (img[n+1:n+1+(c & 31)].decode('latin1'), ll, n + 1 + (c & 31)); n = p
+        p, _ = prev(n); nm, c, ll, st, xt = _names.header(img, n); words[n] = (nm, n - st, xt); n = p   # [name][link][count] (949)
 nfas = sorted(words)
 kern = len(open('forth/kernel64.img', 'rb').read()) - (8 + C + cell(8) * C + C)   # the kernel's dictionary, first in the image
 span = []                                      # (start, end, xt, name) for every word

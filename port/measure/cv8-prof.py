@@ -21,10 +21,10 @@ words = {}
 for h in heads:
     n = h
     while n:
-        c_ = img[n]; p, ll = prev(n); words[n] = (img[n + 1:n + 1 + (c_ & 31)].decode('latin1'), c_, ll); n = p
+        p, _ = prev(n); nm, c_, ll, st, _ = opcodes.header(img, n); words[n] = (nm, c_, n - st); n = p   # [name][link][count] (949)
 nfas = sorted(words); xt_name = {}; bodies = []
 for i, n in enumerate(nfas):
-    name, c_, ll = words[n]; xt = n + 1 + (c_ & 31)
+    name, c_, ll = words[n]; xt = n + 1
     end = (nfas[i + 1] - words[nfas[i + 1]][2]) if i + 1 < len(nfas) else len(img)
     xt_name.setdefault(xt, name); bodies.append((name, c_, xt, end))
 rx = {v: k for k, v in xt_name.items()}

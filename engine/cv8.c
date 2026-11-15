@@ -298,7 +298,10 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  BITMAP, so an engine can tell what an image needs instead of the
  *  widths being implied by the magic string. Widening a field in future
  *  sets a bit here rather than breaking the format.  */
-/*  Version 13 (Iteration 946): ten more - >?BRANCH =?BRANCH DUP?BRANCH at
+/*  Version 14 (Iteration 949): no new opcode - the headers' names packed
+ *  and the count byte just before the body (CV8.md 4.2), which the engine
+ *  never reads but every tool that does must know.
+ *  Version 13 (Iteration 946): ten more - >?BRANCH =?BRANCH DUP?BRANCH at
  *  0x38-0x3A, (LOOP)BRANCH8 at 0x3B, and the pairs CELLS+ CELL+@ DUPC@
  *  DUP1- OVER+ DUP>R at 0x3C-0x3E, 0x71, 0x76, 0x78.
  *  Version 12 (Iteration 940): twelve superinstructions at 0x2C-0x37 -
@@ -331,7 +334,7 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  NDIRECT rather than from the total primitive count, so the same
  *  byte means something else in a version-2 image - measured, each way
  *  round it ran and crashed. */
-#define CV8_VERSION 13
+#define CV8_VERSION 14
 #define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present                 */

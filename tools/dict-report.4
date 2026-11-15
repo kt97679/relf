@@ -2,16 +2,16 @@
 \ word: header bytes, body bytes, name. Used by Iteration 129 to find
 \ out where a shell image's bytes actually go.
 \
-\ Header layout, from kernel.4's HEADER (and cross.4's "HEADER): a
-\ 1-3 byte link holding the distance back to the previous name field
-\ in the same thread, tag byte last; then a count byte with bit 7 set
-\ as a marker; then the name, unpadded; then the body. kernel.4's
+\ Header layout, from kernel.4's HEADER (and cross.4's "HEADER): the
+\ name's bytes, packed (Iteration 949); a 1-3 byte link holding the
+\ distance back to the previous name field in the same thread, tag byte
+\ last; then the count byte, the name field; then the body. kernel.4's
 \ PREV-NFA decodes the link. FORTH-WORDLIST is a HASHED word list -
 \ [thread count][head 0..n-1] - not a single chain, so no one chain
 \ reaches every word and no chain is in address order.
 \
 \ Body extent is computed as "start of the next word BY ADDRESS's
-\ link, minus the end of this word's name field", which works
+\ name, minus the end of this word's name field", which works
 \ because the dictionary is laid down strictly upward. That is why
 \ this collects every nfa from all 32 threads and sorts them by
 \ address descending before walking: following a single chain would
@@ -76,10 +76,10 @@ INIT-NFATAB
     NFATAB @ I CELLS + @ NFA !
     \ The newest word by address - first in this order - ends at HERE.
     \ Anything else ends where the next word's link begins.
-    I 0= IF HERE ELSE NFATAB @ I 1- CELLS + @ DUP LINKBYTES - THEN BE !
+    I 0= IF HERE ELSE NFATAB @ I 1- CELLS + @ DUP DUP LINKBYTES - SWAP C@ 31 AND - THEN BE !
     NFA @ C@ 31 AND 1+ NFA @ LINKBYTES +
     BE @  NFA @ NAME> -
-    S" W " TYPE SWAP . . NFA @ 1+ NFA @ C@ 31 AND TYPE CR
+    S" W " TYPE SWAP . . NFA @ NAME>STRING TYPE CR
   LOOP ;
 WALK
 S" TOTALHERE " TYPE HERE START @ - . CR

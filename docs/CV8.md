@@ -251,7 +251,7 @@ The `IF ... THEN ;` line shows the folding rule at work: `LIT8 2` and the
 | 0 | 4 | magic: `CV8` and `'0' + SCALE`, so `CV80` |
 | 4 | 1 | the cell width in bytes, 8 or 4 |
 | 5 | 1 | `'L'` when specialised opcodes are used |
-| 6 | 1 | the **format version**, 12 |
+| 6 | 1 | the **format version**, 14 |
 | 7 | 1 | the **feature bitmap**: 1 variable-width calls, 2 variable-width slots, 4 specialised opcodes, 8 `LIT64` - 15 in every image today |
 | 8 | cell | the number of threads in the hashed word list, 32 |
 | … | 32 cells | the thread heads, relative to `START` |
@@ -277,7 +277,9 @@ dropped the folded returns; 10 (539) cut the one-byte opcodes to 64; 11
 (939) brought 23 folded returns back at `0x48`; 12 (940) added twelve
 superinstructions at `0x2C`; 13 (946) ten more, chosen over Forth
 programs, the Forth system, rill3 and the shell alike
-(`tools/pair-corpus.py`).
+(`tools/pair-corpus.py`); 14 (949) packed the names and put the count
+byte before the body (4.2) - no engine reads a header, but every tool
+that does must know.
 
 ### 4.2 Layout
 
@@ -287,20 +289,50 @@ offset 0   a three-byte call to COLD - the entry point
 offset 3   a three-byte call to WARM
 offset 6   two zero bytes
 offset 8   the locals cell (§6.3)
-           word 0: link, name, body - the OLDEST word first
+           word 0: name, link, count, body - the OLDEST word first
            word 1 ...
 ```
 
-Each word is three fields, nothing padded (Iteration 244):
+Each word is four fields, nothing padded (Iteration 244; in this order
+since 949):
 
 ```
-link   1-3 bytes: the distance back to the previous name in the same thread
-name   a count byte (bit 7 set, bit 6 immediate, bit 5 inline) and the characters
-body   CV8 bytes
+name   the name's bytes, packed or as written: count & 31 of them
+link   1-3 bytes: the distance back to the previous count byte in the same thread
+count  the name field: bits 0-4 the name's bytes, bit 7 as written, bit 6 immediate, bit 5 inline
+body   CV8 bytes, from the execution token: count + 1
 ```
 
-The link is read **backward** from the name, so its tag is the first
-byte read:
+**The name is packed** (Iteration 949), a string of 4-bit nibbles
+filled into bytes high nibble first, an odd last one followed by
+`1111`:
+
+| character | code | bits |
+|---|---|---|
+| the symbol at `i` in `E-RTASLOINDCPMF`, `i` < 15 | `i` | 4 |
+| the symbol at `i` in `UHBGXKWV?Y>(#)+`, 15 ≤ `i` < 30 | `1111`, `i` − 14 | 8 |
+| any other byte | `1111 0000`, the byte | 16 |
+
+The 30 symbols are the characters most frequent in names, ranked by
+their mean share over four families each weighed alike - the kernel's
+names, the shell's and rill3's own, and gforth's 1,836 words
+(`tools/name-symbols.py`; `bench/reports/name-symbols-949.txt`).
+`forth/cross-core.4`'s `NAME-SYMBOLS` is their one copy: the kernel's
+`NAME-CODES` (a code for each character below 128) is laid from it, and
+`tools/opcodes.py` reads it. A name that does not pack shorter than it
+is - a lower-case one - is laid as written, with bit 7 of the count set.
+`FIND` lays the name it is given as a header would have it (`NAME>BUF`)
+and hashes and compares those bytes; `NAME>STRING` gives a name back as
+written. The shell's 21,027 characters of names take 13,205 bytes, the
+kernel's 2,111 take 1,457.
+
+Before 949 the link came first and the characters after the count, whose
+bit 7 marked it for `>NAME`'s scan back from the body; the count byte
+before the body makes `>NAME` `1-` and `NAME>` `1+`, frees bit 7, and
+lets a name hold any byte.
+
+The link is read **backward** from the name field, so its tag is the
+first byte read:
 
 | tag at name − 1 | length | distance |
 |---|---|---|

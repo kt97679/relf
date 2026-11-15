@@ -212,6 +212,8 @@ CURRENT @  NTRANS CURRENT !
 : (  41 WORD DROP ;
 : COLD ;  : WARM ;  : LOCALS-CELLS ;  : ESCAPED ;     \ CV8's boot vectors and band
 : FOLD-TABLE ;  : VARX-TABLE ;  : BRX-TABLE ;  : PAIR-TABLE ;   \ CV8's lists (939, 940, 946): no use natively
+: NAME-CODES-TABLE   \ the name code's table, over the cell VARIABLE laid (949)
+  -1 CELLS-T ALLOT-T  NAME-CODES 0 DO DUP I + C@ C,-T LOOP DROP ;
 : CHARS-T CHARS-T ;  : CELLS-T CELLS-T ;  : ALLOT-T ALLOT-T ;
 : IMMEDIATE  TLINK @ DUP C@-T 64 OR SWAP C!-T ;
 : PRIMITIVE ( "name" --- )
@@ -236,8 +238,11 @@ CURRENT @  NTRANS CURRENT !
     TLINK @ DUP C@-T 32 OR SWAP C!-T
   ELSE ?DUP IF                                \ a routine: jump to it; calls go there
     jmp,
-  ELSE                                        \ neither: name itself on stderr, exit 99
-    rsi TLINK @ 1+ N-ABS # mov,  edx TLINK @ C@-T 31 AND # mov,  edi 2 # mov,
+  ELSE                                        \ neither: name itself on stderr, exit 99 -
+    \ the name as written, in the code: the header's is packed (949)
+    235 C,A  TNAME-RAW C@ C,A  HERE-A >R
+    TNAME-RAW COUNT 0 ?DO DUP I + C@ C,A LOOP DROP
+    rsi R> N-ABS # mov,  edx TNAME-RAW C@ # mov,  edi 2 # mov,
     eax 1 # mov,  syscall,  edi 99 # mov,  eax 60 # mov,  syscall,
   THEN DROP THEN
   A>N

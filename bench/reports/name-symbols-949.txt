@@ -1,0 +1,12 @@
+# python3 tools/name-symbols.py on 948's images (forth/kernel64.img, kernel64-shell.img, kernel64-cm.img), gforth 0.7.3
+families: kernel 374 names, 2111 characters, shell 1968 names, 18875 characters, rill3 1269 names, 8759 characters, gforth 1836 names, 14404 characters
+ranked:   E-RTASLOINDCPMFUHBGXKWV?Y>(#)+,@/!.2QJ0Z
+the 30:   E-RTASLOINDCPMF + UHBGXKWV?Y>(#)+
+in cross-core.4: E-RTASLOINDCPMFUHBGXKWV?Y>(#)+
+the first 30 by mean share, %: E 9.62 - 8.92 R 6.21 T 6.11 A 5.79 S 5.56 L 5.25 O 5.17 I 5.12 N 4.85 D 4.62 C 4.61 P 4.50 M 2.63 F 2.40 U 2.18 H 1.81 B 1.74 G 1.64 X 1.25 K 1.17 W 1.11 V 1.02 ? 0.99 Y 0.63 > 0.44 ( 0.34 # 0.32 ) 0.31 + 0.27
+
+bytes of names (% of the characters), each code with these symbols:
+  8-bit bytes, 15 + 15, others 16 bits (949)   kernel 1396 (66.1%)  shell 11722 (62.1%)  rill3 5592 (63.8%)  gforth 9582 (66.5%)
+  8-bit bytes, 14 + 16, others 12              kernel 1397 (66.2%)  shell 11811 (62.6%)  rill3 5615 (64.1%)  gforth 9604 (66.7%)
+  8-bit bytes, 13 + 32, others 12              kernel 1398 (66.2%)  shell 11944 (63.3%)  rill3 5681 (64.9%)  gforth 9623 (66.8%)
+  7-bit units, 15 + 13, others 16              kernel 1618 (76.6%)  shell 13650 (72.3%)  rill3 6511 (74.3%)  gforth 11076 (76.9%)

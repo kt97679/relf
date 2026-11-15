@@ -458,7 +458,9 @@ work begins.
   rule is FORTH-STYLE.md's "compute it one way everywhere"); and
   **headers are 21.6% of the 64-bit image, 23.1% of the 32-bit** - an
   image keeping names only for a documented extension API could be a
-  sixth smaller. Which of these to do is the user's to choose.
+  sixth smaller. Which of these to do is the user's to choose. (949:
+  the names packed, kept for every word - headers 22.0% to 16.7% of the
+  64-bit image, 23.5% to 17.9% of the 32-bit; CV8.md 4.2.)
 - **Items 5 and 6 - x86-64 first.** The debugging loop has to run where
   the code is written; on x86-64 it runs here, without relaying every
   attempt through the user's machines.
