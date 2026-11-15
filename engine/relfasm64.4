@@ -83,7 +83,7 @@ S" engine/relfasm-consts.4" INCLUDED
 
 4 1024 * 1024 * CONSTANT MEMSIZE         \ the call reach (A17, 545)
 262144 CONSTANT DSTACK_BYTES             \ as cv8.c: DICT-LIMIT is the data stack's floor
-65536 CONSTANT RSTACK_BYTES
+1048576 CONSTANT RSTACK_BYTES             \ 1 MB since 956, as cv8.c's (relfsh: 1,000 levels of functions)
 4096 CONSTANT PAGE
 \ the stack guards (Iteration 586), where cv8.c puts its own: offsets in
 \ the region of the page below the data stack - its floor, DICT-LIMIT -

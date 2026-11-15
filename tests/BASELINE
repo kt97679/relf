@@ -29,8 +29,8 @@ ext:4byte 1
 ext:8byte 1
 forthfuzz:failures 0
 i386:utf8:failed 0
-image-sum:kernel32-shell.img 2597148736/110091
-image-sum:kernel64-shell.img 1934308842/118915
+image-sum:kernel32-shell.img 1698987031/110091
+image-sum:kernel64-shell.img 3124970926/118915
 image:4byte-fixpoint reproduces
 image:8byte-fixpoint reproduces
 image:narrow-host reproduces
@@ -110,7 +110,7 @@ rebuild:kernel32-shell.img reproduces
 rebuild:kernel64-shell.img reproduces
 shell:4byte 1
 shell:8byte 1
-shell:assertions 1128
+shell:assertions 1130
 shell:dead-words 0
 shell:files 94
 shell:host-sh-tests 0

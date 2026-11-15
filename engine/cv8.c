@@ -174,7 +174,12 @@ static inline UNS64 LD32(UNS64 a) {
     return (UNS64)p[0] | (UNS64)p[1] << 8 | (UNS64)p[2] << 16 | (UNS64)p[3] << 24;
 }
 
-#define RSTACK_BYTES 65536
+/*  The return stack: 1 MB since Iteration 956, 64 KB before. A shell
+ *  function's call takes 352 bytes of it (a plain body) to 792 (a body
+ *  with case, for, while, if and $( ) in it), and relfsh allows 1,000
+ *  levels, as dash does; 64 KB held about 180. Untouched, it costs no
+ *  memory: its pages are made resident only as it is used.  */
+#define RSTACK_BYTES 1048576
 /*  Room the data stack is allowed to occupy before it is declared
  *  overflowed. Nothing enforced this until Iteration 151: dsp simply
  *  descended out of its own region, through free space, and into the

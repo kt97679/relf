@@ -104,7 +104,8 @@ DEFER R-LINE. ( n --- )   \ "line n" - the command model's says the file, for a 
 \ a most - captures 64 deep (recursion through $( ) stopped there), blocks and activations 256, jobs 16.
 \ A body is kept as an offset from START: the image is saved and reloaded.
 : BODY-OF ( offset --- body )   START @ + ;
-\ Recursion's depth: the return stack holds 64 KB (RSTACK_BYTES in engine/cv8.c). Its guard page stops a
+\ Recursion's depth: R-DEEP? allows 60,000 bytes of return stack, as when it held 64 KB; it is 1 MB since
+\ 956 (RSTACK_BYTES in engine/cv8.c), and how deep rill3 goes is left to decide. Its guard page stops a
 \ plain call that runs past it, but one inside a CATCH - a def with return, a capture, a block - came back to
 \ frames in the runaway region and crashed (891, once the 256 activations and 64 captures that had stopped it
 \ sooner were gone). So each of those says it while there is room to unwind.

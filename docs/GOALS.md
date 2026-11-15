@@ -223,7 +223,13 @@ the account of what each gained and cost.
    cd16sim, lexex, fcp, siev, bubble, matrix, fib) as Forth workloads
    beside bench.4.
 
-13. **Deep nesting and recursion stop early** (721, measured, not begun).
+13. **Deep nesting and recursion stop early** - *done in 956*: a function
+   (or `.` with arguments) nests 1,000 levels, as dash allows, and the
+   1,001st fails with "function recursion too deep", status 1, the script
+   going on; loops nest past 3,000 (the data stack ends them, cleanly).
+   The engines' return stack is 1 MB, the native kernel's too; untouched,
+   it is resident in nothing. rill3's R-DEEP? left at its 60,000 bytes.
+   What 721 found:
    tests/shell/run-nesting goes 8 deep (256 iterations) and 60 wide; no
    test goes deeper. Probed: `for` loops nested N deep, one iteration
    each - relf runs 452-453 levels (asm, C, native alike), then stops

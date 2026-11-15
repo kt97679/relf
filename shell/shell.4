@@ -899,7 +899,11 @@ DEFER LINENO>STR ( n --- c-addr )   \ N>STR, defined below
 \ nothing keeps a pointer into a parameter past the command that read
 \ it - expansions copy, getopts reloads its pointer on every call, and
 \ shift moves the pointer cells, not the strings.
-32 CONSTANT MAX-POS-PARAM-DEPTH
+\ How deep functions (and `.` with arguments) may nest: 1,000 since 956, as
+\ dash allows - 32 until then, when the engines' return stack was 64 KB and
+\ a level takes 352-792 bytes of it. Past it the call fails with "function
+\ recursion too deep", status 1, and the script goes on.
+1000 CONSTANT MAX-POS-PARAM-DEPTH
 VARIABLE POS-BLOCK   0 POS-BLOCK !      \ 0 when there are none
 VARIABLE POS-PARAM-COUNT
 MAX-POS-PARAM-DEPTH 2* CELLS BUFFER: POS-SAVE   \ block, count per depth

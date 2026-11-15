@@ -8,10 +8,20 @@ printf 'r() {\n  n=$1\n  if [ $n -gt 0 ]\n  then\n    r $((n-1))\n  fi\n}\nr 10\
 out=$(timeout 15 "$THIS_SH" "$t/a.sh" 2>&1)
 assert_output_contains "ordinary recursion works" "ok10" "$out"
 
-printf 'r() {\n  n=$1\n  if [ $n -gt 0 ]\n  then\n    r $((n-1))\n  fi\n}\nr 60\necho survived\n' > "$t/b.sh"
-out=$(timeout 20 "$THIS_SH" "$t/b.sh" 2>&1)
+# 1,000 levels since Iteration 956, as dash allows (32 until then, with a
+# 64 KB return stack): 900 run, 1,100 are diagnosed and the shell goes on
+printf 'r() {\n  n=$1\n  if [ $n -gt 0 ]\n  then\n    r $((n-1))\n  fi\n}\nr 900\necho ok900\n' > "$t/a9.sh"
+out=$(timeout 60 "$THIS_SH" "$t/a9.sh" 2>&1)
+assert_output_equals "recursion 900 deep works" "ok900" "$out"
+printf 'r() {\n  n=$1\n  if [ $n -gt 0 ]\n  then\n    r $((n-1))\n  fi\n}\nr 1100\necho survived\n' > "$t/b.sh"
+out=$(timeout 60 "$THIS_SH" "$t/b.sh" 2>&1)
 assert_output_contains "deep recursion is diagnosed" "recursion too deep" "$out"
 assert_output_contains "and the shell survives it"   "survived"           "$out"
+# loops nested 1,000 deep (956: 452 was the end, the return stack's)
+{ i=0; while [ $i -lt 1000 ]; do echo "for v$i in x; do"; i=$((i+1)); done; echo 'echo deep'
+  i=0; while [ $i -lt 1000 ]; do echo done; i=$((i+1)); done; } > "$t/nest.sh"
+out=$(timeout 60 "$THIS_SH" "$t/nest.sh" 2>&1)
+assert_output_equals "loops nest 1,000 deep" "deep" "$out"
 
 # the shell-variable table held 32 and reported the 33rd (Iteration 90);
 # since Iteration 252 it grows, so 40 variables are simply 40 variables
