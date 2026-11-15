@@ -112,13 +112,13 @@ shell:files 94
 shell:host-sh-tests 0
 size:asm-engine 18272
 size:asm-shell 144006
-size:engine-code-i386 26657
-size:engine-code-x86_64 25954
-size:i386 146354
+size:engine-code-i386 31473
+size:engine-code-x86_64 30290
+size:i386 150450
 size:image-i386 117250
 size:image-rill3 82136
 size:image-x86_64 125718
-size:x86_64 155182
+size:x86_64 159278
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
 toolchain:cflags <unset>
 verify:skip-rows complete

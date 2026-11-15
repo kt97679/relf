@@ -390,13 +390,20 @@ what `cv8.c` calls - system calls, an allocator, the environment,
 `/etc/passwd`, the UTC calendar, `sigsetjmp` - over raw system calls,
 compiled against the library's headers so every type and constant is the
 target's own. `cv8.c` is the same for both builds. The engine is static,
-29 KB on x86-64, and 288 KB resident at start where the library made it
+29 KB on x86-64 (33 KB since 947, its handlers aligned), and 288 KB resident at start where the library made it
 1,904 - the library and its loader were nearly all of it - at the same
 speed, and starts in 0.6 of the time. `ENGINE_RT=libc` builds it with the
 library, the default anywhere else; `tests/run_tests.sh` builds both and
 runs CORE on each. One behaviour differs: `~name` reads `/etc/passwd`
 alone (QUESTIONS.md A9, as the assembly engine), where the library asks
 NSS.
+
+Since Iteration 947 the Makefile also aligns each handler's start to 16
+bytes (`-falign-labels=16`, `ENGINE_ALIGN`): 936 measured that any handler
+added moved the engine's speed by its layout, 1-3 % - 946's ten made the
+lab's sieve 17 % slower - and aligned the spread is narrower and the mean
+better, for 4 KB of engine: against the unaligned build, the Forth programs'
+geomean 0.963 (0.81-1.10), the shell's 0.99, rill3's 0.98.
 
 ### 5.4 Cells are host pointers
 

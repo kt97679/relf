@@ -143,6 +143,12 @@ endif
 # C library's engine is 10 KB smaller with them. ENGINE_LDFLAGS= keeps
 # the symbols, for a debugger.
 ENGINE_LDFLAGS ?= -s -Wl,-z,noseparate-code -Wl,--build-id=none
+# Each handler's start aligned to 16 bytes (Iteration 947, the owner's
+# choice of 936's measured trade): cv8.c's speed had moved with its layout -
+# any handler added cost 1-3 %, 946's ten the lab's sieve 17 % - and aligned
+# it no longer does, for 4 KB of engine. GCC's flag; a compiler that
+# ignores it (Clang warns) builds without it. ENGINE_ALIGN= turns it off.
+ENGINE_ALIGN ?= $(shell $(CC) -Werror -falign-labels=16 -c -x c /dev/null -o /dev/null 2>/dev/null && echo -falign-labels=16)
 
 .PHONY: force-arch-check
 .relf-arch: force-arch-check
@@ -166,15 +172,15 @@ relf64 kernel64-shell.img relfsh64:
 	@echo "$@: an 8-byte-cell build cannot run on this 32-bit host" >&2; exit 1
 else
 relf64: engine/cv8.c engine/cv8-ops.h engine/rt-linux.c .relf-arch
-	$(CC) $(CFLAGS) $(RT_CFLAGS) $(ENGINE_LDFLAGS) -o $@ $< $(RT_SRC) $(RT_LIBS)
+	$(CC) $(CFLAGS) $(ENGINE_ALIGN) $(RT_CFLAGS) $(ENGINE_LDFLAGS) -o $@ $< $(RT_SRC) $(RT_LIBS)
 endif
 
 ifeq ($(HOSTBITS),32)
 relf32: engine/cv8.c engine/cv8-ops.h engine/rt-linux.c .relf-arch
-	$(CC) $(CFLAGS) $(RT_CFLAGS32) $(ENGINE_LDFLAGS) -o $@ $< $(RT_SRC) $(RT_LIBS)
+	$(CC) $(CFLAGS) $(ENGINE_ALIGN) $(RT_CFLAGS32) $(ENGINE_LDFLAGS) -o $@ $< $(RT_SRC) $(RT_LIBS)
 else
 relf32: engine/cv8.c engine/cv8-ops.h engine/rt-linux.c .relf-arch
-	$(CC) $(CFLAGS32) $(RT_CFLAGS32) $(ENGINE_LDFLAGS) -o $@ $< $(RT_SRC) $(RT_LIBS)
+	$(CC) $(CFLAGS32) $(ENGINE_ALIGN) $(RT_CFLAGS32) $(ENGINE_LDFLAGS) -o $@ $< $(RT_SRC) $(RT_LIBS)
 endif
 
 # ------------------------------------------------------------------

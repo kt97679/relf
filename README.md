@@ -5,7 +5,7 @@ L.C. Benschop's SOD32. This repository refactors it towards full
 self-hosting (docs/GOALS.md). What it is today:
 
 - **Two engines** that run the same byte-coded Forth image: `cv8.c`, a
-  small virtual machine in portable C (29 KB on x86-64, static, with no
+  small virtual machine in portable C (33 KB on x86-64, static, with no
   C library: `engine/rt-linux.c`), and
   `relfasm64`, 18,272 bytes of x86-64 on raw system calls, no libc -
   **assembled by relf itself**, from `engine/relfasm64.4`, with an
