@@ -278,10 +278,14 @@ the account of what each gained and cost.
    tenths - and its own set, modelled, gives 0.31 of its time for 25.5 KB
    net (+21 % of its image) and 0.22 for 51 KB; rill3 0.35 for 6 KB,
    near its ceiling (its scripts' code, compiled at run time); the outer
-   interpreter 0.21 for 6 KB. The model's two constants - a native word's
-   cost per dispatch and a crossing's - are guessed; the next step builds
-   the smallest hybrid (NATIVE and NRET in relfasm64, native.4 on the
-   engine's registers, one word) and measures them. Q48 is open.
+   interpreter 0.21 for 6 KB. 951 measured the first of the model's two
+   constants, a native word's cost per CV8 dispatch (tools/native-r.py):
+   shell 0.088, Forth programs 0.197, rill3 0.259, system 0.422 - the
+   shell's own set then 0.27 for 32 KB, rill3's 0.44 for 8 KB at a crossing
+   of 2 dispatches, but 0.87 at 8. The crossing is the next measurement:
+   NATIVE and NRET in relfasm64, hand-laid native code installed at run
+   time. A48: portable by design (NATIVE.md 18.8) - a hybrid image stays a
+   CV8 image, its native code per architecture beside the bodies.
 
 ## The second end state, reached (Iteration 548)
 

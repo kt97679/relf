@@ -21,9 +21,10 @@ crossings.
 
 The model, per workload, as a fraction of its CV8 time:  1 - (1 - R) * self(S) / D + C * X(S) / D,
 D the dispatches, self(S) those of the native set S, X(S) the calls crossing S's edge, R a native
-dispatch's cost against CV8's, C a crossing's in dispatches. R and C are not measured here (the
-first hybrid build measures them); the report gives R 0.10, 0.15, 0.25 (the native shell runs at
-0.11 of relfshasm64, rill3-native at 0.28 with its scripts native too) and C 2 and 8.
+dispatch's cost against CV8's, C a crossing's in dispatches. Neither is measured here: the report
+gives R 0.10, 0.15, 0.25 (950's guesses) and, since 951, R per family as tools/native-r.py measured
+it (forth 0.197, system 0.422, rill3 0.259, shell 0.088); C 2 and 8 until the first hybrid build
+measures it.
 
 Sets are chosen greedily, never a word that reaches its caller's frame (rstack_flags: those stay CV8):
 the word whose modelled gain per net byte - native bytes less the CV8 body
@@ -296,7 +297,8 @@ def score(S, R, C, progs):
     for p in progs:
         s = sum(c for k, c in p['self'].items() if k in S)
         x = sum(c for (u, v), c in p['edges'].items() if (u in S) != (v in S))
-        out.append((1 - (1 - R) * s / p['D'] + C * x / p['D'], s / p['D'], x / p['D']))
+        r = R[p['fam']] if isinstance(R, dict) else R
+        out.append((1 - (1 - r) * s / p['D'] + C * x / p['D'], s / p['D'], x / p['D']))
     return out
 def fam_mean(vals, progs, fams):
     by = collections.defaultdict(list)
@@ -310,10 +312,11 @@ def greedy(R, C, fams, budget, cands):
     progs = [p for p in prog if p['fam'] in fams]
     nf = {f: sum(1 for p in progs if p['fam'] == f) for f in fams}
     wt = [1.0 / (len(fams) * nf[p['fam']] * p['D']) for p in progs]   # each workload's weight per count
-    gself = collections.Counter()
+    gself = collections.Counter()                             # (1 - R) * own dispatches, weighted
     nbr = collections.defaultdict(collections.Counter)       # word -> neighbour -> weighted calls
     for p, w in zip(progs, wt):
-        for k, c in p['self'].items(): gself[k] += c * w
+        r = R[p['fam']] if isinstance(R, dict) else R
+        for k, c in p['self'].items(): gself[k] += (1 - r) * c * w
         for (u, v), c in p['edges'].items():
             nbr[u][v] += c * w; nbr[v][u] += c * w
     tot = {k: sum(n.values()) for k, n in nbr.items()}
@@ -324,7 +327,7 @@ def greedy(R, C, fams, budget, cands):
         best, bk = 0.0, None
         for k in live:
             if k in S: continue
-            g = (1 - R) * gself[k] - C * (tot.get(k, 0) - 2 * inS[k])
+            g = gself[k] - C * (tot.get(k, 0) - 2 * inS[k])
             if g <= 0: continue
             cost = max(nat_bytes[k] - cv8_bytes[k], 1)
             if g / cost > best: best, bk = g / cost, k
@@ -337,7 +340,8 @@ def greedy(R, C, fams, budget, cands):
 
 def summarise(R, C, fams, label, f, budgets=(1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144)):
     _, order = greedy(R, C, fams, max(budgets), cv8_bytes.keys())
-    print('\n== %s: chosen on %s, R %.2f, C %d ==' % (label, '+'.join(fams), R, C), file=f)
+    rs = ('measured (%s)' % ', '.join('%s %.3f' % (g, R[g]) for g in FAMS)) if isinstance(R, dict) else '%.2f' % R
+    print('\n== %s: chosen on %s, R %s, C %d ==' % (label, '+'.join(fams), rs, C), file=f)
     print('%8s %6s %8s %8s | %7s %7s %7s %7s | %6s %6s %6s %6s | %s' % (
         'native B', 'words', 'net B', 'cv8 B', 'forth', 'system', 'rill3', 'shell',
         'covF', 'covS', 'covR', 'covSh', 'crossings per 1000 dispatches (shell)'), file=f)
@@ -401,6 +405,13 @@ with open(OUT, 'w') as f:
             results[(R, C, 'all')] = summarise(R, C, FAMS, 'generic', f)
     for g in FAMS:
         results[(0.15, 2, g)] = summarise(0.15, 2, (g,), 'one family', f)
+    # (951) R measured per family by tools/native-r.py (bench/reports/native-r-951.txt, R' - each side less
+    # its start); C still unmeasured
+    RM = dict(forth=0.197, system=0.422, rill3=0.259, shell=0.088)
+    for C in (2, 8):
+        results[('m', C, 'all')] = summarise(RM, C, FAMS, 'generic, R measured', f)
+        for g in FAMS:
+            results[('m', C, g)] = summarise(RM, C, (g,), 'one family, R measured', f)
     order = results[(0.15, 2, 'all')][0]
     print('\n== the generic set, R 0.15 C 2, in the order chosen (first 120) ==', file=f)
     for i, (k, nb) in enumerate(order[:120]):

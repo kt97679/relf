@@ -1576,3 +1576,65 @@ Caveats: the native sizes of the compiler's own words (CALL,, EXIT,,
 NO-PEEP) are the native kernel's versions, which lay machine code; a
 hybrid's would compile CV8's. A word's native bytes include what the
 native compiler inlined into it.
+
+### 18.8 R measured, and the portable shape (Iteration 951)
+
+**R** - a native word's time per CV8 dispatch it replaces - measured by
+tools/native-r.py (bench/reports/native-r-951.txt): each of the knee's
+workloads on the native build of its sources against the assembly engine,
+20 rounds interleaved, CPU time, the ratio per round, each side less its
+own start (about 1 ms either way):
+
+| family | R | range of the workloads' medians |
+| --- | ---: | --- |
+| forth | 0.197 | 0.111 (the lab's sieve) - 0.309 (ackermann) |
+| system | 0.422 | 0.377 (parse.fth) - 0.473 (CORE) |
+| rill3 | 0.259 | 0.226 (loop) - 0.280 (calls) |
+| shell | 0.088 | 0.081 (loop) - 0.097 (realistic) |
+
+950 guessed 0.15 everywhere: pessimistic for the shell, optimistic for
+rill3 and the system. The system's is high in part because the native
+kernel's compiler lays machine code where CV8's lays bytecode - CORE
+compiles throughout; parse.fth, which mostly interprets, is 0.377. Every
+workload's output agreed between the two builds.
+
+Each image's own set with R as measured (native bytes, net of the CV8
+bodies replaced, the modelled time):
+
+| image | C 2 | C 8 |
+| --- | --- | --- |
+| shell | 31.9 KB (net 24.9): 0.268; 65.1 KB (net 51.3): 0.159 | 32.6 KB: 0.438; 64.8 KB: 0.189 |
+| rill3 | 4.0 KB (net 3.1): 0.522; 8.0 KB (net 6.0): 0.441; ceiling 0.433 | 7.6 KB: 0.870 |
+| system | 4.1 KB (net 3.3): 0.536; 7.7 KB (net 6.1): 0.469 | 7.3 KB: 0.584 |
+| forth | 2.0 KB: 0.220 | 2.1 KB: 0.382 |
+
+So C now decides more than R does: rill3's hot words are small and called
+constantly - from the scripts' own code too, which stays CV8 - and at a
+crossing of 8 dispatches a rill3 hybrid gains an eighth where at 2 it
+halves the time. Measuring C is the next step, as 18.7 had it.
+
+**The portable shape** (A48: "keep in mind we want this to run on
+different platforms/architectures in the future"). Four rules for the
+hybrid, from here on:
+1. *The choice is the same everywhere.* Words are chosen by CV8 dispatch
+   counts, which are the bytecode's and so every machine's; only the
+   native bytes differ by architecture.
+2. *A hybrid image stays a CV8 image.* Every native word keeps its CV8
+   body, and its native code is carried beside it, per architecture; an
+   engine with no native code for its machine - the C engine, any
+   engine elsewhere - runs the image as it runs it now. The price: the
+   image grows by the native bytes, not the net (the shell's 0.268 costs
+   31.9 KB, not 24.9).
+3. *NATIVE's contract is the engine's, not x86-64's*: "run this word's
+   machine code with the stacks as the engine holds them, then go on as
+   EXIT does". An assembly engine for AArch64, or the C engine with a
+   per-architecture trampoline, can keep it; the crossing's convention
+   belongs to each engine.
+4. *The back end is x86-64's alone for now* (A33 b). Another machine's
+   needs its own templates and its own R and C measured.
+
+How native code reaches memory - a per-architecture section of the image
+built ahead of time, or made at load by a compiler the image carries - is
+decided after C is known. The measurement build (18.7, step 1) installs
+hand-laid native code at run time over a plain CV8 image, which needs
+neither.

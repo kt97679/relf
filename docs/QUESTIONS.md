@@ -31,10 +31,10 @@ same iteration.
 10. *(Q33, the native back end's decisions, was answered at 609: beside
    CV8, x86-64 only, size weighed against speed, the targets, one shell
    source for both. N1 may begin.)*
-11. **Q48** (hybrid-native: whose workloads choose its native words; native
-   code for what is compiled after load) - asked at 950; its first part waits
-   for the first hybrid build's measurements. *(A47, the first step and the
-   host: the knee priced, the assembly engine only.)*
+11. *(Q48, hybrid-native's choice of words and run-time code, was answered at
+   951: the kernel's by the four families, each image's by its own; portable
+   by design; run-time code after the measurements. A47, at 950: the knee
+   priced first, the assembly engine only.)*
 
 ## Open
 
@@ -260,7 +260,7 @@ functions and external commands is bash's (484); `echo` processes no
 escapes, as bash's does. *Recommendation*: keep them all.
 
 **Q48. Hybrid-native: whose workloads choose the native words, and native code
-for what is compiled after load? (950)** NATIVE.md 18 priced the knee. (1) *The
+for what is compiled after load? (950; answered A48)** NATIVE.md 18 priced the knee. (1) *The
 choice.* Weighed alike over the four families - 946's rule for the generic
 Forth - the set spends its first bytes on the families whose time is
 concentrated: at 32 KB it brings the shell to 0.504 of its time where the
@@ -846,3 +846,15 @@ code costs, how stable the choice is, with no engine change - and "Asm engine
 only": native code in a hybrid image runs on relfasm64, x86-64, whose registers
 the native code can share with nothing translated; the C engine keeps running
 CV8 alone. Recorded in NATIVE.md 18; the price is there (18.3).
+
+**A48. Hybrid-native: the choice of words, and run-time code (Q48; 950 -> 951).**
+The user: "1. Please keep in mind we want this to run on different
+platforms/architectures in the future. I don't have strong opinion. Please
+proceed as you think is most reasonable. 2. yes, let's wait for the
+measurements". (1) As recommended - the kernel's native words chosen over the
+four families alike, each image's own by its own workloads - and portable by
+design: NATIVE.md 18.8's four rules (the choice by dispatch counts, the same on
+every machine; a hybrid image stays a CV8 image, native code beside the CV8
+bodies, per architecture; NATIVE's contract the engine's, not x86-64's; the back
+end x86-64's alone for now). (2) Native code for what is compiled after load
+waits until the first hybrid build has measured the crossing.

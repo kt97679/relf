@@ -1,0 +1,28 @@
+workload           family     cv8-asm     native  R: native / cv8-asm [95 %] R': each side less its start [95 %]
+lab fib            forth      0.0736s    0.0153s  0.209 [0.208-0.210]        0.199 [0.197-0.200]
+lab loop           forth      0.0360s    0.0097s  0.268 [0.259-0.272]        0.248 [0.237-0.257]
+lab bubble         forth      0.0401s    0.0117s  0.293 [0.284-0.298]        0.277 [0.267-0.282]
+lab ackermann      forth      0.0239s    0.0080s  0.331 [0.324-0.342]        0.309 [0.296-0.316]
+lab sieve          forth      0.0752s    0.0093s  0.122 [0.119-0.128]        0.111 [0.108-0.116]
+bench.4 fib        forth      0.0395s    0.0103s  0.261 [0.258-0.264]        0.246 [0.242-0.248]
+bench.4 loopsum    forth      0.1875s    0.0283s  0.151 [0.148-0.153]        0.147 [0.144-0.148]
+bench.4 fannkuch   forth      0.2766s    0.0357s  0.130 [0.128-0.131]        0.127 [0.125-0.128]
+bench.4 collatz    forth      0.1744s    0.0370s  0.211 [0.210-0.226]        0.207 [0.205-0.222]
+CORE               system     0.0305s    0.0147s  0.488 [0.458-0.623]        0.473 [0.440-0.620]
+lab parse          system     0.1127s    0.0423s  0.384 [0.356-0.409]        0.377 [0.350-0.409]
+rill3 loop         rill3      0.1710s    0.0395s  0.230 [0.227-0.232]        0.226 [0.223-0.228]
+rill3 calls        rill3      0.2029s    0.0572s  0.284 [0.278-0.288]        0.280 [0.274-0.284]
+rill3 for          rill3      0.0986s    0.0279s  0.281 [0.272-0.286]        0.274 [0.265-0.279]
+shell loop         shell      0.2658s    0.0223s  0.084 [0.083-0.085]        0.081 [0.079-0.082]
+shell fn           shell      0.1465s    0.0133s  0.091 [0.090-0.092]        0.085 [0.083-0.087]
+shell str          shell      0.1372s    0.0133s  0.097 [0.095-0.106]        0.090 [0.088-0.100]
+shell arith        shell      0.1992s    0.0188s  0.095 [0.093-0.097]        0.091 [0.089-0.092]
+shell realistic    shell      0.2309s    0.0232s  0.101 [0.100-0.103]        0.097 [0.096-0.099]
+start:forth        forth      0.0010s    0.0009s  0.926 [0.773-1.034]
+start:rill3        rill3      0.0010s    0.0010s  0.954 [0.841-1.079]
+start:shell        shell      0.0011s    0.0010s  0.927 [0.793-0.985]
+
+forth   R 0.207, R' 0.197 (geometric means of 9 medians; R' 0.111-0.309)
+system  R 0.433, R' 0.422 (geometric means of 2 medians; R' 0.377-0.473)
+rill3   R 0.264, R' 0.259 (geometric means of 3 medians; R' 0.226-0.280)
+shell   R 0.093, R' 0.088 (geometric means of 5 medians; R' 0.081-0.097)
