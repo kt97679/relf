@@ -15,8 +15,12 @@ for t in tests/cm/*.4; do
     if cmp -s "$t1" "${t%.4}.expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $t"; fi
 done
 for t in tests/cm/scripts/*.cm; do
-    { timeout 60 "$exe" "$t" 2>&1; echo "status $?"; } > "$t1"
-    if cmp -s "$t1" "${t%.cm}.expected"; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $t"; fi
+    n=$(sed -n '1s/^# repeat \([0-9]*\).*/\1/p' "$t"); n=${n:-1}       # (950) as tests/cm/run: again, each compared
+    while [ "$n" -gt 0 ]; do
+        { timeout 60 "$exe" "$t" 2>&1; echo "status $?"; } > "$t1"
+        cmp -s "$t1" "${t%.cm}.expected" || break; n=$((n - 1))
+    done
+    if [ "$n" = 0 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL $t"; fi
 done
 for t in tests/cm/prompt/*.in; do
     { timeout 60 "$exe" < "$t" 2>&1; echo "status $?"; } > "$t1"

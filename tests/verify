@@ -543,7 +543,10 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
             for k in native:interactive:failed native:mrsh:failed native:posix:failed native:forthfuzz:failures native:intrfuzz:failures; do emit "$k" "not built"; done; fi
         # (Iteration 948) rill3 on the native kernel, one executable: tests/cm's three loops
         if make -s rill3-native >/dev/null 2>&1; then
-            emit native:rill3 "$(timeout 900 sh tests/cm/run-native ./rill3-native 2>&1 | tail -1 | awk '{print $1 "/" $1 + $3}')"
+            timeout 900 sh tests/cm/run-native ./rill3-native > /tmp/verify-rill3-native.log 2>&1
+            emit native:rill3 "$(tail -1 /tmp/verify-rill3-native.log | awk '{print $1 "/" $1 + $3}')"
+            grep '^FAIL' /tmp/verify-rill3-native.log | head -6 | sed 's/^/  rill3-native: /' >&2   # (950) which: 949's one failure named nothing
+            rm -f /tmp/verify-rill3-native.log
             emit native:rill3-bytes "$(wc -c < rill3-native | tr -d ' ')"
         else emit native:rill3 "not built"; emit native:rill3-bytes "not built"; fi
     else emit native:core "not built"; emit native:kernel-bytes "not built"

@@ -1,0 +1,12 @@
+# repeat 60 - run 60 times by tests/cm/run and run-native, each run's output compared (950)
+# The first command continued past a line's end, in a script long enough that its nodes are a block of their own
+# (more than 32 KB: a mapping of its own on every engine since 945 and 948). After the \ the command's node stood
+# for its last word, and SET-FIRST? read the cell three before it - before the block, for a script's first
+# command - which faulted wherever the page below was not mapped: rill3-native 7 % and relfasm64 5 % of runs
+# at 949, address randomization deciding. The read never changed a result, so only a fault can show it.
+echo first \
+  continued
+var x 1
+set x \
+  2
+echo $x

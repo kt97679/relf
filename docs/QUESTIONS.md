@@ -31,6 +31,10 @@ same iteration.
 10. *(Q33, the native back end's decisions, was answered at 609: beside
    CV8, x86-64 only, size weighed against speed, the targets, one shell
    source for both. N1 may begin.)*
+11. **Q48** (hybrid-native: whose workloads choose its native words; native
+   code for what is compiled after load) - asked at 950; its first part waits
+   for the first hybrid build's measurements. *(A47, the first step and the
+   host: the knee priced, the assembly engine only.)*
 
 ## Open
 
@@ -254,6 +258,24 @@ bash does, where dash leaves the script (426); `a=b exec 1>&1` exports
 `a`, as bash does (424); the expansion order for special builtins,
 functions and external commands is bash's (484); `echo` processes no
 escapes, as bash's does. *Recommendation*: keep them all.
+
+**Q48. Hybrid-native: whose workloads choose the native words, and native code
+for what is compiled after load? (950)** NATIVE.md 18 priced the knee. (1) *The
+choice.* Weighed alike over the four families - 946's rule for the generic
+Forth - the set spends its first bytes on the families whose time is
+concentrated: at 32 KB it brings the shell to 0.504 of its time where the
+shell's own set brings it to 0.314, and rill3 0.499 at 8 KB against 0.348. But
+most native words belong to one image only; only the kernel's are shared.
+*Recommendation*: the kernel's native words chosen over the four families alike,
+the owner's condition for the Forth underneath; each image's own words (the
+shell's, rill3's) by that image's workloads. (2) *Run-time code.* A Forth
+program's words are compiled when it loads (50-100 % of the Forth programs'
+dispatches), and so are rill3's scripts (5.6-21 % of rill3's); a hybrid made
+ahead of time reaches neither. Options: (a) not now - the hybrid is the images'
+words; (b) the kernel's compiler given a native path, as the native kernel has
+one, for definitions marked or chosen at run time. *Recommendation*: (a) until
+the first hybrid has measured R and C (NATIVE.md 18.5); then (b) priced as 18
+was. *Blocks*: (1) the choice of words after the first build; (2) nothing yet.
 
 
 ## Answered
@@ -816,3 +838,11 @@ So A15's 64 one-byte opcodes are no longer a limit; calls keep their form.
 own workloads; 939 is the first of its mechanisms back: 23 folded returns,
 the set relf's counts choose. Each next one is measured on the shell and
 rill3 before it stays.
+
+**A47. Hybrid-native: the first step and the host (950).** The start message
+for 950 left what to do first unfilled; asked, the user chose "Price the knee
+first" - which words hold the time over the four families, what their native
+code costs, how stable the choice is, with no engine change - and "Asm engine
+only": native code in a hybrid image runs on relfasm64, x86-64, whose registers
+the native code can share with nothing translated; the C engine keeps running
+CV8 alone. Recorded in NATIVE.md 18; the price is there (18.3).

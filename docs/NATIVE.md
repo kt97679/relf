@@ -1398,3 +1398,181 @@ target, the instruction set the same.
 A and D are not recommended: A costs more than it saves, and D is a
 rewrite whose gain the calls' own shape - one argument or none at 89 %
 of them - does not promise.
+
+## 18. Hybrid-native: the knee, priced (Iteration 950)
+
+The subproject after 949: CV8 bytecode and native code in one image, the
+words that hold the time native and the rest bytecode - the native back end
+beside CV8, as A33 decided, but in one program rather than two. The owner's
+choices at its start (QUESTIONS.md A47): price the knee before building
+anything, and host the native code on the assembly engine only.
+
+### 18.1 What was counted, and the model
+
+tools/native-knee.py runs tools/pair-corpus.py's workloads - the four
+families, each weighed alike: nine Forth programs, the system (CORE,
+parse.fth), rill3's three, the shell's five - on a counting engine that
+also records every call executed (direct, EXECUTE - so DEFER and CATCH -
+and DOES> tails) as a caller and a callee. For each word: its own
+dispatches (a call's dispatch is the caller's, its EXIT the callee's), its
+calls in and out, its CV8 bytes, and its native bytes in the native build
+of the same sources (relfsh-native for the shell's image, rill3-native for
+rill3's, native-kernel for the kernel; the median native/CV8 ratio over the
+3,040 words found in both is 3.00, and the 77 words no native build has -
+the Forth programs' own - are estimated by it). The raw report is
+bench/reports/native-knee-950.txt.
+
+A workload's time with the set S native, as a fraction of its CV8 time:
+
+    1 - (1 - R) * self(S) / D  +  C * X(S) / D
+
+D its dispatches, self(S) those of S's own code, X(S) the calls that cross
+between S and CV8 code, either way. Neither constant is measured yet:
+R, a native word's time per CV8 dispatch it replaces, is given 0.10, 0.15
+and 0.25 - the native shell runs at 0.11 of relfshasm64 (941's table: 0.106
+and 0.972 of relfsh64), rill3-native at 0.28 with its scripts native too;
+C, a crossing in dispatches, 2 (one dispatch and a call and return beyond
+the CV8 call it replaces, 18.6) and 8 (pessimistic). Sets are chosen
+greedily by modelled gain per net byte (native bytes less the CV8 body they
+replace), crossings counted against the set as it stands.
+
+### 18.2 How concentrated the time is
+
+Words holding 50, 80 and 90 % of a workload's dispatches:
+
+| family | workloads | 50 % | 80 % | 90 % |
+| --- | --- | --- | --- | --- |
+| forth | the lab's five, bench.4's four | 1-3 | 1-6 | 1-9 (fannkuch) |
+| system | CORE, parse.fth | 5-7 | 15-17 | 20-25 |
+| rill3 | loop, calls, for | 5-9 | 9-31 | 46-53 |
+| shell | bench-vm's five | 19-23 | 57-61 | 85-91 |
+
+- **The Forth programs** are their own one to three words (FIB 100 %,
+  fannkuch's REV, PP! and PP@ 57 %). But in real use those words are
+  compiled when the program is loaded: here each was saved in an image
+  first. 50-100 % of each program's dispatches are in words no image ahead
+  of time has; an ahead-of-time hybrid reaches only the kernel's share (2/,
+  2@, 2!).
+- **The system** is the outer interpreter: PREV-NFA, SEARCH-NAMEBUF,
+  ACCEPT, NAME>BUF, PK-CHAR, FIND, NAME=?, WORD - 949's packed names among
+  them.
+- **rill3** spends 21.0, 5.6 and 9.6 % in the scripts' own code, compiled
+  at run time and out of reach ahead of time: loop.cm's 80 % cannot be
+  covered at all. Its runtime's top words: D+, LS@, BOTH#, DIGITS#, N-TYPE,
+  C-FOR-PLAIN, R-PUSH.
+- **The shell is flat**, as GOALS.md 7 found by profile: its top word holds
+  4-6 % (ARGV-ADD, EXPAND-WORDS, EW-ENTRY, NAME-HASH), and the five scripts
+  share their top words.
+
+### 18.3 The curve
+
+The generic set (the four families weighed alike), R 0.15, each family's
+modelled time (the mean of its workloads); "native" is the native code of
+every word chosen, over all images; "net" less the CV8 bodies replaced;
+the last column the shell's crossings per 1,000 dispatches:
+
+| C | native B | words | net B | forth | system | rill3 | shell | X/1000 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2 | 4,053 | 35 | 3,121 | 0.189 | 0.516 | 0.703 | 0.992 | 5.7 |
+| 2 | 8,145 | 66 | 6,417 | 0.189 | 0.328 | 0.499 | 0.943 | 14.5 |
+| 2 | 16,352 | 109 | 12,775 | 0.180 | 0.264 | 0.412 | 0.726 | 17.0 |
+| 2 | 31,047 | 176 | 24,236 | 0.180 | 0.225 | 0.352 | 0.504 | 17.4 |
+| 2 | 65,128 | 281 | 50,734 | 0.175 | 0.212 | 0.342 | 0.250 | 7.7 |
+| 2 | 130,990 | 566 | 101,879 | 0.175 | 0.206 | 0.339 | 0.211 | 6.1 |
+| 8 | 4,035 | 22 | 3,243 | 0.349 | 0.492 | 0.876 | 1.000 | 0.0 |
+| 8 | 8,125 | 40 | 6,497 | 0.349 | 0.406 | 0.863 | 0.902 | 3.8 |
+| 8 | 14,896 | 60 | 11,830 | 0.348 | 0.376 | 0.854 | 0.820 | 6.0 |
+| 8 | 32,430 | 122 | 25,438 | 0.348 | 0.372 | 0.808 | 0.546 | 6.1 |
+| 8 | 64,425 | 208 | 50,737 | 0.348 | 0.370 | 0.806 | 0.282 | 4.2 |
+| 8 | 130,487 | 433 | 102,504 | 0.346 | 0.367 | 0.802 | 0.253 | 3.8 |
+
+Per image, chosen on that image's own family (R 0.15, C 2), against
+A33's rule ("+50 % in code size and +5 % performance probably not worth
+it"):
+- **the shell** (image 118,883 bytes): 12.7 KB net, 70 words, 0.504; 25.5
+  KB net (+21 % of the image), 106 words, 0.314; 51.1 KB net (+43 %), 186
+  words, 0.218 - the whole native shell, for comparison, is 0.11 at 409 KB;
+- **rill3** (79,405): 3.1 KB net, 26 words, 0.439; 6.0 KB net (+7.5 %), 56
+  words, 0.348, near its ceiling of 0.339 - the scripts' own code;
+- **the system** (the kernel, 10,882 bytes, in every image): 3.2 KB net,
+  22 words, 0.313; 6.2 KB net, 56 words, 0.214.
+
+If R and C hold, these are three to five times the speed for a fifth to
+two fifths more bytes - far from A33's bad case. R and C are the
+model's, not measurements: 18.5.
+
+### 18.4 How stable the choice is
+
+A set chosen on one family does nothing for another's own words - the
+shell's set leaves rill3 and the system at 1.00 - and shares only the
+kernel's: rill3's set brings the system to 0.54 at 64 KB. And weighing the
+families alike costs each image: at equal bytes the generic set gives the
+shell 0.726 at 16 KB and 0.504 at 32 KB where the shell's own set gives
+0.504 and 0.314, and rill3 0.499 at 8 KB against 0.348 - the generic set
+spends its first bytes on the families whose time is concentrated. Since
+most native bytes are words of one image only, the equal weight matters
+only where images share words, the kernel. Hence Q48: the kernel's native
+words chosen over the four families alike, the owner's condition for the
+Forth underneath, and each image's own words by its own workloads.
+
+### 18.5 Crossings decide the small budgets
+
+The shell's crossings rise to 17 per 1,000 dispatches at 16-32 KB of
+native code, where the set's edge cuts through its call graph, and fall to
+6-8 at 64-128 KB, as more of each path is native. At C 8, 17 crossings
+are 14 % of the CV8 time: most of the gap between the C 2 and C 8 curves
+is there. So the first build measures C, and R with it.
+
+### 18.6 What stays CV8, and the design this points to
+
+Ten of the words run here reach their caller's frame - an R> or R@ with
+nothing of their own pushed on some path, or a jump to a pushed address -
+and stay CV8, never chosen: DEFER (0.78 % of the families' mean), (ABORT")
+0.42, (S") 0.33, (DO) 0.32, R-ADD 0.08, (.") 0.03, UNLOOP, C-FOR,
+(POSTPONE), (;CODE). A native word never calls them: the native compiler
+lays their work in its own forms - S" inline, DO in registers, DEFER as an
+indirect call. Data words (variables, constants, DOES> children) are
+addresses in native code: no crossing.
+
+On the assembly engine (A47), in outline, each point to be settled by the
+build:
+- **A native body**: `[NATIVE][pad][machine code]`. A CV8 call to it
+  dispatches NATIVE, whose handler calls the code after it and then does
+  EXIT's work - one dispatch and a call and return beyond the CV8 call.
+  EXECUTE and DEFER reach it the same way, so no caller knows which kind
+  it calls.
+- **The registers**: native code compiled to the engine's own - the top in
+  r12, the data stack under it at r13 (the same model as native.4's rbx and
+  r15), CV8's return stack r15 left to CV8 - and its own calls, >R and DO
+  on rsp, which the engine leaves free between dispatches. native.4's
+  register names become parameters; its DO registers move (r14 is CV8's
+  ip). Nothing is translated at a crossing.
+- **Native to CV8**: `call` a routine that pushes ip on r15, points ip at an
+  `[NRET]` stub, and dispatches the callee; NRET pops ip and returns into
+  the native caller.
+- **Addresses**: image data rbx-relative (rbx is the image base the engine
+  keeps), other native words by rel32 - position-independent, nothing
+  relocated at load.
+- **W^X** (523: the image is never executed): native code copied at load
+  into a region mapped read-execute, a NATIVE body holding its offset, or
+  the image's code pages mapped so - the first keeps the image data and
+  W^X as it is.
+- **The C engine** runs the plain CV8 image; a hybrid image is the
+  assembly engine's alone (A47). One source: the builder makes both.
+
+### 18.7 Next
+
+1. The smallest hybrid: NATIVE and NRET in relfasm64, native.4 retargeted
+   to the engine's registers, one word made native by hand; R and C
+   measured - crossings both ways in a loop, and the word itself.
+2. The words 18.3 chooses, built, measured with bench-vm and the layout
+   A/B against the plain image, and the curve corrected by the measured R
+   and C.
+3. Q48's second part: native code for what is compiled after load - the
+   Forth programs' words, rill3's scripts - which an ahead-of-time hybrid
+   cannot reach.
+
+Caveats: the native sizes of the compiler's own words (CALL,, EXIT,,
+NO-PEEP) are the native kernel's versions, which lay machine code; a
+hybrid's would compile CV8's. A word's native bytes include what the
+native compiler inlined into it.

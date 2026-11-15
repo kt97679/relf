@@ -25,8 +25,12 @@ if sh tools/build-cm-image.sh "$E" forth/kernel64.img /tmp/cm.$$.img > /dev/null
         else fail=$((fail + 1)); echo "FAIL $t"; diff "${t%.4}.expected" /tmp/cm-out.$$ | head -5; fi
     done
     for t in tests/cm/scripts/*.cm; do                                  # the scripts (858-)
-        { timeout 60 "$E" /tmp/cm.$$.img "$t" 2>&1; echo "status $?"; } > /tmp/cm-out.$$   # no \r stripped (883)
-        if cmp -s /tmp/cm-out.$$ "${t%.cm}.expected"; then pass=$((pass + 1))
+        n=$(sed -n '1s/^# repeat \([0-9]*\).*/\1/p' "$t"); n=${n:-1}    # (950) a fault that hangs on where memory
+        while [ "$n" -gt 0 ]; do                                        # lies shows in some runs only: run again
+            { timeout 60 "$E" /tmp/cm.$$.img "$t" 2>&1; echo "status $?"; } > /tmp/cm-out.$$   # no \r stripped (883)
+            cmp -s /tmp/cm-out.$$ "${t%.cm}.expected" || break; n=$((n - 1))
+        done
+        if [ "$n" = 0 ]; then pass=$((pass + 1))
         else fail=$((fail + 1)); echo "FAIL $t"; diff "${t%.cm}.expected" /tmp/cm-out.$$ | head -5; fi
     done
     for t in tests/cm/prompt/*.in; do                                   # the prompt (869): a session's lines, piped

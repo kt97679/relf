@@ -242,8 +242,11 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
   PIECES-P N) ;
 ' WORD-P' IS WORD-P
 : GOES-ON? ( w --- f )   DUP S" |" BARE= OVER S" &&" BARE= OR SWAP S" ||" BARE= OR ;
+VARIABLE CUR-CMD                                   \ the command being read, at this level (904)
 : SET-FIRST? ( last --- f )   \ the command's first word set or append: its target next (append's too, 885)
-  DUP 0= IF EXIT THEN  DUP 3 CELLS - @ N-CMD = SWAP DUP S" set" BARE= OVER S" append" BARE= OR OVER S" read" BARE= OR SWAP S" del" BARE= OR AND ;
+  \ the first word is the node after the command's (950): after a \ at a line's end last is the command's node,
+  \ and reading the kind three cells before it read before the nodes' block for a script's first command
+  DUP 0= IF EXIT THEN  DUP CUR-CMD @ N+ = SWAP DUP S" set" BARE= OVER S" append" BARE= OR OVER S" read" BARE= OR SWAP S" del" BARE= OR AND ;
 : SET-TARGET-P ( closer --- )   \ set's target, after the command's first word set: read as after a $ (881)
   CUR NAME0? 0= IF WORD-P EXIT THEN  >R 0 0 N-WRD N, VAR-P N)
   CUR R> WORD-END? 0= IF S" a name, or name[key], to set" P-ERR THEN ;
@@ -287,7 +290,6 @@ VARIABLE SFL-A  VARIABLE SFL-U
   TOP-CMD @ DUP N+ S" source" BARE= 0= IF DROP EXIT THEN
   DUP @A LN !  DUP N+ NSKIP  DUP @ 0= IF SOURCE-ERR THEN  DUP BARE? 0= IF SOURCE-ERR THEN
   DUP NSKIP @ IF SOURCE-ERR THEN  BARE$ SF-PATH  ROT NDP !  SF-PUSH ;
-VARIABLE CUR-CMD                                   \ the command being read, at this level (904)
 : LINE-REST ( i --- i' )   BEGIN DUP IN-LEN @ < WHILE IN-TEXT @ OVER + C@ 10 = IF EXIT THEN 1+ REPEAT ;
 : ELSE-WORD? ( i --- f )   \ else or elif at i, a word of its own
   IN-LEN @ OVER - 4 < IF DROP 0 EXIT THEN

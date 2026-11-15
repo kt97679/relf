@@ -48,7 +48,11 @@ ordinary scripts hit, then edge cases and wording.
 1. **No known crashes.** The fuzzer's last findings - `printf` and
    `kill` with no arguments, and the job table past 64 jobs - were fixed
    in Iteration 426. Run `tools/crashfuzz.py` after any change to the
-   parser, the expander or the job code.
+   parser, the expander or the job code. (950: rill3's compiler read the
+   cell before its node block after a `\` continued a script's first
+   command - SET-FIRST? - and faulted in 5-7 % of runs on relfasm64 and
+   rill3-native, where randomization left the page below unmapped; fixed,
+   and tests/cm's `# repeat N` runs such a script again and again.)
 1c. **The order of a simple command's expansions**: stages 1 and 2 done
    (480, 482) - both yash cases pass. For a special builtin, a function
    and an external command this shell still expands assignments before
@@ -266,6 +270,18 @@ the account of what each gained and cost.
 16. **forth-vm-evolution's copy of prompts/** lacks this library's 15-22
    and its added items (prompts/SYNC.md lists them, and how to merge):
    to carry there when that project next syncs.
+
+17. **Hybrid-native** - the subproject from 950: CV8 bytecode and native
+   code in one image, the words that hold the time native, on the assembly
+   engine only (A47). Priced at 950 (NATIVE.md 18, tools/native-knee.py):
+   the shell is flat - 19-23 words for half its dispatches, 85-91 for nine
+   tenths - and its own set, modelled, gives 0.31 of its time for 25.5 KB
+   net (+21 % of its image) and 0.22 for 51 KB; rill3 0.35 for 6 KB,
+   near its ceiling (its scripts' code, compiled at run time); the outer
+   interpreter 0.21 for 6 KB. The model's two constants - a native word's
+   cost per dispatch and a crossing's - are guessed; the next step builds
+   the smallest hybrid (NATIVE and NRET in relfasm64, native.4 on the
+   engine's registers, one word) and measures them. Q48 is open.
 
 ## The second end state, reached (Iteration 548)
 
@@ -854,6 +870,14 @@ values as a double cell rather than one; the test suite compares only
 where the value fits, and says so.
 
 ## Repository conventions
+
+- **A session's standing rules** (the owner's start messages, written here
+  at 950 so no message has to carry them): forth-vm-evolution, the lab, is
+  reference only - read it, never change it, and say what relf should take;
+  commits are made as Claude; a "push" is a new bundle in
+  /mnt/user-data/outputs/ (`sh tools/make-bundle.sh /mnt/user-data/outputs`),
+  never GitHub unless the owner asks. A session starts as
+  prompts/18-session-start.md says: build, the verify detached, then read.
 
 - **`FORTH-STYLE.md` is the coding-practice reference.** Read it
   before writing Forth here. Every rule in it is paired with the

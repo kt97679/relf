@@ -1,0 +1,339 @@
+tools/native-knee.py (Iteration 950): the knee of a hybrid image, counted on the four families.
+native/CV8 bytes median ratio, over 3040 words in both: 3.00; 77 words estimated by it
+
+== the workloads ==
+lab fib            forth   D     96932103  run-time   0.0 %  words for 50/80/90 % of D: 1/1/1  top: FIB 100.0, RELOCATE-WORDLIST 0.0, COLD 0.0, (DO) 0.0, BX 0.0, RUN-BENCH 0.0
+lab loop           forth   D     80209323  run-time   0.0 %  words for 50/80/90 % of D: 1/1/1  top: INNER 99.8, (DO) 0.1, BENCH 0.0, RELOCATE-WORDLIST 0.0, BX 0.0, COLD 0.0
+lab bubble         forth   D     46028803  run-time   0.0 %  words for 50/80/90 % of D: 2/2/3  top: BUBBLE 49.5, 2@ 34.8, 2! 14.1, RANDOM 0.4, (DO) 0.3, VERIFY-LIST 0.3
+lab ackermann      forth   D     32255563  run-time   0.0 %  words for 50/80/90 % of D: 1/1/1  top: -ack 100.0, MU/MOD 0.0, # 0.0, #S 0.0, HOLD 0.0, EMIT 0.0
+lab sieve          forth   D     91915713  run-time   0.0 %  words for 50/80/90 % of D: 1/1/1  top: PRIMES 90.5, FLAGS 9.5, (DO) 0.0, BENCH 0.0, MU/MOD 0.0, # 0.0
+bench.4 fib        forth   D     17502242  run-time   0.0 %  words for 50/80/90 % of D: 1/1/1  top: FIB 100.0, RELOCATE-WORDLIST 0.0, COLD 0.0, (DO) 0.0, RUN-BENCH 0.0, DP 0.0
+bench.4 loopsum    forth   D     30000766  run-time   0.0 %  words for 50/80/90 % of D: 1/1/1  top: LOOPSUM 100.0, RELOCATE-WORDLIST 0.0, COLD 0.0, (DO) 0.0, RUN-BENCH 0.0, DP 0.0
+bench.4 fannkuch   forth   D    321223185  run-time   0.0 %  words for 50/80/90 % of D: 3/6/9  top: REV 27.6, PP! 15.4, PP@ 14.1, FLIPS 9.6, PP 7.4, NEXTPERM 6.4
+bench.4 collatz    forth   D    198250750  run-time   0.0 %  words for 50/80/90 % of D: 1/2/2  top: CSTEPS 67.2, 2/ 32.6, COLLATZ 0.2, RELOCATE-WORDLIST 0.0, COLD 0.0, (DO) 0.0
+CORE               system  D      6536257  run-time   0.6 %  words for 50/80/90 % of D: 7/17/25  top: ACCEPT 13.7, PREV-NFA 9.9, SEARCH-NAMEBUF 9.8, READ-SOME 5.7, KEY 5.7, PK-CHAR 4.8
+lab parse          system  D     27036576  run-time   0.0 %  words for 50/80/90 % of D: 5/15/20  top: PREV-NFA 19.2, SEARCH-NAMEBUF 15.9, ACCEPT 8.3, NAME>BUF 4.3, FIND 4.1, PK-CHAR 3.8
+rill3 loop         rill3   D    224139842  run-time  21.0 %  words for 50/80/90 % of D: 7/None/None  top: D+ 15.2, LS@ 8.9, BOTH# 7.1, D* 6.2, D-TRUE? 5.8, R-TURN 4.9
+rill3 calls        rill3   D    247334544  run-time   5.6 %  words for 50/80/90 % of D: 9/31/46  top: DIGITS# 15.5, N-TYPE 12.6, 2/ 5.1, R-ALLOT 4.0, D-KIND 3.6, R-BOX 3.2
+rill3 for          rill3   D     14134362  run-time   9.6 %  words for 50/80/90 % of D: 5/9/53  top: C-FOR-PLAIN 15.3, R-PUSH 11.0, D+ 10.8, D-LIST 9.0, ARG@ 7.7, D-KIND 7.7
+shell loop         shell   D     14569629  run-time   0.0 %  words for 50/80/90 % of D: 22/60/85  top: ARGV-ADD 5.9, EW-ENTRY 4.1, COPY-LITERAL 3.9, EXPAND-WORDS 3.7, TEST-PARSE-INT 2.6, DEFER 2.6
+shell fn           shell   D      8049482  run-time   0.0 %  words for 50/80/90 % of D: 23/61/91  top: ARGV-ADD 4.9, EXPAND-WORDS 3.8, EW-ENTRY 3.8, DEFER 2.8, COPY-LITERAL 2.6, XE-MARK-DASH 2.4
+shell str          shell   D      7681082  run-time   0.0 %  words for 50/80/90 % of D: 22/61/91  top: EXPAND-WORDS 4.6, ARGV-ADD 4.2, EW-ENTRY 4.0, DEFER 3.2, SET-SHVAR 2.8, SAFE-COPY-NUL 2.7
+shell arith        shell   D     11640668  run-time   0.0 %  words for 50/80/90 % of D: 22/59/85  top: EXPAND-WORDS 4.0, ARGV-ADD 3.9, EW-ENTRY 3.5, SET-SHVAR 3.3, DEFER 3.2, SAFE-COPY-NUL 3.1
+shell realistic    shell   D     14554927  run-time   0.0 %  words for 50/80/90 % of D: 19/57/88  top: NAME-HASH 5.6, ARGV-ADD 4.9, EXPAND-WORDS 4.2, EW-ENTRY 4.0, FIND-SHVAR 3.9, DEFER 2.8
+lab fib            dispatches in words no native build has (its own, and the libraries loaded): 100.0 %
+lab loop           dispatches in words no native build has (its own, and the libraries loaded):  99.9 %
+lab bubble         dispatches in words no native build has (its own, and the libraries loaded):  50.5 %
+lab ackermann      dispatches in words no native build has (its own, and the libraries loaded): 100.0 %
+lab sieve          dispatches in words no native build has (its own, and the libraries loaded): 100.0 %
+bench.4 fib        dispatches in words no native build has (its own, and the libraries loaded): 100.0 %
+bench.4 loopsum    dispatches in words no native build has (its own, and the libraries loaded): 100.0 %
+bench.4 fannkuch   dispatches in words no native build has (its own, and the libraries loaded):  97.4 %
+bench.4 collatz    dispatches in words no native build has (its own, and the libraries loaded):  67.4 %
+
+== words by self dispatches, the four families weighed alike (top 60) ==
+word                          mean %   forth  system   rill3   shell  cv8 B  nat B flags
+FIB                             5.56   22.22    0.00    0.00    0.00     23     69 est
+PREV-NFA                        3.64    0.00   14.54    0.00    0.00     59    299 
+SEARCH-NAMEBUF                  3.21    0.00   12.85    0.00    0.00     63    300 
+LOOPSUM                         2.78   11.11    0.00    0.00    0.00     10     30 est
+-ack                            2.78   11.11    0.00    0.00    0.00     32     96 est
+INNER                           2.77   11.09    0.00    0.00    0.00     13     39 est
+ACCEPT                          2.75    0.00   11.01    0.00    0.00     61    405 
+PRIMES                          2.51   10.06    0.00    0.00    0.00     52    156 est
+D+#1                            2.31    0.00    0.00    9.26    0.00     33    197 
+CSTEPS                          1.87    7.46    0.00    0.00    0.00     28     84 est
+2/                              1.68    3.63    0.00    3.08    0.00     12     93 
+LS@                             1.57    0.00    0.00    6.29    0.00      8     28 
+BUBBLE                          1.38    5.50    0.00    0.00    0.00     41    123 est
+DIGITS#                         1.29    0.00    0.00    5.17    0.00     42    276 
+C-FOR-PLAIN                     1.28    0.00    0.00    5.10    0.00     50    257 
+ARGV-ADD                        1.19    0.00    0.00    0.00    4.77    182    807 
+D-KIND                          1.16    0.00    0.00    4.64    0.00     12     58 
+READ-SOME                       1.14    0.00    4.56    0.00    0.00     19    122 
+KEY                             1.14    0.00    4.56    0.00    0.00     40    265 
+NAME>BUF                        1.10    0.00    4.39    0.00    0.00     87    502 
+PK-CHAR                         1.08    0.00    4.30    0.00    0.00     75    369 
+R-TURN                          1.07    0.00    0.00    4.27    0.00     32    193 
+N-TYPE                          1.05    0.00    0.00    4.20    0.00     59    280 
+EXPAND-WORDS                    1.02    0.00    0.00    0.00    4.07    526   2396 
+CMOVE                           0.98    0.00    3.92    0.00    0.00     26    169 
+EW-ENTRY                        0.97    0.00    0.00    0.00    3.88    365   1581 
+2@                              0.97    3.87    0.00    0.00    0.00      4     27 
+FIND                            0.96    0.00    3.84    0.00    0.00     59    315 
+R-PUSH                          0.92    0.00    0.00    3.67    0.00     24    174 
+BOTH#                           0.91    0.00    0.00    3.66    0.00      4     32 
+NAME=?                          0.86    0.00    3.42    0.00    0.00     27    188 
+WORD                            0.82    0.00    3.27    0.00    0.00     39    193 
+LS!                             0.80    0.00    0.00    3.22    0.00      8     39 
+DEFER                           0.78    0.00    0.00    0.19    2.91     17     77 R 
+REV                             0.77    3.06    0.00    0.00    0.00     46    138 est
+D-LIST                          0.75    0.00    0.00    2.99    0.00     38    119 
+NAME-BYTES                      0.71    0.00    2.82    0.00    0.00     34    182 
+PARSE                           0.65    0.00    2.62    0.00    0.00     30    173 
+ARG@                            0.64    0.00    0.00    2.57    0.00     80    301 
+D*                              0.61    0.00    0.00    2.46    0.00     31    150 
+SET-SHVAR                       0.60    0.00    0.00    0.00    2.40    484   2058 
+R-GC?                           0.58    0.00    0.00    2.33    0.00     22    116 
+COPY-LITERAL                    0.58    0.00    0.00    0.00    2.30    252   1281 
+D-TRUE?                         0.57    0.00    0.00    2.28    0.00     46    335 
+SAFE-COPY-NUL                   0.57    0.00    0.00    0.00    2.28     23    195 
+XF@                             0.57    0.00    0.00    0.00    2.27      6     30 
+EXEC-SIMPLE                     0.54    0.00    0.00    0.00    2.15    126    745 
+XE-LIT-RUN                      0.53    0.00    0.00    0.00    2.12    121    595 
+XE-MARK-DASH                    0.51    0.00    0.00    0.00    2.05     48    235 
+INTERPRET                       0.49    0.00    1.95    0.00    0.00     91    300 
+NAMEBUF                         0.47    0.00    1.90    0.00    0.00     77     17 data 
+EXEC-IMPL                       0.47    0.00    0.00    0.00    1.90     97    307 
+VALID-NAME?                     0.47    0.00    0.00    0.00    1.87     44    260 
+HASH                            0.45    0.00    1.81    0.00    0.00     28    187 
+XE-TRY                          0.44    0.00    0.00    0.00    1.75    113    673 
+ADD-WORD                        0.43    0.00    0.00    0.00    1.72     64    372 
+PP!                             0.43    1.71    0.00    0.00    0.00      5     15 est
+2!                              0.43    1.57    0.00    0.13    0.00      5     56 
+(ABORT")                        0.42    0.03    1.43    0.01    0.22     35    175 R 
+NUMBER?                         0.42    0.00    1.68    0.00    0.00    123    709 
+
+== generic: chosen on forth+system+rill3+shell, R 0.10, C 2 ==
+native B  words    net B    cv8 B |   forth  system   rill3   shell |   covF   covS   covR  covSh | crossings per 1000 dispatches (shell)
+     866     15      597      269 |   0.219   0.999   0.913   1.000 |  89.3%   0.1%  17.7%   0.0% | 0.00
+    1930     23     1440      490 |   0.160   0.764   0.817   0.991 |  94.0%  27.5%  30.3%   2.3% | 5.68
+    4053     35     3121      932 |   0.141   0.487   0.681   0.991 |  95.7%  57.9%  43.6%   2.3% | 5.68
+    8160     67     6427     1733 |   0.140   0.288   0.464   0.938 |  95.9%  80.8%  69.9%  10.1% | 14.52
+   16384    109    12787     3597 |   0.132   0.220   0.374   0.706 |  96.6%  87.9%  78.5%  36.6% | 17.71
+   31047    176    24236     6811 |   0.132   0.178   0.309   0.473 |  96.6%  92.5%  85.2%  62.4% | 17.38
+   65144    280    50738    14406 |   0.126   0.165   0.299   0.205 |  97.2%  93.9%  86.1%  90.0% | 7.69
+  131050    567   101929    29121 |   0.126   0.159   0.296   0.164 |  97.2%  94.4%  86.4%  94.2% | 6.07
+  198041    776   152079    45962 |   0.126   0.159   0.295   0.164 |  97.2%  94.4%  86.5%  94.2% | 6.05
+
+== generic: chosen on forth+system+rill3+shell, R 0.10, C 8 ==
+native B  words    net B    cv8 B |   forth  system   rill3   shell |   covF   covS   covR  covSh | crossings per 1000 dispatches (shell)
+     866      8      637      229 |   0.311   0.950   1.000   1.000 |  76.7%  14.5%   3.1%   0.0% | 0.00
+    1817     13     1421      396 |   0.311   0.715   0.955   1.000 |  76.7%  33.7%   8.3%   0.0% | 0.00
+    4036     23     3224      812 |   0.311   0.460   0.866   1.000 |  76.7%  63.5%  18.7%   0.0% | 0.00
+    8125     40     6497     1628 |   0.311   0.369   0.852   0.894 |  76.7%  73.6%  20.5%  15.2% | 3.84
+   14896     60    11830     3066 |   0.310   0.338   0.843   0.807 |  76.7%  77.6%  21.5%  26.7% | 5.96
+   32650    124    25613     7037 |   0.310   0.330   0.794   0.515 |  76.7%  82.0%  28.1%  59.6% | 6.40
+   65134    212    51239    13895 |   0.308   0.329   0.789   0.238 |  77.1%  82.2%  29.6%  88.4% | 4.20
+  131002    437   102972    28030 |   0.307   0.325   0.787   0.194 |  77.2%  82.7%  30.1%  93.1% | 4.03
+  170075    543   131327    38748 |   0.307   0.325   0.787   0.194 |  77.2%  82.7%  30.1%  93.1% | 4.03
+
+== generic: chosen on forth+system+rill3+shell, R 0.15, C 2 ==
+native B  words    net B    cv8 B |   forth  system   rill3   shell |   covF   covS   covR  covSh | crossings per 1000 dispatches (shell)
+     866     15      597      269 |   0.264   0.999   0.922   1.000 |  89.3%   0.1%  17.7%   0.0% | 0.00
+    1930     23     1440      490 |   0.207   0.777   0.832   0.992 |  94.0%  27.5%  30.3%   2.3% | 5.68
+    4053     35     3121      932 |   0.189   0.516   0.703   0.992 |  95.7%  57.9%  43.6%   2.3% | 5.68
+    8145     66     6417     1728 |   0.189   0.328   0.499   0.943 |  95.7%  80.8%  69.9%  10.1% | 14.52
+   16352    109    12775     3577 |   0.180   0.264   0.412   0.726 |  96.6%  87.9%  78.6%  36.3% | 17.01
+   31047    176    24236     6811 |   0.180   0.225   0.352   0.504 |  96.6%  92.5%  85.2%  62.4% | 17.38
+   65128    281    50734    14394 |   0.175   0.212   0.342   0.250 |  97.2%  93.9%  86.1%  90.0% | 7.69
+  130990    566   101879    29111 |   0.175   0.206   0.339   0.211 |  97.2%  94.4%  86.4%  94.2% | 6.07
+  198041    776   152079    45962 |   0.175   0.206   0.339   0.211 |  97.2%  94.4%  86.5%  94.2% | 6.05
+
+== generic: chosen on forth+system+rill3+shell, R 0.15, C 8 ==
+native B  words    net B    cv8 B |   forth  system   rill3   shell |   covF   covS   covR  covSh | crossings per 1000 dispatches (shell)
+     843      8      631      212 |   0.349   1.000   0.959   1.000 |  76.7%   0.0%   8.3%   0.0% | 0.00
+    1817     13     1421      396 |   0.349   0.731   0.959   1.000 |  76.7%  33.7%   8.3%   0.0% | 0.00
+    4035     22     3243      792 |   0.349   0.492   0.876   1.000 |  76.7%  63.4%  18.7%   0.0% | 0.00
+    8125     40     6497     1628 |   0.349   0.406   0.863   0.902 |  76.7%  73.6%  20.5%  15.2% | 3.84
+   14896     60    11830     3066 |   0.348   0.376   0.854   0.820 |  76.7%  77.6%  21.5%  26.7% | 5.96
+   32430    122    25438     6992 |   0.348   0.372   0.808   0.546 |  76.7%  79.4%  28.1%  59.1% | 6.09
+   64425    208    50737    13688 |   0.348   0.370   0.806   0.282 |  76.7%  82.2%  28.9%  88.4% | 4.17
+  130487    433   102504    27983 |   0.346   0.367   0.802   0.253 |  77.2%  82.6%  29.9%  91.5% | 3.84
+  168748    536   130240    38508 |   0.346   0.367   0.802   0.253 |  77.2%  82.6%  29.9%  91.5% | 3.84
+
+== generic: chosen on forth+system+rill3+shell, R 0.25, C 2 ==
+native B  words    net B    cv8 B |   forth  system   rill3   shell |   covF   covS   covR  covSh | crossings per 1000 dispatches (shell)
+     972     15      661      311 |   0.319   1.000   0.949   1.000 |  92.4%   0.1%  14.0%   0.0% | 0.00
+    2019     23     1497      522 |   0.301   0.805   0.840   1.000 |  94.0%  27.5%  33.3%   0.0% | 0.00
+    4053     35     3121      932 |   0.284   0.574   0.746   0.994 |  95.7%  57.9%  43.6%   2.3% | 5.68
+    8009     60     6339     1670 |   0.284   0.395   0.572   0.971 |  95.7%  82.2%  68.5%   6.9% | 11.21
+   16352    109    12775     3577 |   0.277   0.352   0.491   0.762 |  96.6%  87.9%  78.6%  36.3% | 17.01
+   30977    174    24180     6797 |   0.277   0.319   0.437   0.567 |  96.6%  92.2%  85.2%  62.4% | 17.38
+   65474    281    51095    14379 |   0.272   0.307   0.428   0.340 |  97.2%  93.7%  86.1%  90.1% | 7.54
+  130957    567   101814    29143 |   0.272   0.301   0.425   0.306 |  97.2%  94.4%  86.4%  94.2% | 6.06
+  198041    776   152079    45962 |   0.272   0.301   0.425   0.305 |  97.2%  94.4%  86.5%  94.2% | 6.05
+
+== generic: chosen on forth+system+rill3+shell, R 0.25, C 8 ==
+native B  words    net B    cv8 B |   forth  system   rill3   shell |   covF   covS   covR  covSh | crossings per 1000 dispatches (shell)
+     843      8      631      212 |   0.426   1.000   0.968   1.000 |  76.7%   0.0%   8.3%   0.0% | 0.00
+    1804     12     1446      358 |   0.426   0.833   0.968   1.000 |  76.7%  24.0%   8.3%   0.0% | 0.00
+    4035     22     3243      792 |   0.426   0.556   0.894   1.000 |  76.7%  63.4%  18.7%   0.0% | 0.00
+    8124     39     6516     1608 |   0.426   0.480   0.883   0.917 |  76.7%  73.5%  20.5%  15.2% | 3.84
+   15351     59    12107     3244 |   0.425   0.479   0.875   0.805 |  76.7%  73.6%  21.5%  31.8% | 5.45
+   32688    117    25624     7064 |   0.425   0.451   0.863   0.632 |  76.7%  79.3%  23.5%  55.9% | 6.50
+   65431    208    51779    13652 |   0.425   0.450   0.835   0.425 |  76.7%  79.5%  28.3%  82.1% | 5.09
+  130167    424   102055    28112 |   0.424   0.448   0.833   0.353 |  77.1%  79.9%  29.1%  90.4% | 3.93
+  157432    502   122314    35118 |   0.424   0.448   0.833   0.353 |  77.1%  79.9%  29.1%  90.4% | 3.93
+
+== one family: chosen on forth, R 0.15, C 2 ==
+native B  words    net B    cv8 B |   forth  system   rill3   shell |   covF   covS   covR  covSh | crossings per 1000 dispatches (shell)
+     956     14      675      281 |   0.204   1.000   0.980   1.000 |  94.6%   0.0%   3.2%   0.0% | 0.00
+    2033     26     1429      604 |   0.175   1.000   0.980   0.998 |  97.2%   0.0%   3.2%   0.4% | 0.42
+    3560     44     2693      867 |   0.175   0.997   0.980   0.990 |  97.2%   0.5%   3.2%   1.3% | 0.65
+    3560     44     2693      867 |   0.175   0.997   0.980   0.990 |  97.2%   0.5%   3.2%   1.3% | 0.65
+    3560     44     2693      867 |   0.175   0.997   0.980   0.990 |  97.2%   0.5%   3.2%   1.3% | 0.65
+    3560     44     2693      867 |   0.175   0.997   0.980   0.990 |  97.2%   0.5%   3.2%   1.3% | 0.65
+    3560     44     2693      867 |   0.175   0.997   0.980   0.990 |  97.2%   0.5%   3.2%   1.3% | 0.65
+    3560     44     2693      867 |   0.175   0.997   0.980   0.990 |  97.2%   0.5%   3.2%   1.3% | 0.65
+    3560     44     2693      867 |   0.175   0.997   0.980   0.990 |  97.2%   0.5%   3.2%   1.3% | 0.65
+
+== one family: chosen on system, R 0.15, C 2 ==
+native B  words    net B    cv8 B |   forth  system   rill3   shell |   covF   covS   covR  covSh | crossings per 1000 dispatches (shell)
+     774      6      538      236 |   1.000   0.747   1.000   1.000 |   0.0%  32.1%   0.0%   0.0% | 0.00
+    1983     11     1559      424 |   1.000   0.516   1.000   1.000 |   0.0%  57.9%   0.0%   0.0% | 0.00
+    4047     22     3248      799 |   1.000   0.313   1.000   1.000 |   0.0%  82.2%   0.0%   0.0% | 0.00
+    7910     56     6181     1729 |   1.000   0.214   1.000   1.000 |   0.0%  93.6%   0.1%   0.0% | 0.00
+   16362    155    12505     3857 |   1.000   0.207   0.999   0.990 |   0.0%  94.3%   0.1%   1.3% | 0.62
+   20753    198    16333     4420 |   0.956   0.206   0.979   0.990 |   9.1%  94.4%   3.3%   1.3% | 0.67
+   20753    198    16333     4420 |   0.956   0.206   0.979   0.990 |   9.1%  94.4%   3.3%   1.3% | 0.67
+   20753    198    16333     4420 |   0.956   0.206   0.979   0.990 |   9.1%  94.4%   3.3%   1.3% | 0.67
+   20753    198    16333     4420 |   0.956   0.206   0.979   0.990 |   9.1%  94.4%   3.3%   1.3% | 0.67
+
+== one family: chosen on rill3, R 0.15, C 2 ==
+native B  words    net B    cv8 B |   forth  system   rill3   shell |   covF   covS   covR  covSh | crossings per 1000 dispatches (shell)
+     823      8      658      165 |   0.977   1.000   0.747   1.000 |   3.6%   0.0%  38.2%   0.0% | 0.00
+    1984     15     1607      377 |   0.977   1.000   0.582   1.000 |   3.6%   0.0%  60.4%   0.0% | 0.00
+    4029     26     3135      894 |   0.977   1.000   0.439   1.000 |   3.6%   0.0%  75.7%   0.0% | 0.00
+    7988     56     5972     2016 |   0.970   0.999   0.348   1.000 |   5.2%   0.1%  85.5%   0.0% | 0.00
+   15393    112    11806     3587 |   0.970   0.996   0.340   0.997 |   5.2%   0.6%  86.4%   0.5% | 0.86
+   32677    181    24616     8061 |   0.970   0.680   0.339   0.997 |   5.2%  39.6%  86.4%   0.6% | 0.85
+   65265    296    48453    16812 |   0.970   0.537   0.339   0.997 |   5.2%  56.4%  86.5%   0.6% | 0.99
+   80553    348    60255    20298 |   0.970   0.506   0.339   0.997 |   5.2%  61.0%  86.5%   0.6% | 0.99
+   80553    348    60255    20298 |   0.970   0.506   0.339   0.997 |   5.2%  61.0%  86.5%   0.6% | 0.99
+
+== one family: chosen on shell, R 0.15, C 2 ==
+native B  words    net B    cv8 B |   forth  system   rill3   shell |   covF   covS   covR  covSh | crossings per 1000 dispatches (shell)
+     912     10      744      168 |   1.000   1.000   1.000   0.926 |   0.0%   0.0%   0.0%  11.9% | 13.80
+    1689     15     1332      357 |   1.000   1.000   1.000   0.884 |   0.0%   0.0%   0.0%  17.7% | 17.47
+    4042     27     3171      871 |   1.000   1.000   1.000   0.776 |   0.0%   0.0%   0.0%  31.6% | 22.59
+    7627     41     6012     1615 |   1.000   1.000   1.000   0.673 |   0.0%   0.0%   0.0%  43.5% | 21.21
+   16083     70    12678     3405 |   1.000   0.999   1.000   0.504 |   0.0%   0.1%   0.0%  62.4% | 17.38
+   32541    106    25462     7079 |   1.000   0.999   1.000   0.314 |   0.0%   0.1%   0.0%  83.1% | 10.14
+   64910    186    51113    13797 |   1.000   0.999   1.000   0.218 |   0.1%   0.2%   0.1%  93.5% | 6.35
+  109121    305    85577    23544 |   1.000   0.967   1.000   0.211 |   0.1%   4.9%   0.1%  94.2% | 6.05
+  109121    305    85577    23544 |   1.000   0.967   1.000   0.211 |   0.1%   4.9%   0.1%  94.2% | 6.05
+
+== the generic set, R 0.15 C 2, in the order chosen (first 120) ==
+   1 LOOPSUM                      native    30  cv8    10  cumulative native      30  est
+   2 FIB                          native    69  cv8    23  cumulative native      99  est
+   3 INNER                        native    39  cv8    13  cumulative native     138  est
+   4 -ack                         native    96  cv8    32  cumulative native     234  est
+   5 LS@                          native    28  cv8     8  cumulative native     262 
+   6 CSTEPS                       native    84  cv8    28  cumulative native     346  est
+   7 PRIMES                       native   156  cv8    52  cumulative native     502  est
+   8 2/                           native    93  cv8    12  cumulative native     595 
+   9 PP!                          native    15  cv8     5  cumulative native     610  est
+  10 2@                           native    27  cv8     4  cumulative native     637 
+  11 BUBBLE                       native   123  cv8    41  cumulative native     760  est
+  12 NO-PEEP                      native     1  cv8    20  cumulative native     761 
+  13 PP@                          native    15  cv8     5  cumulative native     776  est
+  14 D-KIND                       native    58  cv8    12  cumulative native     834 
+  15 BOTH#                        native    32  cv8     4  cumulative native     866 
+  16 D+#1                         native   197  cv8    33  cumulative native    1063 
+  17 PREV-NFA                     native   299  cv8    59  cumulative native    1362 
+  18 SEARCH-NAMEBUF               native   300  cv8    63  cumulative native    1662 
+  19 NAME>                        native     5  cv8     1  cumulative native    1667 
+  20 REV                          native   138  cv8    46  cumulative native    1805  est
+  21 2!                           native    56  cv8     5  cumulative native    1861 
+  22 LS!                          native    39  cv8     8  cumulative native    1900 
+  23 XF@                          native    30  cv8     6  cumulative native    1930 
+  24 D-LIST                       native   119  cv8    38  cumulative native    2049 
+  25 READ-SOME                    native   122  cv8    19  cumulative native    2171 
+  26 C-FOR-PLAIN                  native   257  cv8    50  cumulative native    2428 
+  27 CALL,                        native    47  cv8    74  cumulative native    2475 
+  28 ACCEPT                       native   405  cv8    61  cumulative native    2880 
+  29 KEY                          native   265  cv8    40  cumulative native    3145 
+  30 P1@                          native    15  cv8     5  cumulative native    3160  est
+  31 FLIPS                        native    78  cv8    26  cumulative native    3238  est
+  32 CMOVE                        native   169  cv8    26  cumulative native    3407 
+  33 NAME=?                       native   188  cv8    27  cumulative native    3595 
+  34 DIGITS#                      native   276  cv8    42  cumulative native    3871 
+  35 NAME-BYTES                   native   182  cv8    34  cumulative native    4053 
+  36 R-PUSH                       native   174  cv8    24  cumulative native    4227 
+  37 XV@                          native    33  cv8     7  cumulative native    4260 
+  38 N-TYPE                       native   280  cv8    59  cumulative native    4540 
+  39 D*                           native   150  cv8    31  cumulative native    4690 
+  40 SMALL?                       native    58  cv8    20  cumulative native    4748 
+  41 R-UNBOX                      native    30  cv8     4  cumulative native    4778 
+  42 R-TURN                       native   193  cv8    32  cumulative native    4971 
+  43 R-GC?                        native   116  cv8    22  cumulative native    5087 
+  44 FIND                         native   315  cv8    59  cumulative native    5402 
+  45 ARG@                         native   301  cv8    80  cumulative native    5703 
+  46 PARSE                        native   173  cv8    30  cumulative native    5876 
+  47 SOURCE                       native    31  cv8     6  cumulative native    5907 
+  48 WORD                         native   193  cv8    39  cumulative native    6100 
+  49 HERE                         native    16  cv8     4  cumulative native    6116 
+  50 PLACE                        native    47  cv8     8  cumulative native    6163 
+  51 CHAR+                        native     5  cv8     1  cumulative native    6168 
+  52 HASH                         native   187  cv8    28  cumulative native    6355 
+  53 PK-CHAR                      native   369  cv8    75  cumulative native    6724 
+  54 NAME>BUF                     native   502  cv8    87  cumulative native    7226 
+  55 SAFE-COPY-NUL                native   195  cv8    23  cumulative native    7421 
+  56 STR0=                        native    18  cv8     6  cumulative native    7439 
+  57 FIND-EQ-OR-END               native    89  cv8    13  cumulative native    7528 
+  58 STOP?                        native    35  cv8    13  cumulative native    7563 
+  59 R-ALLOT                      native   129  cv8    25  cumulative native    7692 
+  60 R-BOX                        native    92  cv8    12  cumulative native    7784 
+  61 D-BOXED                      native    52  cv8    11  cumulative native    7836 
+  62 ASSIGN-WORD?                 native    60  cv8    21  cumulative native    7896 
+  63 ASSIGNMENT-EQPOS             native   178  cv8    26  cumulative native    8074 
+  64 TEST-ARGN                    native    14  cv8     9  cumulative native    8088 
+  65 D-BOOL                       native    42  cv8    13  cumulative native    8130 
+  66 D<                           native    15  cv8     8  cumulative native    8145 
+  67 PK-BYTE                      native   226  cv8    38  cumulative native    8371 
+  68 VALID-NAME?                  native   260  cv8    44  cumulative native    8631 
+  69 XE-MARK-DASH                 native   235  cv8    48  cumulative native    8866 
+  70 SKIP                         native   231  cv8    25  cumulative native    9097 
+  71 P1!                          native    15  cv8     5  cumulative native    9112  est
+  72 SHVAR-NAME-SLOT              native    30  cv8     8  cumulative native    9142 
+  73 PREFIX-COUNT                 native   159  cv8    26  cumulative native    9301 
+  74 D-TRUE?                      native   335  cv8    46  cumulative native    9636 
+  75 D-COND                       native   388  cv8   201  cumulative native   10024 
+  76 EXEC-IMPL                    native   307  cv8    97  cumulative native   10331 
+  77 NEXTPERM                     native   177  cv8    59  cumulative native   10508  est
+  78 INTERPRET                    native   300  cv8    91  cumulative native   10808 
+  79 ?STACK                       native    68  cv8    26  cumulative native   10876 
+  80 DEPTH                        native    73  cv8    10  cumulative native   10949 
+  81 NAME-CHAR?                   native    46  cv8    10  cumulative native   10995 
+  82 +                            native    11  cv8     2  cumulative native   11006 
+  83 ARGV-ADD                     native   807  cv8   182  cumulative native   11813 
+  84 ROOM-FOR-ARG?                native    53  cv8    16  cumulative native   11866 
+  85 ADD-WORD                     native   372  cv8    64  cumulative native   12238 
+  86 NAME-HASH                    native   216  cv8    48  cumulative native   12454 
+  87 D-CMP                        native   443  cv8    78  cumulative native   12897 
+  88 XE-MARK-CHAR                 native   229  cv8    48  cumulative native   13126 
+  89 XE-MARK-PATTERNS             native   209  cv8    60  cumulative native   13335 
+  90 WS?                          native    58  cv8     7  cumulative native   13393 
+  91 AE-SKIP-WS                   native   160  cv8    30  cumulative native   13553 
+  92 TRIM-NLS                     native   132  cv8    21  cumulative native   13685 
+  93 FIND-SHVAR-SCAN              native    38  cv8    10  cumulative native   13723 
+  94 D-ARITH                      native   160  cv8    48  cumulative native   13883 
+  95 D-ITEM                       native   115  cv8    26  cumulative native   13998 
+  96 EW-NASSIGN                   native   118  cv8    22  cumulative native   14116 
+  97 SHVAR-VALUE-SLOT             native    56  cv8    13  cumulative native   14172 
+  98 GET-SHVAR                    native    37  cv8    14  cumulative native   14209 
+  99 GROW-ARGS                    native   244  cv8    54  cumulative native   14453 
+ 100 WITHIN                       native    54  cv8     6  cumulative native   14507 
+ 101 OUT-TYPE                     native    43  cv8    14  cumulative native   14550 
+ 102 FIND-SHVAR                   native   421  cv8    87  cumulative native   14971 
+ 103 CSTR=                        native    44  cv8     8  cumulative native   15015 
+ 104 EXEC-SIMPLE                  native   745  cv8   126  cumulative native   15760 
+ 105 CO?                          native   132  cv8    25  cumulative native   15892 
+ 106 R-ANY>NUM                    native   110  cv8    16  cumulative native   16002 
+ 107 R-ARITH-AA                   native    48  cv8    14  cumulative native   16050 
+ 108 CT+                          native   256  cv8    61  cumulative native   16306 
+ 109 D>N                          native    46  cv8    15  cumulative native   16352 
+ 110 STRDUP#1                     native    78  cv8    35  cumulative native   16430 
+ 111 EXIT,                        native    18  cv8    25  cumulative native   16448 
+ 112 N>ITEM-D                     native    93  cv8    21  cumulative native   16541 
+ 113 D-NUMERIC                    native   181  cv8    46  cumulative native   16722 
+ 114 R-T@                         native    27  cv8     4  cumulative native   16749 
+ 115 D-TEXT                       native    61  cv8    23  cumulative native   16810 
+ 116 EW-EWA                       native   151  cv8    47  cumulative native   16961 
+ 117 R-TEXT                       native    94  cv8    14  cumulative native   17055 
+ 118 CAPTURE-TEXT-P               native   230  cv8    57  cumulative native   17285 
+ 119 XE-LIT-RUN                   native   595  cv8   121  cumulative native   17880 
+ 120 >NUMBER                      native   279  cv8    46  cumulative native   18159 
+
+words that reach their caller's frame (an R> or R@ on some path with nothing of their own pushed), kept CV8, never chosen - 10 run here, by share: DEFER 0.78, (ABORT") 0.42, (S") 0.33, (DO) 0.32, R-ADD 0.08, (.") 0.03, UNLOOP 0.01, C-FOR 0.00, (POSTPONE) 0.00, (;CODE) 0.00
