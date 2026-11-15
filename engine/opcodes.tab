@@ -73,6 +73,22 @@ super     0x34    AND?BRANCH  L_andbr         b16
 super     0x35    <?BRANCH    L_ltbr          b16
 super     0x36    U<?BRANCH   L_ultbr         b16
 super     0x37    EQI?BRANCH  L_eqibr         i8b16
+# Iteration 946: three more of IF's and WHILE's tests - > and = as the
+# comparisons are, and DUP as `DUP IF`, the value kept - and (LOOP) with
+# LOOP's branch back, when that reaches in a byte. Chosen by
+# tools/pair-corpus.py over four families of work - Forth programs, the
+# Forth system, rill3, the shell - each family weighed alike, so no one
+# program chose them.
+super     0x38    >?BRANCH    L_gtbr          b16
+super     0x39    =?BRANCH    L_eqbr          b16
+super     0x3A    DUP?BRANCH  L_dupbr         b16
+super     0x3B    (LOOP)BRANCH8 L_loopb8      b8
+# Two plain operations in one (946): cross.4's PAIR-OPS-T has each as
+# FIRST SECOND FUSED, and --check holds the fused row's name to the two
+# names it joins.
+pair      0x3C    CELLS+      L_cellsplus     -
+pair      0x3D    CELL+@      L_cellpfetch    -
+pair      0x3E    DUPC@       L_dupcfetch     -
 branch8   0x3F    BRANCH8     L_branch8       b8
 branch8   0x40    ?BRANCH8    L_0branch8      b8
 tiny      0x41    +!          L_plusstore     -
@@ -127,11 +143,14 @@ tiny      0x6D    0<          L_zlt           -
 tiny      0x6E    >           L_sgt           -
 tiny      0x6F    2DUP        L_2dup          -
 tiny      0x70    2DROP       L_2drop         -
+pair      0x71    DUP1-       L_dup1m         -
 tiny      0x72    1+          L_onep          -
 tiny      0x73    CELL+       L_cellp         -
 tiny      0x74    CELLS       L_cells         -
 tiny      0x75    1-          L_onem          -
+pair      0x76    OVER+       L_overplus      -
 tiny      0x77    COUNT       L_count         -
+pair      0x78    DUP>R       L_duptor        -
 spec      0x79    ADDI        L_addi          i8
 spec      0x7B    EQI         L_eqi           i8
 lit64     0x7D    LIT64       L_lit64         u64

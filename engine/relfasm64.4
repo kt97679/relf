@@ -36,6 +36,8 @@ LABEL LX_plusstore LABEL LX_lit0 LABEL LX_lit1 LABEL LX_litm1 LABEL LX_vs LABEL 
 LABEL LX_sub LABEL LX_2drop LABEL LX_onep LABEL LX_onem
 LABEL L_vfplus LABEL L_vflt LABEL L_vfcfetch LABEL L_vfonep LABEL L_vfzeq LABEL L_vfswap
 LABEL L_2vf LABEL L_zeqbr LABEL L_andbr LABEL L_ltbr LABEL L_ultbr LABEL L_eqibr
+LABEL L_gtbr LABEL L_eqbr LABEL L_dupbr LABEL L_loopb8
+LABEL L_cellsplus LABEL L_cellpfetch LABEL L_dupcfetch LABEL L_dup1m LABEL L_overplus LABEL L_duptor
 LABEL bad_hdr LABEL bad_magic LABEL bad_version LABEL copy40 LABEL die LABEL dispatch256
 LABEL do_call LABEL ehdr LABEL env_badname LABEL env_find LABEL env_init LABEL esc_tab
 LABEL file_end LABEL free_block LABEL heap_init LABEL locals_failed LABEL m_argv0 LABEL m_badesc
@@ -90,7 +92,7 @@ MEMSIZE RSTACK_BYTES - DSTACK_BYTES - CONSTANT DGUARD
 MEMSIZE RSTACK_BYTES - PAGE - CONSTANT RGUARD
 8 CONSTANT CELL
 4096 CONSTANT LSAVE_MAX
-12 CONSTANT CV8_VERSION                 \ 11 since 939: the folded returns; 12 since 940: supers
+13 CONSTANT CV8_VERSION                 \ 11 since 939: the folded returns; 12 since 940: supers; 13 since 946
 15 CONSTANT FEATURES                     \ varcall varslot spec lit64
 
 0 CONSTANT SYS_read
@@ -1027,6 +1029,66 @@ r14 2 # add,
 NEXT,
 1 L:  rax [ r14 ] word-ptr movsx,
 r14 rax add,
+NEXT,
+\ Iteration 946, as cv8.c's: > and = as the comparisons above; DUP as
+\ `DUP IF`, the top kept; (LOOP) and LOOP's branch back in a byte; six
+\ plain pairs.
+L_gtbr L:  rax [ r13 ] mov,
+rcx r12 mov,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+rax rcx cmp,
+1 F jle,
+r14 2 # add,
+NEXT,
+1 L:  rax [ r14 ] word-ptr movsx,
+r14 rax add,
+NEXT,
+L_eqbr L:  rax [ r13 ] mov,
+rcx r12 mov,
+r12 [ r13 CELL ] mov,
+r13 2 CELL * # add,
+rax rcx cmp,
+1 F jne,
+r14 2 # add,
+NEXT,
+1 L:  rax [ r14 ] word-ptr movsx,
+r14 rax add,
+NEXT,
+L_dupbr L:  r12 r12 test,                \ DUP ?BRANCH: the top tested, and kept
+1 F jz,
+r14 2 # add,
+NEXT,
+1 L:  rax [ r14 ] word-ptr movsx,
+r14 rax add,
+NEXT,
+L_loopb8 L:  rax [ r15 ] mov,            \ (LOOP) BRANCH8: at the limit both
+rax inc,                                 \ dropped and the offset stepped
+rax [ r15 CELL ] cmp,                    \ over, else the branch back
+1 F je,
+[ r15 ] rax mov,
+rax [ r14 ] byte-ptr movsx,
+r14 rax add,
+NEXT,
+1 L:  r15 2 CELL * # add,
+r14 inc,
+NEXT,
+L_cellsplus L:  r12 3 # shl,             \ CELLS +
+r12 [ r13 ] add,
+r13 CELL # add,
+NEXT,
+L_dupcfetch L:  eax [ r12 ] byte-ptr movzx,   \ DUP C@
+rax PUSHT,
+NEXT,
+L_cellpfetch L:  r12 [ r12 CELL ] mov,   \ CELL+ @
+NEXT,
+L_dup1m L:  rax r12 mov,                 \ DUP 1-
+rax dec,
+rax PUSHT,
+NEXT,
+L_overplus L:  r12 [ r13 ] add,          \ OVER +
+NEXT,
+L_duptor L:  r12 RPUSH,                  \ DUP >R
 NEXT,
 L_lit64 L:  rax [ r14 ] mov,
 r14 CELL # add,

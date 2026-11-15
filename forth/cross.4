@@ -109,10 +109,21 @@ CREATE VARX-OPS-T
 ALIGN
 50 CONSTANT 2VAR@-OP
 51 CONSTANT BRX-BASE
-5 CONSTANT #BRX
+8 CONSTANT #BRX
 CREATE BRX-OPS-T
-  106 C, 14 C, 22 C, 21 C, 123 C,
+  106 C, 14 C, 22 C, 21 C, 123 C, 110 C, 20 C, 6 C,
 ALIGN
+\ (946) > = DUP join them, `DUP IF` keeping the top. And two plain
+\ operations in one, as FIRST SECOND FUSED: CELLS +, CELL+ @, DUP C@,
+\ DUP 1-, OVER +, DUP >R - opcodes.tab's pair rows, which --check holds
+\ these triples to; (LOOP) and LOOP's branch back, where that reaches in
+\ a byte, are LOOPB8-OP.
+6 CONSTANT #PAIR
+CREATE PAIR-OPS-T
+  116 C, 23 C, 60 C,  115 C, 11 C, 61 C,  6 C, 10 C, 62 C,
+  6 C, 117 C, 113 C,  9 C, 23 C, 118 C,  6 C, 18 C, 120 C,
+ALIGN
+59 CONSTANT LOOPB8-OP
 
 : OP-POS-T ( op a n --- k -1 | op 0 )   \ op's place among the n bytes at a
   0 DO  OVER OVER I + C@ = IF 2DROP I -1 UNLOOP EXIT THEN  LOOP DROP 0 ;
@@ -244,6 +255,13 @@ NO-PEEP-T
     DUP C@-T BRX-OPS-T #BRX OP-POS-T IF BRX-BASE + SWAP C!-T NO-PEEP-T EXIT THEN 2DROP
   THEN NO-PEEP-T 0BRANCH-OP C,-T ;
 
+: PEEP-PAIR-T ( op --- f )   \ kernel.4's PEEP-PAIR (946)
+  LAST-OP-T @ 0= IF DROP 0 EXIT THEN
+  LAST-OP-T @ C@-T  #PAIR 0 DO
+    OVER PAIR-OPS-T I 3 * + 1+ C@ =  OVER PAIR-OPS-T I 3 * + C@ = AND IF
+      2DROP PAIR-OPS-T I 3 * + 2 + C@ LAST-OP-T @ C!-T -1 UNLOOP EXIT THEN
+  LOOP 2DROP 0 ;
+
 : PRIM,-T ( idx --- )
 \ Compile primitive number idx into the current target definition.
   DUP DIRECT? 0= IF NO-PEEP-T ESC-OP C,-T #DIRECT @ - C,-T EXIT THEN
@@ -251,6 +269,7 @@ NO-PEEP-T
   DUP PEEP-VARX-T IF DROP EXIT THEN          \ VAR@ and it, one opcode (940)
   DUP PEEP-IMM-T IF DROP EXIT THEN
   DUP PEEP-VAR-T IF DROP EXIT THEN
+  DUP PEEP-PAIR-T IF DROP EXIT THEN         \ two plain operations, one opcode (946)
   NO-PEEP-T THERE LAST-OP-T ! C,-T ;
 
 \ ---- branches -------------------------------------------------------
@@ -298,7 +317,7 @@ VARIABLE IMAGE-FID
   48 IMAGE-HDR 3 + C!                                     \ call scale 0
   TARGET-CELL-BYTES @ IMAGE-HDR 4 + C!
   76 IMAGE-HDR 5 + C!         \ 'L': specialised opcodes
-  12 IMAGE-HDR 6 + C!         \ format version (12 since Iteration 940)
+  13 IMAGE-HDR 6 + C!         \ format version (13 since Iteration 946)
   15 IMAGE-HDR 7 + C!         \ varcall | varslot | spec | lit64
   IMAGE-HDR 8 IMAGE-FID @ WRITE-FILE ABORT" Can't write file"
   #TTHREADS HDR,
@@ -360,6 +379,7 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
   S" -" TNAME= IF DUP MINUS-IDX ! THEN  DROP
   DOES> CELL+ @ DUP PEEP-VARX-T IF DROP EXIT THEN
         DUP PEEP-IMM-T IF DROP EXIT THEN
+        DUP PEEP-PAIR-T IF DROP EXIT THEN
         NO-PEEP-T THERE LAST-OP-T ! C,-T ;
 
 \ Literals kernel.4's compiler needs, compiled into its definitions.
@@ -382,6 +402,9 @@ ONLY FORTH ALSO TRANSIENT DEFINITIONS FORTH
 : FOLD-TABLE ( --- )  FOLD-OPS-T #FOLD TABLE-T ;
 : VARX-TABLE ( --- )  VARX-OPS-T #VARX TABLE-T ;
 : BRX-TABLE ( --- )   BRX-OPS-T #BRX TABLE-T ;
+: #PAIR-TOK  #PAIR LITERAL-T ;
+: LOOPB8-TOK LOOPB8-OP LITERAL-T ;
+: PAIR-TABLE ( --- )  PAIR-OPS-T #PAIR 3 * TABLE-T ;
 : BRANCH8-TOK BRANCH8-OP LITERAL-T ;
 : 0BRANCH8-TOK 0BRANCH8-OP LITERAL-T ;
 : [OP] ( "name" --- )
@@ -469,7 +492,11 @@ FORWARD (POSTPONE)
 \ compile action emits it. It was a FORWARD reference, which PART 10
 \ resolves into a CALL - and a called (LOOP) finds the return address
 \ where the loop counter belongs (the failure of 529).
-: LOOP NO-PEEP-T THERE LAST-OP-T ! LOOP-OP C,-T BRANCH-OP BRANCH8-OP BACK-T ;
+\ (946) (LOOP) and the branch back are one opcode, LOOPB8-OP, when the
+\ branch reaches in a byte; else (LOOP), then BRANCH and two bytes.
+: LOOP NO-PEEP-T  THERE 1+ -  DUP -128 < IF
+    LOOP-OP C,-T BRANCH-OP C,-T 1- W,-T
+  ELSE LOOPB8-OP C,-T C,-T THEN NO-PEEP-T ;
 : ." [ TRANSIENT ] (.") [ FORTH ] 34 WORD COUNT DUP 1+ >R
       THERE PLACE-T R> ALLOT-T NO-PEEP-T ;
 : POSTPONE [ TRANSIENT ] (POSTPONE) [ FORTH ] T' OPERAND3-T NO-PEEP-T ;

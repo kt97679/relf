@@ -1,6 +1,6 @@
 # relfsh: a POSIX shell written in Forth, on a Forth that assembles its own engine
 
-relfsh is a POSIX shell written in Forth: on x86-64, one static file of 144,250 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth.
+relfsh is a POSIX shell written in Forth: on x86-64, one static file of 144,006 bytes that takes about 210 kB of memory at rest, and that you can extend from the inside, in Forth, while it runs. Underneath is a small Forth that compiles itself, and whose x86-64 engine is assembled from Forth source by an assembler written in Forth.
 
 ## Why
 
@@ -59,7 +59,7 @@ Beyond people who like Forth, I see three uses. Minimal environments: on x86-64,
 | the Forth: kernel, compiler, extensions        |
 |   kernel.4  extend.4  ...          (Forth)     |
 +------------------------------------------------+
-| the engine: 17,912 bytes of x86-64, no libc    |
+| the engine: 18,272 bytes of x86-64, no libc    |
 |   or a C engine, anywhere a C compiler is      |
 +------------------------------------------------+
 ```
@@ -68,7 +68,7 @@ The shell and the Forth are one byte-coded image; an engine runs it. There are t
 
 ## The Forth underneath
 
-- **Token-threaded.** 99 one-byte opcodes - 23 of them an operation with the return after it folded in, 12 two operations in one - and further primitives as two-byte tokens, an escape byte followed by a selector. Colon definitions are called by their offset from the start of the image—the "Relative" in RelF—so an image runs wherever it is loaded. A call to a word in the image's first 16 KB takes two bytes, from anywhere; any other takes three and reaches 4 MB, which is why an image lives in a 4 MB region. The kernel is the image's first 9,544 bytes, so every call into it is two bytes.
+- **Token-threaded.** 109 one-byte opcodes - 23 of them an operation with the return after it folded in, 22 two operations in one - and further primitives as two-byte tokens, an escape byte followed by a selector. Colon definitions are called by their offset from the start of the image—the "Relative" in RelF—so an image runs wherever it is loaded. A call to a word in the image's first 16 KB takes two bytes, from anywhere; any other takes three and reaches 4 MB, which is why an image lives in a 4 MB region. The kernel is the image's first 9,544 bytes, so every call into it is two bytes.
 - **One image per cell width.** 8-byte cells or 4-byte, little-endian; one image runs on every supported machine of its width.
 - **It compiles itself.** `cross.4`, running on the previous kernel image, compiles `kernel.4` into the next one—and it comes out byte for byte the same. Self-compilation alone guarantees little, though. In "Reflections on Trusting Trust", Ken Thompson showed that a compiler can be taught to plant a backdoor in the programs it compiles, new versions of itself included; the backdoor then survives any reading of the source—the source is clean, the binary is not. The defence is [diverse double-compiling](https://arxiv.org/abs/1004.5534): compile the same source with a different, independent compiler and compare the results. David A. Wheeler formalised it; the idea goes back to Henry Spencer. Here gforth 0.7.3 plays the independent compiler: running the same cross-compiler, it produces the same bytes. So the kernel holds nothing beyond what its source says, unless gforth itself carries the same backdoor. The rest of the image and the assembly engine are built by RelF itself, and the C engine by a C compiler, so the check covers the kernel only.
 - **What it claims.** It passes the CORE tests—John Hayes' suite ([tests/tester.fr](https://github.com/kt97679/relf/blob/article-2026/tests/tester.fr)), with additions from the Forth 2012 test suite: 2,136 checks—on both engines and both cell widths. Beyond CORE it has what the shell needed, and the missing words can be defined with the `forth` builtin.
@@ -187,4 +187,4 @@ make relfsh && ./relfsh             # other CPUs: the C engine
 
 The `article-2026` branch is the version this article describes, and it receives only fixes; `master` goes on. `make test` runs the main tests—CORE and the shell suite at both cell widths, and the comparison with bash—and `make verify` runs every suite, the assembly engine's included, and checks the results against `tests/BASELINE`. Like a plain `make`, both also build the 4-byte-cell engine, which on x86-64 Debian or Ubuntu needs gcc-multilib. The [README](https://github.com/kt97679/relf/blob/article-2026/README.md) has the full build details.
 
-GPL version 2. Questions I would like answered by people who know Forth better than I do: RelF's one-byte opcodes are single primitives, 23 folded returns and 12 superinstructions, chosen by how often they execute on real workloads—the way Gforth picks its superinstructions and Proebsting his superoperators; RelF had superinstructions once, dropped them for simplicity, and took the hottest pairs back. Is there a better criterion for a shell, whose time goes to processes and system calls as much as to Forth? And what would you build with a shell you can extend in Forth?
+GPL version 2. Questions I would like answered by people who know Forth better than I do: RelF's one-byte opcodes are single primitives, 23 folded returns and 22 superinstructions, chosen by how often they execute on real workloads—the way Gforth picks its superinstructions and Proebsting his superoperators; RelF had superinstructions once, dropped them for simplicity, and took the hottest pairs back. Is there a better criterion for a shell, whose time goes to processes and system calls as much as to Forth? And what would you build with a shell you can extend in Forth?

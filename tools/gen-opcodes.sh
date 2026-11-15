@@ -170,6 +170,33 @@ family fold ';EXIT$' FOLD-OPS-T FOLD-BASE '#FOLD'
 family super '^VAR@' VARX-OPS-T VARX-BASE '#VARX'
 family super '[?]BRANCH$' BRX-OPS-T BRX-BASE '#BRX'
 
+# the pairs (Iteration 946): cross.4's PAIR-OPS-T is FIRST SECOND FUSED by
+# number, #PAIR of them; each FUSED is a pair row, whose name is FIRST's and
+# SECOND's joined, and every pair row is one of them
+pt=$(awk '$1 == "CREATE" && $2 == "PAIR-OPS-T" { f = 1; next } f && /C,/ { for (i = 1; i <= NF; i++) if ($(i + 1) == "C,") printf "%s ", $i; next } f { exit }' "$dir/forth/cross.4")
+awk -v pt="$pt" '
+function num(s,   v, i) {
+    if (s !~ /^0[xX]/) return s + 0
+    v = 0; s = tolower(substr(s, 3))
+    for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1
+    return v
+}
+BEGIN { np = 0 }
+/^#/ || NF == 0 { next }
+$1 != "escaped" { nm[num($2)] = $3 }
+$1 == "pair" { want[num($2)] = $3; np++ }
+END {
+    n = split(pt, p, " ")
+    if (n != 3 * np) { printf "gen-opcodes: forth/cross.4'"'"'s PAIR-OPS-T has %d numbers; opcodes.tab has %d pair rows\n", n, np; bad = 1 }
+    for (i = 1; i + 2 <= n; i += 3) {
+        if (!(p[i + 2] in want)) { printf "gen-opcodes: PAIR-OPS-T fuses %s and %s into %d, not a pair row\n", nm[p[i]], nm[p[i + 1]], p[i + 2]; bad = 1; continue }
+        if (nm[p[i]] nm[p[i + 1]] != want[p[i + 2]]) { printf "gen-opcodes: PAIR-OPS-T fuses %s and %s into %s\n", nm[p[i]], nm[p[i + 1]], want[p[i + 2]]; bad = 1 }
+    }
+    exit bad
+}' "$tab" >&2 || problems=$((problems + 1))
+np=$(awk '$1 == "pair" { n++ } END { print n + 0 }' "$tab")
+grep -q "^$np CONSTANT #PAIR\$" "$dir/forth/cross.4" || bad "forth/cross.4's #PAIR is not $np, opcodes.tab's pair rows"
+
 # kernel.4's primitives, in order
 awk '/^#/ || NF == 0 { next } $1 == "direct" || $1 == "escaped" { print $3 }' "$tab" > /tmp/gen-opcodes.tab.$$
 awk '/^ESCAPED/ { next } /^PRIMITIVE[ \t]/ { print $2 }' "$dir/forth/kernel.4" > /tmp/gen-opcodes.k4.$$

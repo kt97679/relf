@@ -298,7 +298,10 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  BITMAP, so an engine can tell what an image needs instead of the
  *  widths being implied by the magic string. Widening a field in future
  *  sets a bit here rather than breaking the format.  */
-/*  Version 12 (Iteration 940): twelve superinstructions at 0x2C-0x37 -
+/*  Version 13 (Iteration 946): ten more - >?BRANCH =?BRANCH DUP?BRANCH at
+ *  0x38-0x3A, (LOOP)BRANCH8 at 0x3B, and the pairs CELLS+ CELL+@ DUPC@
+ *  DUP1- OVER+ DUP>R at 0x3C-0x3E, 0x71, 0x76, 0x78.
+ *  Version 12 (Iteration 940): twelve superinstructions at 0x2C-0x37 -
  *  VAR@ and the operation after it, VAR@ VAR@, compare-and-branch.
  *  Version 11 (Iteration 939): the folded returns again - 23 "then EXIT"
  *  forms at 0x48-0x5E, chosen by relf's own counts; an image with one
@@ -328,7 +331,7 @@ static UNS64 g_dsp_limit, g_rp_limit;
  *  NDIRECT rather than from the total primitive count, so the same
  *  byte means something else in a version-2 image - measured, each way
  *  round it ran and crashed. */
-#define CV8_VERSION 12
+#define CV8_VERSION 13
 #define F_VARCALL 0x01   /* calls are 2 or 3 bytes                      */
 #define F_VARSLOT 0x02   /* slot operands are 2 or 3 bytes              */
 #define F_SPEC    0x04   /* specialised opcodes present                 */
@@ -1020,6 +1023,25 @@ L_ltbr:   t = (INT64)NOS < (INT64)tos; POPT(); POPT(); if (t) ip += 2; else ip +
 L_ultbr:  t = NOS < tos; POPT(); POPT(); if (t) ip += 2; else ip += BROFF(ip); NEXT();
 L_eqibr:  t = tos == (UNS64)(INT64)(int8_t)BYTE(ip); ip += 1; POPT();
           if (t) ip += 2; else ip += BROFF(ip); NEXT();
+/*  Iteration 946: > and = as the comparisons above; DUP as `DUP IF`, the
+ *  top kept; (LOOP) and LOOP's branch back in a byte; and six plain pairs.
+ *  Chosen over Forth programs, the Forth system, rill3 and the shell, each
+ *  family weighed alike (tools/pair-corpus.py).  */
+L_gtbr:   t = (INT64)NOS > (INT64)tos; POPT(); POPT(); if (t) ip += 2; else ip += BROFF(ip); NEXT();
+L_eqbr:   t = NOS == tos; POPT(); POPT(); if (t) ip += 2; else ip += BROFF(ip); NEXT();
+L_dupbr:  if (tos) ip += 2; else ip += BROFF(ip); NEXT();
+L_loopb8: {   /* (LOOP) BRANCH8: at the limit both dropped and the offset stepped over */
+    UNS64 c = CELL(rp) + 1;
+    if (c == CELL(rp + CELL_BYTES)) { rp += 2 * CELL_BYTES; ip += 1; }
+    else { CELL(rp) = c; ip += (int8_t)BYTE(ip); }
+    NEXT();
+}
+L_cellsplus:  tos = NOS + (tos << CELL_SHIFT); dsp += CELL_BYTES; NEXT();   /* CELLS + */
+L_cellpfetch: tos = CELL(tos + CELL_BYTES); NEXT();                         /* CELL+ @ */
+L_dupcfetch:  PUSHT(BYTE(tos)); NEXT();                                     /* DUP C@  */
+L_dup1m:      PUSHT(tos - 1); NEXT();                                       /* DUP 1-  */
+L_overplus:   tos += NOS; NEXT();                                           /* OVER +  */
+L_duptor:     RPUSH(tos); NEXT();                                           /* DUP >R  */
 L_lit64: SPILL();   /* lit64: a full cell, little-endian. CELL_BYTES bytes.      */
     { UNS64 v = 0; int i_;
       for (i_ = CELL_BYTES - 1; i_ >= 0; i_--) v = (v << 8) | BYTE(ip + i_);

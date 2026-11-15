@@ -64,7 +64,7 @@ both cell widths since Iteration 244, so offsets are plain bytes.
 
 | range | meaning |
 |---|---|
-(The map as it is since Iteration 940; `engine/opcodes.tab` is its source.)
+(The map as it is since Iteration 946; `engine/opcodes.tab` is its source.)
 
 | range | meaning |
 |---|---|
@@ -75,16 +75,17 @@ both cell widths since Iteration 244, so offsets are plain bytes.
 | `0x1D` | `LIT8`: a 1-byte unsigned operand |
 | `0x1E`–`0x2B` | free: 14 opcodes, where the synthetic band moves when a primitive is made direct |
 | `0x2C`–`0x32` | **superinstructions** (Iteration 940): `VAR@` and the operation after it - `VAR@+ VAR@< VAR@C@ VAR@1+ VAR@0= VAR@SWAP`, a slot - and `2VAR@`, two slots |
-| `0x33`–`0x37` | **compare-and-branch** (940): `0= AND < U< EQI`, each with the `?BRANCH` after it - `IF`'s and `WHILE`'s - and its 16-bit offset (`EQI`'s byte before it) |
-| `0x38`–`0x3E` | free: 7 opcodes |
+| `0x33`–`0x3A` | **compare-and-branch** (940, 946): `0= AND < U< EQI > = DUP`, each with the `?BRANCH` after it - `IF`'s and `WHILE`'s - and its 16-bit offset (`EQI`'s byte before it); `DUP?BRANCH` keeps the top |
+| `0x3B` | `(LOOP)BRANCH8` (946): `(LOOP)` and `LOOP`'s branch back, when that reaches in a byte |
+| `0x3C`–`0x3E` | **pairs** (946): `CELLS+ CELL+@ DUPC@` - two plain operations in one, as `0x71` `DUP1-`, `0x76` `OVER+` and `0x78` `DUP>R` |
 | `0x3F` | `BRANCH8`: a 1-byte signed offset |
 | `0x40` | `?BRANCH8`: likewise |
 | `0x41`–`0x47` | tiny words: `+! ?DUP I (LOOP) (?DO) EXECUTE @XT` |
 | `0x48`–`0x5E` | 23 **folded returns**, an operation then `EXIT` in one opcode (Iteration 939): `DROP C@ @ C! ! AND OR XOR R> >R = U< + +! push0 push1 push-1 VAR! 0= - 2DROP 1+ 1-`, each `;EXIT` |
 | `0x5F`–`0x60` | free |
 | `0x61`–`0x69` | **specialised** opcodes (§6): `push0 push1 push-1 VAR@ VAR! LSAVE LRESTORE L! LZERO` |
-| `0x6A`–`0x77` | tiny words: `0= - <> 0< > 2DUP 2DROP 1+ CELL+ CELLS 1- COUNT` (`0x71`, `0x76` free) |
-| `0x79`, `0x7B` | `ADDI`, `EQI`: a 1-byte signed operand (`0x78`, `0x7A`, `0x7C` free) |
+| `0x6A`–`0x77` | tiny words: `0= - <> 0< > 2DUP 2DROP 1+ CELL+ CELLS 1- COUNT`, and at `0x71` and `0x76` the pairs `DUP1-` and `OVER+` (946) |
+| `0x79`, `0x7B` | `ADDI`, `EQI`: a 1-byte signed operand (`0x78` the pair `DUP>R`, 946; `0x7A`, `0x7C` free) |
 | `0x7D` | `LIT64`: a full cell, little-endian |
 | `0x7E` | `ESC` and a selector byte: the 80 **escaped** primitives |
 | `0x7F` | free |
@@ -96,7 +97,8 @@ Only the synthetic opcodes (`LIT32` to `LIT8`) move: they start at
 primitive moves them up by one into the free band, and `cross.4`'s
 `MAP-FITS?` refuses a map where they would reach the short branches at
 `0x2C`, the superinstructions. Every other number is fixed: the
-superinstructions (`cross.4`'s `VARX-BASE`, `2VAR@-OP`, `BRX-BASE`), the
+superinstructions (`cross.4`'s `VARX-BASE`, `2VAR@-OP`, `BRX-BASE`,
+`LOOPB8-OP`, and the pairs' `PAIR-OPS-T`, each as first, second and fused), the
 short branches, the tiny words (their `N OPCODE` lines), the folded returns
 from `0x48` (`FOLD-BASE`), the specialised band from `0x61`, `ADDI`, `EQI`,
 `LIT64` and `ESC`. (This paragraph and the map were 491's until 939: the map moved
@@ -273,7 +275,9 @@ at offset 8 where there were five; 7 (528) used the band at `0x41`; 8 (536)
 renumbered the folded returns and dropped the superinstructions; 9 (538)
 dropped the folded returns; 10 (539) cut the one-byte opcodes to 64; 11
 (939) brought 23 folded returns back at `0x48`; 12 (940) added twelve
-superinstructions at `0x2C`.
+superinstructions at `0x2C`; 13 (946) ten more, chosen over Forth
+programs, the Forth system, rill3 and the shell alike
+(`tools/pair-corpus.py`).
 
 ### 4.2 Layout
 
