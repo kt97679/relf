@@ -1,0 +1,27 @@
+tests/bench-cmd/'s five, command-heavy (Iteration 954): tools/bench-vm.py 10 rounds, WDIR=tests/bench-cmd,
+CPU time of each shell with every process it waits for; medians against dash and their 95 % intervals.
+Every shell printed the same output on every script. dash 0.5.12, busybox 1.36.1, bash 5.2.21, mksh R59,
+ksh93 u+m 1.0.8, yash 2.55, posh; relf at 953.
+
+config                           spawn                 subst             configure              textproc                 build
+dash                     361.0ms                455.9ms                244.5ms                 41.7ms                249.0ms       
+busybox-ash       1.093 [0.971-1.291]  1.007 [0.946-1.173]  1.041 [0.991-1.068]  1.210 [1.131-1.467]  1.175 [1.068-1.251]
+bash              1.180 [1.034-1.289]  1.240 [1.183-1.296]  1.323 [1.261-1.418]  1.093 [1.005-1.175]  1.155 [1.095-1.325]
+mksh              1.238 [1.127-1.359]  1.073 [1.015-1.226]  1.136 [1.034-1.184]  1.290 [1.052-1.493]  1.185 [1.126-1.369]
+ksh93             1.031 [0.911-1.132]  0.996 [0.914-1.069]  1.098 [1.043-1.144]  0.872 [0.776-1.031]  1.061 [0.962-1.236]
+yash              1.174 [0.977-1.234]  1.044 [0.934-1.181]  0.891 [0.771-0.994]  1.130 [1.035-1.197]  1.072 [0.982-1.272]
+posh              1.182 [1.087-1.233]  1.011 [0.912-1.148]  1.041 [0.944-1.169]  0.899 [0.869-1.051]  1.146 [0.986-1.268]
+relfsh64          1.157 [1.012-1.374]  0.993 [0.947-1.030]  1.027 [0.998-1.163]  3.421 [3.142-3.642]  1.110 [1.002-1.214]
+relfshasm64       1.140 [0.958-1.241]  1.031 [0.980-1.133]  1.135 [1.065-1.196]  3.030 [2.838-3.321]  1.186 [1.051-1.284]
+relfsh-native     1.039 [0.943-1.126]  1.004 [0.907-1.138]  1.032 [0.989-1.124]  1.032 [0.952-1.085]  1.061 [0.990-1.121]
+
+geometric means of the five, against dash:
+  busybox-ash    1.103   (without textproc 1.077)
+  bash           1.196   (without textproc 1.223)
+  mksh           1.182   (without textproc 1.156)
+  ksh93          1.008   (without textproc 1.046)
+  yash           1.058   (without textproc 1.040)
+  posh           1.051   (without textproc 1.093)
+  relfsh64       1.350   (without textproc 1.070)
+  relfshasm64    1.368   (without textproc 1.122)
+  relfsh-native  1.033   (without textproc 1.034)

@@ -1,0 +1,51 @@
+tools/byte-loops.py (Iteration 954): relfsh's byte-at-a-time loops, bench-vm's five at SCALE 5.
+kernel64-shell.img: 2363 words, 455 loops, 123 of them byte loops.
+
+loop       inside byte loops:  13.0 % of the dispatches (73721 samples),  10.2 % of the time (610 samples)
+fn         inside byte loops:  13.6 % of the dispatches (40762 samples),   9.2 % of the time (360 samples)
+str        inside byte loops:   9.6 % of the dispatches (38434 samples),   7.6 % of the time (357 samples)
+arith      inside byte loops:  14.8 % of the dispatches (58552 samples),  10.8 % of the time (453 samples)
+realistic  inside byte loops:  13.0 % of the dispatches (73779 samples),   9.4 % of the time (608 samples)
+mean             12.8 % of the dispatches,   9.4 % of the time
+
+the byte loops by their share of the dispatches, the five weighed alike (each with what it calls);
+per entry: iterations - about the bytes it takes - and its own dispatches per iteration:
+    1.8 %  AE-SKIP-WS               +0     iterations an entry     1.1  own dispatches an iteration   5.1
+    1.8 %  XE-LIT-RUN               +6     iterations an entry     4.7  own dispatches an iteration  10.1
+    1.6 %  TEST-PARSE-INT           +35    iterations an entry     4.9  own dispatches an iteration  15.3
+    1.3 %  #S                       +0     iterations an entry       -  own dispatches an iteration   5.0
+    0.9 %  IFS-CHAR?                +51    iterations an entry     4.0  own dispatches an iteration   6.5
+    0.8 %  AE-PARSE-NUMBER          +65    iterations an entry     2.8  own dispatches an iteration  15.7
+    0.8 %  NAME-HASH                +10    iterations an entry     4.4  own dispatches an iteration   9.2
+    0.8 %  AE-READ-VARNAME          +4     iterations an entry     2.2  own dispatches an iteration  10.9
+    0.8 %  VALID-NAME?              +28    iterations an entry       -  own dispatches an iteration   7.0
+    0.5 %  PARSE-DECIMAL            +12    iterations an entry     4.2  own dispatches an iteration  12.0
+    0.5 %  POS-DIGIT-LOOKUP         +8     iterations an entry     1.0  own dispatches an iteration  10.9
+    0.4 %  EW-NASSIGN               +9     iterations an entry       -  own dispatches an iteration   6.3
+    0.2 %  TEST-BLANKS              +0     iterations an entry     1.0  own dispatches an iteration   7.0
+    0.2 %  AE-EVAL                  +1     iterations an entry     1.2  own dispatches an iteration  13.9
+    0.1 %  EW-ENTRY                 +325   iterations an entry     1.0  own dispatches an iteration   4.0
+    0.1 %  XE-QUOTED-RUN            +6     iterations an entry     4.4  own dispatches an iteration  10.1
+    0.1 %  BI-NAME-HASH             +18    iterations an entry       -  own dispatches an iteration   9.0
+    0.0 %  TRIM-SHAPE               +66    iterations an entry       -  own dispatches an iteration  15.0
+    0.0 %  AL-NAME-COPY             +18    iterations an entry     8.0  own dispatches an iteration  21.2
+    0.0 %  GLOB-MATCH               +213   iterations an entry     1.0  own dispatches an iteration   4.0
+    0.0 %  TOKEN-WORD               +31    iterations an entry     6.6  own dispatches an iteration  21.5
+    0.0 %  SRC-SKIP                 +5     iterations an entry       -  own dispatches an iteration  10.1
+    0.0 %  DOT-COMPONENT?           +14    iterations an entry     5.5  own dispatches an iteration   9.6
+    0.0 %  IONUM-TEXT?              +14    iterations an entry     1.2  own dispatches an iteration  19.2
+
+an upper bound: every loop with a byte operation in its own body, leaf or not, its own dispatches only:
+  15.2 % of the five's dispatches together, in 45 loops; the largest:
+    2.1 %  EW-ENTRY                 +66    iterations     90205  own dispatches an iteration  66.3
+    1.6 %  XE-LIT-RUN               +6     iterations    455368  own dispatches an iteration  10.1
+    1.2 %  AE-SKIP-WS               +0     iterations    656000  own dispatches an iteration   5.1
+    1.1 %  TEST-PARSE-INT           +35    iterations    210502  own dispatches an iteration  15.3
+    1.1 %  NAME-HASH                +10    iterations    327065  own dispatches an iteration   9.2
+    1.0 %  IFS-CHAR?                +51    iterations    427180  own dispatches an iteration   6.5
+    0.8 %  VALID-NAME?              +28    iterations    314215  own dispatches an iteration   7.0
+    0.7 %  GLOB-MATCH               +54    iterations     84620  own dispatches an iteration  24.4
+    0.6 %  AE-PARSE-NUMBER          +65    iterations    100889  own dispatches an iteration  15.7
+    0.5 %  PARSE-DECIMAL            +12    iterations    128523  own dispatches an iteration  12.0
+    0.5 %  AE-READ-VARNAME          +4     iterations    127000  own dispatches an iteration  10.9
+    0.5 %  XS-REGION-SPLIT          +5     iterations    106795  own dispatches an iteration  12.8
