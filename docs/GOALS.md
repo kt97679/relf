@@ -270,8 +270,11 @@ the account of what each gained and cost.
    and lower, TAB completion, an index after any value (904-914). Open (docs/progress/
    0900-0999.md, the last handoff): more whole scripts - each round has found something;
    docs/SIMILAR-PROJECTS.md (921): projects like kbool, and eleven action items from them;
-   by the owner's word not now: $( ) of a def's number (`var x @(f)` the fast form), the
-   front end smaller (cm/cmc.4, about 20 KB of an 85 KB image), recursion's depth, heredocs.
+   by the owner's word not now: $( ) of a def's number (`var x @(f)` the fast form), recursion's
+   depth, heredocs. The front end smaller - begun at 959: cm/cmc.4 is 21,282 of the image's 79,045
+   bytes, 27 %; its repeated runs merged (336 bytes, the code made of every test script the same,
+   tools/cm-code-diff.py); what is left is mostly its 79 error messages, about 2,960 bytes, kept by the
+   owner's choice - the friendly syntax - and distinct logic.
    Checks: `sh tests/cm/run` - the runtime's tests, the scripts (whole ones among
    them), the prompt's sessions - and again with RILL_GC_STRESS=1; in make verify as cm:passed.
 

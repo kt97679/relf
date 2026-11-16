@@ -120,7 +120,7 @@ size:engine-code-i386 31489
 size:engine-code-x86_64 30290
 size:i386 143503
 size:image-i386 110303
-size:image-rill3 79381
+size:image-rill3 79045
 size:image-x86_64 119115
 size:x86_64 152675
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
