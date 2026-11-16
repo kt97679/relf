@@ -1,0 +1,8 @@
+cm: recursion too deep for the stacks (line 1)
+cm: recursion too deep for the stacks (line 1)
+cm: recursion too deep for the stacks (line 1)
+cm: recursion too deep for the stacks (line 1)
+2 [x [y z] [k: v]]
+cm: recursion too deep for the stacks (line 1)
+2 [x [y z] [k: v]] 99999 99998
+status 0

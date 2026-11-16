@@ -64,7 +64,10 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
   OVER 0= OVER 0= OR IF 2DROP FALSE-BOX EXIT THEN
   OVER D-CLASS OVER D-CLASS <> IF 2DROP FALSE-BOX EXIT THEN
   DUP D-KIND DUP K-BOOL = SWAP K-REC = OR IF CELL+ @ SWAP CELL+ @ = D-BOOL EXIT THEN
-  D-BOXED SWAP D-BOXED SWAP R-CMP 0= D-BOOL ;
+  DUP D-KIND K-LIST = IF  R-DEEP?  CELL+ @ SWAP CELL+ @  OVER R-LEN OVER R-LEN <> IF 2DROP FALSE-BOX EXIT THEN
+    DUP R-LEN 0 ?DO  OVER I R-AT OVER I R-AT RECURSE FALSE-BOX = IF 2DROP FALSE-BOX UNLOOP EXIT THEN  LOOP
+    2DROP TRUE-BOX EXIT THEN     \ lists item by item, each as == takes it (961): Rill's R-CMP had taken cm's tagged
+  D-BOXED SWAP D-BOXED SWAP R-CMP 0= D-BOOL ;   \ numbers for boxes, and [1 2] == [1 2] faulted
 : D!= ( a b --- c )   D== D-TRUE? 0= D-BOOL ;
 : D-IN ( x c --- f )   \ x in c: a list's item, a record's key, a text's part (835)
   DUP D-KIND K-REC = IF D-REC SWAP D-TEXT SWAP R-HAS D-BOOL EXIT THEN

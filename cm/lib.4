@@ -92,7 +92,9 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
         DROP I 1+ RDK-BACK  R-ERR> ." cm: cannot open " RR-T I CELLS + @ R-TYPE R-ERR-NL R-OUT-BACK  DROP 1 STATUS !  UNLOOP EXIT THEN
       DUP RR-F I CELLS + @ DUP2 DROP  CLOSE-FILE DROP  THEN
   LOOP  CT-ON @ >R  RD-FD1? IF 0 CT-ON ! THEN          \ stdout redirected: to its file, not $( )'s text (896)
-  RR-N @ >R  CATCH  R> RDK-BACK  R> CT-ON !  THROW ;
+  RR-N @ >R  CATCH  R-OUT-BACK  R> RDK-BACK  R> CT-ON !  THROW ;   \ an error told inside: its telling undone first, then
+  \ the descriptors put back (961: the other way round, the prompt's stdout stayed the file - `f > out` that failed
+  \ sent every later line's output there, and a script's trap's)
 : D-COND ( item --- f )   \ a value as if's or while's condition: true or false, nothing else (876) - the
   DUP D-KIND K-BOOL = IF D-TRUE? DUP 0= 1 AND STATUS ! EXIT THEN   \ its status too, as a boolean command's (903);
   \ the shell's [ -f x ] is a list here, and was taken as true
@@ -218,7 +220,8 @@ DEFER RUN-NAMED ( args text --- )   \ the program a text names: below, once PSTA
 \ ---- trap { block } [EXIT INT TERM HUP] (910): the block run when the script ends - normally, by exit, by an
 \ error, or by a signal it names, which then ends it, status 128 + the signal - as sh's trap is mostly used, to
 \ clean up. A new trap replaces the last. Rill's on EXIT's machinery: R-ON-EXIT-XT, run by R-BOOT
-: TRAP-RUN ( --- )   TRAP-BLK @ ?DUP IF  0 TRAP-BLK !  MAIN-TOP @ LS# @ MAX LS# !  0 SWAP BLK-RUN  THEN ;
+: TRAP-RUN ( --- )   TRAP-BLK @ ?DUP IF  0 TRAP-BLK !  MAIN-TOP @ LS# @ MAX LS# !  0 SINK# !  0 CT-ON !  0 CT-LEN !
+  0 SWAP BLK-RUN  THEN ;   \ to stdout, as the prompt's next line goes: an error inside $( ) had left its capture on (961)
 VARIABLE TRAP-XT   ' TRAP-RUN TRAP-XT !XT
 : TRAP-SIG ( c-addr u --- )
   2DUP S" EXIT" COMPARE 0= IF 2DROP EXIT THEN

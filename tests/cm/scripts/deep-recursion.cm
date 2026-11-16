@@ -1,0 +1,16 @@
+# recursion as deep as the engines' 1 MB return stack lets it go (961): R-DEEP? had allowed 60,000 bytes
+# of it, the 64 KB stack's - 2,500 calls, 1,000 through $( ), 500 taking @( ) with return
+var down {|n| if $(( $n == 0 )) { put 0 } else { put $(( $(down $(( $n - 1 ))) + 1 )) } }
+echo $(down 10000)
+var back {|n| if $(( $n == 0 )) { return 0 }; back $(( $n - 1 )); return 0 }
+back 8000
+echo back from 8000
+var sum {|n| if $(( $n == 0 )) { put 0; return }; var r @(sum $(( $n - 1 ))); put $(( $r + $n )) }
+echo @(sum 4000)
+var plain {|n| if $(( $n > 0 )) { plain $(( $n - 1 )) } }
+plain 30000
+echo plain 30000
+var walk {|t| if $(( $(count $t) == 0 )) { put 0; return }; var d @(walk $t[1]); put $(( $d + 1 )) }
+var l []
+for i @(range 4000) { set l [$i $l] }
+echo walked @(walk $l)

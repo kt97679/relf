@@ -1,0 +1,12 @@
+cm: index 5 past a list of 1 (line 1)
+after f into a file
+after f and its errors into a file
+cm: index 5 past a list of 1 (line 1)
+after f into each
+cm: index 5 past a list of 1 (line 1)
+after f into a program
+cm: recursion too deep for the stacks (line 1)
+after recursion through each
+in the files:
+cm: index 5 past a list of 1 (line 1)
+status 0

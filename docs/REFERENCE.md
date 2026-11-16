@@ -115,7 +115,7 @@ that does not exist is an error.
 
 `$(( ))` is the one place with infix operators: `+ - * / %`, `== != < <= > >=`, `&& || !`, and
 parentheses. It takes numbers, `$values`, and texts that read as whole numbers; `==` and `!=` compare
-texts too. A comparison gives a boolean.
+texts too, and lists item by item - a map or a block equals only itself. A comparison gives a boolean.
 
     echo $(( 7 / 2 )) $(( -7 % 2 )) $(( 2 * (3 + 4) )) $(( 3 > 2 )) $(( "abc" == "abc" && !(1 > 2) ))
     # 3 1 14 true true
@@ -253,8 +253,9 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 An error found when the script is read stops it before anything runs; one found as it runs stops it
 there. Both say the message, then where: `cm: index 2 past a list of 2 (line 4)` - in a sourced file,
 that file's name and line. Either ends the script with status 2.
-Recursion is bounded by the engine's return stack: about 2,500 calls deep, 1,000 through `$( )`, 700 in a
-function that uses `return` - past it, `recursion too deep for the stacks`.
+Recursion is bounded by the engine's return stack, 1 MB: about 40,000 calls deep, 17,000 through `$( )`, 5,000
+to 12,000 in a function that uses `return` - past it, `recursion too deep for the stacks`. A value may nest
+as deep as memory allows, though printing or comparing one nested past about 20,000 levels says the same.
 
 ## For sh users
 

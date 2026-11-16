@@ -1,0 +1,14 @@
+var r {|n| r $(( $n + 1 )) }
+r 0
+var c {|n| put $(c $(( $n + 1 ))) }
+echo $(c 0)
+var b {|n| b $(( $n + 1 )); return 0 }
+b 0
+var v {|n| var x @(v $(( $n + 1 ))); put $x }
+v 0
+var keep [x [y z] [k: v]]
+var l []
+for i @(range 100000) { set l [$i $l] }
+echo $(count $l) $keep
+var s "$l"
+echo $(count $l) $keep $l[0] $l[1][0]

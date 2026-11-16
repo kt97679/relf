@@ -1,0 +1,3 @@
+cm: index 5 past a list of 1 (line 5)
+trap ran
+status 2

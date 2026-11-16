@@ -1,0 +1,16 @@
+# a value nested 100,000 deep (961): the collector copied it a call deeper for each level, and past 42,000
+# levels ran the return stack to its guard with the old arena half moved
+var keep [x [y z] [k: v]]
+var l []
+for i @(range 100000) { set l [$i $l] }
+var n 0
+var p $l
+while $(( $(count $p) > 0 )) { set n $(( $n + 1 )); set p $p[1] }
+echo $n levels, the outermost $l[0]
+var m [:]
+for i @(range 50000) { set m [k: $i  in: $m] }
+echo $m[k] $m[in][k] $m[in][in][k]
+var f { put 0 }
+for i @(range 5000) { var g $f; set f { var d @($g); put $(( $d + 1 )) } }
+echo @($f) blocks, each holding the one before
+echo $keep

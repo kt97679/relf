@@ -44,31 +44,30 @@ VARIABLE XT-FN-RUN   ' FN-RUN XT-FN-RUN !XT
 : OUT-BACK ( kept fid --- )   PAD 0 1 WRITE DROP  CLOSE-FILE DROP  DUP 1 DUP2 DROP  CLOSE-FILE DROP ;
 : FN-LIST ( list|0 xt --- list' )   \ a function stage before another function: its values a list for it, and
   TMP-PATH DUP >R OUT-TO >R >R                     \ after them the lines it prints - echo's, its programs' (882)
-  SWAP STAGE-IN >R >R  IN-PUSH  CT-ON @ >R 0 CT-ON !  XT-CAPTURE @XT CATCH  R> CT-ON !  -1 IN# +!  R> R> STAGE-OUT
+  SWAP STAGE-IN >R >R  IN-PUSH  CT-ON @ >R 0 CT-ON !  XT-CAPTURE @XT CATCH  R-OUT-BACK  R> CT-ON !  -1 IN# +!  R> R> STAGE-OUT
   R> R> OUT-BACK
   ?DUP IF NIP R> DEL-PATH THROW THEN
   R@ PATH$ R-SLURP 2DUP >R >R LINES+  R> R> DROP FREE DROP  R> DEL-PATH ;
 : FN>FILE ( list xt --- path )   \ a function stage before a program: its output into a temporary file
-  TMP-PATH >R
+  0 SINK+                         \ its values printed, as at the terminal: into the file - pushed first, as its
+  TMP-PATH >R                     \ depth's check may fail (961: after the redirection, it left stdout the file)
   R@ PATH$ W/O CREATE-FILE IF S" cm: cannot make a temporary file" R-FAIL THEN    ( list xt fid )
   PAD 0 1 WRITE DROP  1 10 DUP-FROM  OVER 1 DUP2 DROP                          ( list xt fid kept )
-  0 SINK+                                               \ its values printed, as at the terminal: into the file
-  2SWAP CT-ON @ >R 0 CT-ON !  XT-FN-RUN @XT CATCH  R> CT-ON !  DUP IF >R 2DROP R> THEN   \ into its file (896)                               ( fid kept code )
+  2SWAP CT-ON @ >R 0 CT-ON !  XT-FN-RUN @XT CATCH  R-OUT-BACK  R> CT-ON !  DUP IF >R 2DROP R> THEN   \ into its file (896)
   -1 SINK# +!  PAD 0 1 WRITE DROP  OVER 1 DUP2 DROP  SWAP CLOSE-FILE DROP      ( fid code )
-  R-OUT-KEPT @ ?DUP IF CLOSE-FILE DROP 0 R-OUT-KEPT ! THEN   \ an error told inside: its keeping undone
   SWAP CLOSE-FILE DROP  R> SWAP ?DUP IF OVER DEL-PATH NIP THROW THEN ;
 : CAPTURE-TEXT ( i*x xt --- j*x item )   \ $( ) of all but a pipeline ending in a program (896): what it prints -
   \ echo's, its programs', the values nobody takes, in their printed form - one text, trailing newlines off,
   \ as sh's $( ) and a program's; @( ) takes values. Had been one value, an error for none or several (868).
   \ Made in CT-BUF, after what an outer one has made so far, and taken off it at the end
-  CT-LEN @ >R  CT-ON @ >R  -1 CT-ON !  0 SINK+
+  0 SINK+  CT-LEN @ >R  CT-ON @ >R  -1 CT-ON !       \ the sink first: its depth's check may fail (961)
   CATCH  -1 SINK# +!
-  DUP IF  R-OUT-KEPT @ IF R-OUT-BACK THEN  THEN     \ an error told inside: its telling undone here
+  R-OUT-BACK                                         \ an error told inside: its telling undone here
   R> CT-ON !
   ?DUP IF  R> CT-LEN !  THROW  THEN
   CT-BUF @ R@ +  CT-LEN @ R@ -  R-TEXT  R> CT-LEN !  TRIM-NLS K-TEXT R-BOX ;
 : CAPTURE-TEXT-P ( i*x xt --- j*x item )   \ CAPTURE-TEXT with no break, continue or return inside: no CATCH -
-  CT-LEN @ >R  CT-ON @ >R  -1 CT-ON !  0 SINK+        \ an error goes up to the top, which puts CT-ON and CT-LEN back
+  0 SINK+  CT-LEN @ >R  CT-ON @ >R  -1 CT-ON !        \ an error goes up to the top, which puts CT-ON and CT-LEN back
   EXECUTE  -1 SINK# +!  R> CT-ON !
   CT-BUF @ R@ +  CT-LEN @ R@ -  R-TEXT  R> CT-LEN !  TRIM-NLS K-TEXT R-BOX ;
 

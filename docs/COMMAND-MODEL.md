@@ -674,8 +674,9 @@ At 891 no size has a most but memory: variables, defs, a block's captures, the f
 text's length, a list's or a command's words, captures and activations nested, jobs - each grows (some 65
 variables, 64 defs and 255-character texts had been the limits). Recursion is bounded by the engine's
 64 KB return stack, said as "recursion too deep for the stacks": about 2,500 calls deep, 1,000 through
-`$( )`, 700 in a def with `return`. (Since 956 the stack is 1 MB; rill3's R-DEEP? still stops at the
-60,000 bytes it allowed, so these depths stand until rill3's own is decided.) A pipeline holds 64 programs, a command 32 redirections.
+`$( )`, 700 in a def with `return`. At 961, the stack 1 MB since 956, rill3 takes it, less 64 KB (R-ROOM):
+40,000, 17,000, 5,000 to 12,000; and the collector, which had recursed a call a level of a value's nesting,
+keeps to 16 KB of it. A pipeline holds 64 programs, a command 32 redirections.
 At 893 `$( )` around `split`, `range`, `keys` or `each` was made an error when read; at 896 `$( )` became
 text - everything printed - and the error went: `$(split carol,37 ,)` is the text carol, newline, 37.
 Still to come: a smaller front end.

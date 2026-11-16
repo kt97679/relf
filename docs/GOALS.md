@@ -229,8 +229,8 @@ the account of what each gained and cost.
    arguments the same 1,000 ("nested too deep" - 958: it reached only 793,
    when the data stack ran out first); loops nest past 6,000. The engines'
    return stack is 1 MB and their data stack 512 KB, the native kernel's
-   too; untouched, they are resident in nothing. rill3's R-DEEP? left at
-   its 60,000 bytes.
+   too; untouched, they are resident in nothing. rill3's R-DEEP? allows
+   1 MB less 64 KB since 961 (R-ROOM): 16 times the depth of its 60,000.
    What 721 found:
    tests/shell/run-nesting goes 8 deep (256 iterations) and 60 wide; no
    test goes deeper. Probed: `for` loops nested N deep, one iteration
@@ -271,8 +271,10 @@ the account of what each gained and cost.
    0900-0999.md, the last handoff): more whole scripts - each round has found something (960's
    seven: three defects - @( ) in "...", @( ) of `a && prog`, return in `|| { }`);
    docs/SIMILAR-PROJECTS.md (921): projects like kbool, and eleven action items from them;
-   by the owner's word not now: $( ) of a def's number (`var x @(f)` the fast form), recursion's
-   depth, heredocs. The front end smaller - begun at 959: cm/cmc.4 is 21,282 of the image's 79,045
+   deferred, offered again at 961: $( ) of a def's number (`var x @(f)` the fast form), heredocs.
+   Recursion's depth done at 961 - the 1 MB stack, 16 times as deep - and found by it: the collector
+   recursed a call a level of a value's nesting (a list 42,000 deep left the heap half moved), `==` on
+   lists faulted, and after an error in a redirected function stdout stayed the file. The front end smaller - begun at 959: cm/cmc.4 is 21,282 of the image's 79,045
    bytes, 27 %; its repeated runs merged (336 bytes, the code made of every test script the same,
    tools/cm-code-diff.py); what is left is mostly its 79 error messages, about 2,960 bytes, kept by the
    owner's choice - the friendly syntax - and distinct logic.
