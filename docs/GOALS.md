@@ -272,9 +272,10 @@ the account of what each gained and cost.
    seven: three defects - @( ) in "...", @( ) of `a && prog`, return in `|| { }`), until 962's six,
    written where 961 reached, found none;
    docs/SIMILAR-PROJECTS.md (921): projects like kbool, and eleven action items from them;
-   deferred, offered again at 961: $( ) of a def's number (`var x @(f)` the fast form). Heredocs
-   done at 963, at the owner's word (910's no reversed): sh's `<< END` and `<< 'END'`, an indented END
-   taking its indent off each line. Recursion's depth done at 961 - the 1 MB stack, 16 times as deep - and found by it: the collector
+   the deferred items, offered again at 961, all done: heredocs at 963, at the owner's word (910's no
+   reversed) - sh's `<< END` and `<< 'END'`, an indented END taking its indent off each line; $( ) of a
+   def's number at 964 - an operand's $( ) in (( )) holds a number put before any byte, calls.cm 2.5
+   times as fast, faster than `var x @(f)`. Recursion's depth done at 961 - the 1 MB stack, 16 times as deep - and found by it: the collector
    recursed a call a level of a value's nesting (a list 42,000 deep left the heap half moved), `==` on
    lists faulted, and after an error in a redirected function stdout stayed the file. The front end smaller - begun at 959: cm/cmc.4 is 21,282 of the image's 79,045
    bytes, 27 %; its repeated runs merged (336 bytes, the code made of every test script the same,

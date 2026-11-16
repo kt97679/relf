@@ -221,6 +221,7 @@ DEFER RUN-NAMED ( args text --- )   \ the program a text names: below, once PSTA
 \ error, or by a signal it names, which then ends it, status 128 + the signal - as sh's trap is mostly used, to
 \ clean up. A new trap replaces the last. Rill's on EXIT's machinery: R-ON-EXIT-XT, run by R-BOOT
 : TRAP-RUN ( --- )   TRAP-BLK @ ?DUP IF  0 TRAP-BLK !  MAIN-TOP @ LS# @ MAX LS# !  0 SINK# !  0 CT-ON !  0 CT-LEN !
+  0 CT-HELD !  -1 CT-ARM !
   0 SWAP BLK-RUN  THEN ;   \ to stdout, as the prompt's next line goes: an error inside $( ) had left its capture on (961)
 VARIABLE TRAP-XT   ' TRAP-RUN TRAP-XT !XT
 : TRAP-SIG ( c-addr u --- )

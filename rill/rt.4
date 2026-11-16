@@ -11,7 +11,11 @@
 \ Errors (R-ERR>) and output redirected to a file (RD-RUN, a function stage's file) put it off while they
 \ write; a program's pipeline, its stdout not redirected, is read into it (PL-BEGIN 2, PIPE-END).
 VARIABLE CT-ON   VARIABLE CT-BUF   VARIABLE CT-LEN   VARIABLE CT-CAP   VARIABLE CT-WAS
-: CT+ ( c-addr u --- )
+\ A $( ) in (( )) (964, cm/pipe.4's CAPTURE-NUM) holds its first put, a number before any byte, unprinted:
+\ CT-HELD, while CT-ARM is where its text starts. A byte made after it prints it first (CT-FLUSH, cm/out.4), as
+\ does another capture's start; none, and the capture's value is the number - no text made and read back.
+VARIABLE CT-HELD   VARIABLE CT-ARM  -1 CT-ARM !   DEFER CT-FLUSH ( --- )
+: CT+ ( c-addr u --- )   CT-HELD @ IF CT-FLUSH THEN
   DUP CT-LEN @ +  DUP CT-CAP @ > IF  2* 4096 MAX DUP CT-CAP !  CT-BUF @ ?DUP IF SWAP RESIZE ELSE ALLOCATE THEN THROW CT-BUF !
   ELSE DROP THEN  CT-BUF @ CT-LEN @ + SWAP DUP CT-LEN +! MOVE ;
 : OUT-TYPE ( c-addr u --- )   CT-ON @ IF CT+ ELSE TYPE THEN ;

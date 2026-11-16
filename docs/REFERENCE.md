@@ -196,8 +196,9 @@ status; a text names a program to run, as `$EDITOR file` does: `var ed vi; $ed n
         var out $(grep x /no/such 2>&1) || echo var status $status   # var status 2
 
 A function whose number of results varies is taken with `[@(f)]` - always a list - or `for x @(f)`.
-A number taken with `$(f)` is printed and read back as text; in a hot loop, `var x @(f)` keeps it a
-number and is about three times faster.
+A `$(f)` in `$(( ))` beside an operator takes a number f puts, with nothing else made, as the number -
+no text printed and read back - as fast as `@(f)`; anywhere else `$(f)` is the text it printed, and
+`var x @(f)` keeps a number a number.
 
 ## Pipes, programs and redirections
 

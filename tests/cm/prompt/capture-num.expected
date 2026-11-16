@@ -1,0 +1,11 @@
+cm: $(( )) takes numbers, not the text 5
+x (line 1)
+cm: $(( )) takes numbers, not the text 3
+4 (line 1)
+cm: $(( )) takes numbers, not the text 1
+2 (line 1)
+cm: $(( )) takes numbers, not the text 5
+6 (line 1)
+cm: index 3 past a list of 1 (line 1)
+next line: 6 text 5
+status 0

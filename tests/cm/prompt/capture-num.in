@@ -1,0 +1,12 @@
+var five { put 5 }
+var putecho { put 5; echo x }
+var echoput { echo 3; put 4 }
+var twoputs { put 1; put 2 }
+var piped { put 5; put 6 | cat }
+var fails { put 5; var l [1]; put $l[3] }
+echo $(( $(putecho) + 1 ))
+echo $(( $(echoput) + 1 ))
+echo $(( $(twoputs) + 1 ))
+echo $(( $(piped) + 1 ))
+echo $(( $(fails) + 1 ))
+echo next line: $(( $(five) + 1 )) $(echo text) "$(five)"

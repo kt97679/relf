@@ -1,0 +1,23 @@
+# $( ) as an operand in (( )) (964): its first put, a number made before any byte, is held unprinted, and
+# if nothing comes after, it is the capture's value - no text made and read back; anything after prints it
+# first, so the text, and what (( )) makes of it, are as they were
+var five { put 5 }
+var neg { put -7 }
+var echo5 { echo 5 }
+var text5 { put "5" }
+var big { put 9223372036854775807 }
+var redirected { put 5; echo x > /tmp/cm-capnum.txt }
+var inner { put 5; var t "$(echo hi) $(five)"; var l [a b]; var s "$l" }
+var branch { if true { put 8 } }
+var returns { put 5; return 0 }
+var twice { var x $(( $(five) * 2 )); put $x }
+var fib {|n| if $(( $n < 2 )) { put $n } else { put $(( $(fib $(( $n - 1 ))) + $(fib $(( $n - 2 ))) )) } }
+var sum { var t 0; each {|x| set t $(( $t + $x )) }; put $t }
+echo $(( $(five) + 1 )) $(( $(neg) * 2 )) $(( $(echo5) + 1 )) $(( $(text5) + 1 )) $(( $(big) - 1 ))
+echo $(( $(redirected) + 1 )) $(cat /tmp/cm-capnum.txt) $(( $(inner) + 1 )) $(( $(branch) + 1 )) $(( $(returns) + 1 ))
+echo $(( $(twice) + 1 )) $(( $(fib 15) + 0 )) $(( $(count [a b c]) * 10 )) $(( $(printf '1\n2\n3\n' | sum) + 0 ))
+echo $(( $(five) == 5 )) $(( $(five) == "5" )) $(( $(five) < $(neg) ))
+# alone in (( )), the capture's text, as before
+var alone $(( $(five) ))
+echo @(kind $alone) $alone
+rm /tmp/cm-capnum.txt

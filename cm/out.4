@@ -26,6 +26,10 @@ DEFER SHOW ( item --- )
   DUP 0< IF  DUP ABS 0< IF R-NUM R-T@ OUT-TYPE EXIT THEN  [CHAR] - OUT-EMIT ABS  THEN
   NB 24 + SWAP  BEGIN  0 10 UM/MOD >R  [CHAR] 0 + SWAP 1- TUCK C!  R> ?DUP 0= UNTIL   \ UM/MOD: one primitive; /MOD was SM/REM, FM/MOD, DABS
   NB 24 + OVER - OUT-TYPE ;
+: CT-FLUSH' ( --- )   CT-HELD @  0 CT-HELD !  D>N R-NUM R-T@ CT+  10 SP@ 1 CT+ DROP ;   \ printed where held - not by
+  \ N-TYPE, whose buffer may hold the number whose printing flushes it: put 1; put 2 had made 1 and 1
+' CT-FLUSH' IS CT-FLUSH
+: CT-OWN ( --- )   CT-HELD @ IF CT-FLUSH THEN ;   \ before a text of its own is made after it in CT-BUF
 : SHOW-IMPL ( item --- )
   DUP 0= IF DROP S" none" OUT-TYPE EXIT THEN
   DUP D-KIND  DUP K-LIST = IF DROP CELL+ @ SHOW-LIST EXIT THEN
@@ -37,7 +41,7 @@ DEFER SHOW ( item --- )
 ' SHOW-IMPL IS SHOW
 : SHOWN ( v kind --- t )   \ a list's, map's or block's text - in "...", join's - its printed form, as echo shows it
   \ (901): it had been Rill's - a list's items blank-separated, a map as {k: "v"} - two forms of one value
-  R-BOX  CT-LEN @ >R  CT-ON @ >R  -1 CT-ON !  SHOW  R> CT-ON !
+  R-BOX  CT-OWN  CT-LEN @ >R  CT-ON @ >R  -1 CT-ON !  SHOW  R> CT-ON !
   CT-BUF @ R@ +  CT-LEN @ R@ -  R-TEXT  R> CT-LEN ! ;
 ' SHOWN IS R-CONT>TEXT-D
 
@@ -48,8 +52,9 @@ VARIABLE SINK-CAP  SINK-MAX SINK-CAP !           \ grown when full (891): SINK-M
 ' SINKS >BODY START @ - CONSTANT SINKS'
 : SINK-MORE ( --- )   SINKS' BODY-OF BUF-GROW  SINK-CAP @ 2* SINK-CAP ! ;
 : SINK ( --- list-item | 0 )   SINK# @ IF SINKS SINK# @ 1- CELLS + @ ELSE 0 THEN ;
-: PUT ( item --- )   SINK ?DUP IF CELL+ @ R-PUSH ELSE SHOW R-NL THEN ;   \ taken by @( ) - or printed (896: $( )
-  \ takes no values of its own - one value wanted, got, several were SKINDS' kinds 1 and 2, gone)
+: PUT ( item --- )   SINK ?DUP IF CELL+ @ R-PUSH EXIT THEN   \ taken by @( ) - or printed (896: $( ) takes no values of
+  DUP 1 AND CT-ON @ AND IF  CT-ARM @ CT-LEN @ = IF  CT-HELD !  -1 CT-ARM !  EXIT THEN THEN   \ its own); in (( ))'s $( ),
+  SHOW R-NL ;                                                    \ the first, a number before any byte, held (964)
 : SINK+ ( list-item|0 --- )   R-DEEP?  SINK# @ SINK-CAP @ < 0= IF SINK-MORE THEN  SINKS SINK# @ CELLS + !  1 SINK# +! ;
 : CAPTURE ( i*x xt --- j*x list-item )   \ @( ): run xt, the values it puts captured - not its bytes
   R-NEW-LIST K-LIST R-BOX SINK+  CATCH  SINK SWAP  -1 SINK# +!  THROW ;

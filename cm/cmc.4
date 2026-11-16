@@ -533,7 +533,7 @@ DEFER IX-CODE ( c-addr u ix --- c-addr2 u2 )   \ a value's keys, each CM-AT (913
   DUP @A IF GLOB-CODE T" GLOB ARG@" ++ EXIT THEN  WORD-CODE T" ARG" ++ ;   \ a word with * or ?: its paths (872)
 : ARGS-CODE ( from to --- c-addr u )   \ ARGL, then each word's value ARG - a spread's list ARG@
   >R >R T" ARGL" TOP$  BEGIN R> R> 2DUP >R >R <> WHILE  R> DUP NSKIP >R ARG-CODE SEQ+ REPEAT  R> R> 2DROP ;
-VARIABLE AP                                        \ the next of (( ))'s nodes
+VARIABLE AP  VARIABLE A-LONE                      \ the next of (( ))'s nodes; one value all the (( )) holds
 : AOP? ( c-addr u --- f )   AP @ @ N-OP = IF AP @ @A AP @ @B COMPARE 0= ELSE 2DROP 0 THEN ;
 : A-TAKE ( --- c-addr u )   S" D" S| AP @ @A AP @ @B CAT T-NAMED  AP @ N+ AP ! ;   \ the operator taken: D and it
 DEFER A-OR ( --- c-addr u )
@@ -542,6 +542,8 @@ DEFER A-OR ( --- c-addr u )
 : A-PRIM ( --- c-addr u )
   AP @ DUP @ 0= IF S" (( )) ends too soon" G-ERR THEN  DUP NSKIP AP !
   DUP @ N-NM = IF NUM-CODE EXIT THEN
+  DUP @ N-CP = A-LONE @ 0= AND IF  DUP PROG-CAP? 0= OVER NO-TRANSFER? AND IF   \ an operand's $( ): its number,
+    CAPTURE-WORD T-TICK$ T" CAPTURE-NUM" ++ EXIT THEN THEN                   \ if all it made, held (964)
   DUP @ N-OP <> IF PIECE EXIT THEN
   DUP @A OVER @B S" (" COMPARE 0= IF DROP A-OR S" )" AOP? 0= IF S" ) missing in (( ))" G-ERR THEN  AP @ N+ AP ! EXIT THEN
   DUP @A OVER @B S" -" COMPARE 0= IF DROP RECURSE T" D-NEG" ++ EXIT THEN
@@ -556,7 +558,8 @@ DEFER A-OR ( --- c-addr u )
 : A-OR' ( --- c-addr u )   A-AND
   BEGIN S" ||" AOP? WHILE AP @ N+ AP !  T" D-TRUE? IF TRUE-BOX ELSE" ++ A-AND ++ T" D-TRUE? D-BOOL THEN" ++ REPEAT ;
 ' A-OR' IS A-OR
-: ARITH ( ar --- c-addr u )   AP @ >R  N+ AP !  A-OR  AP @ @ IF S" in (( )): more than one expression" G-ERR THEN  R> AP ! ;
+: ARITH ( ar --- c-addr u )   AP @ >R  A-LONE @ >R  N+ DUP NSKIP @ 0= A-LONE !  AP !   \ alone, $(( $(f) )) stays
+  A-OR  AP @ @ IF S" in (( )): more than one expression" G-ERR THEN  R> A-LONE !  R> AP ! ;   \ f's text, as before
 : MAP-CODE ( mp --- c-addr u )
   T" R-NEW-RECORD K-REC R-BOX" TOP$ ROT N+
   BEGIN DUP @ WHILE  >R T" DUP" R@ BARE$ TEXT-CODE ++  R> NSKIP DUP >R WORD-CODE ++ T" D-SET" ++ SEQ+  R> NSKIP REPEAT DROP ;

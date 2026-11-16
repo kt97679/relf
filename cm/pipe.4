@@ -63,16 +63,21 @@ VARIABLE XT-FN-RUN   ' FN-RUN XT-FN-RUN !XT
   \ echo's, its programs', the values nobody takes, in their printed form - one text, trailing newlines off,
   \ as sh's $( ) and a program's; @( ) takes values. Had been one value, an error for none or several (868).
   \ Made in CT-BUF, after what an outer one has made so far, and taken off it at the end
-  0 SINK+  CT-LEN @ >R  CT-ON @ >R  -1 CT-ON !       \ the sink first: its depth's check may fail (961)
-  CATCH  -1 SINK# +!
+  0 SINK+  CT-OWN  CT-ARM @ >R  -1 CT-ARM !  CT-LEN @ >R  CT-ON @ >R  -1 CT-ON !   \ the sink first: its depth's
+  CATCH  -1 SINK# +!                                                              \ check may fail (961)
   R-OUT-BACK                                         \ an error told inside: its telling undone here
   R> CT-ON !
-  ?DUP IF  R> CT-LEN !  THROW  THEN
-  CT-BUF @ R@ +  CT-LEN @ R@ -  R-TEXT  R> CT-LEN !  TRIM-NLS K-TEXT R-BOX ;
+  ?DUP IF  R> CT-LEN !  R> CT-ARM !  0 CT-HELD !  THROW  THEN   \ a number an inner one held, gone with it (964)
+  CT-BUF @ R@ +  CT-LEN @ R@ -  R-TEXT  R> CT-LEN !  R> CT-ARM !  TRIM-NLS K-TEXT R-BOX ;
 : CAPTURE-TEXT-P ( i*x xt --- j*x item )   \ CAPTURE-TEXT with no break, continue or return inside: no CATCH -
-  0 SINK+  CT-LEN @ >R  CT-ON @ >R  -1 CT-ON !        \ an error goes up to the top, which puts CT-ON and CT-LEN back
+  0 SINK+  CT-OWN  CT-ARM @ >R  -1 CT-ARM !  CT-LEN @ >R  CT-ON @ >R  -1 CT-ON !   \ an error goes up to the top,
+  EXECUTE  -1 SINK# +!  R> CT-ON !                                         \ which puts CT-ON and CT-LEN back
+  CT-BUF @ R@ +  CT-LEN @ R@ -  R-TEXT  R> CT-LEN !  R> CT-ARM !  TRIM-NLS K-TEXT R-BOX ;
+: CAPTURE-NUM ( i*x xt --- j*x item )   \ $( ) in (( )) (964): CAPTURE-TEXT-P's, but its first put, a number made
+  0 SINK+  CT-OWN  CT-ARM @ >R  CT-LEN @ DUP CT-ARM ! >R  CT-ON @ >R  -1 CT-ON !       \ before any byte, held
   EXECUTE  -1 SINK# +!  R> CT-ON !
-  CT-BUF @ R@ +  CT-LEN @ R@ -  R-TEXT  R> CT-LEN !  TRIM-NLS K-TEXT R-BOX ;
+  CT-HELD @ ?DUP IF  0 CT-HELD !  R> DROP  R> CT-ARM !  EXIT THEN    \ nothing made after it: the number itself, the
+  CT-BUF @ R@ +  CT-LEN @ R@ -  R-TEXT  R> CT-LEN !  R> CT-ARM !  TRIM-NLS K-TEXT R-BOX ;   \ text it prints as read
 
 \ ---- a loop's turn (917): its signal look, and a collection when nothing holds the arena by hand. A loop at the
 \ script's top level - its frame the main one, no capture, no function stage, no text being made - holds
