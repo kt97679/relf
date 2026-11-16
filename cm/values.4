@@ -35,11 +35,18 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
   DUP NUMERIC? IF D-TEXT R-NUMBER N>ITEM-D THEN ;   \ past 18 digits: R-NUMBER's, which says when it is past 64 bits
 : D>N ( item --- n )   DUP 1 AND IF 2/ EXIT THEN  D-NUMERIC D>N0 ;   \ a whole number - or a text that reads as one,
   \ as $( ) gives a def's number back (912): range $(count $l), $l[$i], exit $n, as $(( )) took them already
-: D-NOT-NUM ( text --- )   \ the text named (887): "a text that reads as none" said not which
-  R-ERR> ." cm: $(( )) takes numbers, not the text " D-TEXT R-T@ TYPE R-ERR-NL -4004 THROW ;
-: D-ARITH ( a b op --- c )   >R D-NUMERIC SWAP D-NUMERIC SWAP
-  OVER D-KIND K-TEXT = IF DROP D-NOT-NUM THEN  DUP D-KIND K-TEXT = IF D-NOT-NUM THEN
-  D-BOXED SWAP D-BOXED SWAP R> R-ARITH-AA D-ITEM ;
+: D-NUM? ( item --- f )   D-KIND K-NUM = ;
+: D-NOT-NUM ( item --- )   \ what (( )) took that is no number, named (887: "a text that reads as none" said not
+  R-ERR> ." cm: $(( )) takes numbers, not "  DUP D-KIND                 \ which; 965: every kind, as a text's)
+  DUP K-TEXT = IF DROP D-TEXT R-T@ ?DUP IF ." the text " TYPE ELSE DROP ." an empty text" THEN ELSE  DUP K-BOOL = IF DROP ." the boolean " D-TEXT R-T@ TYPE ELSE
+  DUP K-LIST = IF 2DROP ." a list" ELSE  DUP K-REC = IF 2DROP ." a map" ELSE
+  IF ." a block" ELSE ." none" THEN DROP THEN THEN THEN THEN  R-ERR-NL -4004 THROW ;   \ kinds left: a block's, none's 0
+: D-ARITH ( a b op --- c )   >R D-NUMERIC SWAP D-NUMERIC SWAP     \ numbers alone (965: a boolean had been -1 or 0 -
+  OVER D-NUM? 0= IF DROP D-NOT-NUM THEN  DUP D-NUM? 0= IF D-NOT-NUM THEN    \ true + 1 was 0 - and a list "a value of
+  D-BOXED SWAP D-BOXED SWAP R> R-ARITH-AA D-ITEM ;                        \ the wrong kind")
+: D-ONE ( item --- item' )   \ $(( )) of one value (965): a number - a text that reads as one made it - or a boolean;
+  DUP 1 AND IF EXIT THEN  DUP D-KIND K-BOOL = IF EXIT THEN    \ else what + says of it. It had passed through as it was:
+  D-NUMERIC DUP D-NUM? IF EXIT THEN  D-NOT-NUM ;              \ $(( "7" )) the text, $(( $l )) the list
 : D+ ( a b --- c )   \ two tagged: one add, the overflow looked at - past 62 bits the checked way (837)
   BOTH# IF 2DUP 2DUP + 1- TUCK XOR >R XOR R> AND 0< IF 0 D-ARITH EXIT THEN + 1- EXIT THEN
   0 D-ARITH ;   \ + is arithmetic only: texts join side by side, "$a$b" (870)
@@ -53,9 +60,12 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
   ?DUP 0= IF 0 EXIT THEN  DUP 1 AND IF 1 <> EXIT THEN  R-UNBOX
   DUP K-TEXT = IF DROP R-T@ NIP 0<> EXIT THEN  DUP K-LIST = IF DROP R-LEN 0<> EXIT THEN
   K-REC = IF R-KEYS R-LEN 0<> EXIT THEN  0<> ;
+: D-ORDER? ( item --- f )   D-KIND DUP K-NUM = SWAP K-TEXT = OR ;
 : D-CMP ( a b --- n )   BOTH# IF 2DUP > >R < R> - EXIT THEN          \ no subtraction: no overflow
   D-NUMERIC SWAP D-NUMERIC SWAP  BOTH# IF 2DUP > >R < R> - EXIT THEN
-  OVER 0= OVER 0= OR IF S" cm: none has no order" D-ERR THEN  D-BOXED SWAP D-BOXED SWAP R-ANY-CMP ;
+  OVER 0= OVER 0= OR IF S" cm: none has no order" D-ERR THEN
+  OVER D-ORDER? 0= IF DROP D-NOT-NUM THEN  DUP D-ORDER? 0= IF D-NOT-NUM THEN   \ numbers, or texts (965: a boolean as
+  D-BOXED SWAP D-BOXED SWAP R-ANY-CMP ;                                       \ -1 or 0, a list "the wrong kind")
 : D< ( a b --- c )   D-CMP 0< D-BOOL ;      : D> ( a b --- c )   D-CMP 0> D-BOOL ;
 : D<= ( a b --- c )   D-CMP 0> 0= D-BOOL ;  : D>= ( a b --- c )   D-CMP 0< 0= D-BOOL ;
 : D-CLASS ( item --- c )   D-KIND ;

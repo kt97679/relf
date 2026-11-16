@@ -1,3 +1,4 @@
-# a number is no condition (876): $(( )) makes one of it
+# a number is no condition (876): $(( $n != 0 )) makes one of it - the message said $(( )), and a lone
+# number in it is a number (965)
 var n 0
 if $n { echo never }

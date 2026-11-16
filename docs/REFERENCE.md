@@ -114,8 +114,11 @@ that does not exist is an error.
 ## Arithmetic and comparison
 
 `$(( ))` is the one place with infix operators: `+ - * / %`, `== != < <= > >=`, `&& || !`, and
-parentheses. It takes numbers, `$values`, and texts that read as whole numbers; `==` and `!=` compare
-texts too, and lists item by item - a map or a block equals only itself. A comparison gives a boolean.
+parentheses. Its operators take numbers and texts that read as whole numbers - a boolean, a list, a map
+or a block is an error; `<` and the rest put texts in order too, by their bytes; `==` and `!=` compare any
+two values, lists item by item - a map or a block equals only itself; `!`, `&&` and `||` take any value as
+true or false (none, 0, false, "", [] and [:] false). It gives a number or a boolean: one value alone in
+it is read as the operators read theirs - `$(( "7" ))` is the number 7 - a boolean is itself.
 
     echo $(( 7 / 2 )) $(( -7 % 2 )) $(( 2 * (3 + 4) )) $(( 3 > 2 )) $(( "abc" == "abc" && !(1 > 2) ))
     # 3 1 14 true true
@@ -196,9 +199,9 @@ status; a text names a program to run, as `$EDITOR file` does: `var ed vi; $ed n
         var out $(grep x /no/such 2>&1) || echo var status $status   # var status 2
 
 A function whose number of results varies is taken with `[@(f)]` - always a list - or `for x @(f)`.
-A `$(f)` in `$(( ))` beside an operator takes a number f puts, with nothing else made, as the number -
-no text printed and read back - as fast as `@(f)`; anywhere else `$(f)` is the text it printed, and
-`var x @(f)` keeps a number a number.
+A `$(f)` in `$(( ))` takes a number f puts, with nothing else made, as the number - no text printed and
+read back - as fast as `@(f)`; anywhere else `$(f)` is the text it printed, and `var x @(f)` keeps a
+number a number.
 
 ## Pipes, programs and redirections
 

@@ -1,0 +1,19 @@
+var l [1 2]
+var m [k: v]
+var b false
+var e ""
+echo $(( "abc" ))
+echo $(( $l ))
+echo $(( ($m) ))
+echo $(( { } ))
+echo $(( $e ))
+echo $(( $(true) ))
+echo $(( $b + 1 ))
+echo $(( -$b ))
+echo $(( $b < 1 ))
+echo $(( $l + 1 ))
+echo $(( 1 * $m ))
+var n 3
+if $n { echo never }
+if $(( $n != 0 )) { echo as the message says }
+echo $(( $b )) $(( "abc" < "abd" )) $(( "abc" == "abc" )) $(( !$n ))

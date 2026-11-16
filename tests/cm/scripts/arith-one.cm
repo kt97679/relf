@@ -1,0 +1,9 @@
+# $(( )) gives a number or a boolean (965): one value alone in it, in parentheses or not, is read as the
+# operators read theirs - a number, or a text that reads as one, the number; a boolean, itself - where it
+# had passed through as it was: $(( "7" )) the text, $(( $l )) the list
+var f { put 42 }
+var t "7"
+var ok $(( 1 < 2 ))
+for v @[$(( "7" )) $(( $t )) $(( ($t) )) $(( ((-3)) )) $(( $(f) )) $(( $(echo 8) )) $(( $ok )) $(( 5 ))] { echo $v @(kind $v) }
+var n $(( $t ))
+echo $(( $n == 7 )) $(count [@(range $(( $t )))])

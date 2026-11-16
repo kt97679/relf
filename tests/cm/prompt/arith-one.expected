@@ -1,0 +1,15 @@
+cm: $(( )) takes numbers, not the text abc (line 1)
+cm: $(( )) takes numbers, not a list (line 1)
+cm: $(( )) takes numbers, not a map (line 1)
+cm: (( )) holds numbers, $values, texts and operators (line 1)
+cm: $(( )) takes numbers, not an empty text (line 1)
+cm: $(( )) takes numbers, not an empty text (line 1)
+cm: $(( )) takes numbers, not the boolean false (line 1)
+cm: $(( )) takes numbers, not the boolean false (line 1)
+cm: $(( )) takes numbers, not the boolean false (line 1)
+cm: $(( )) takes numbers, not a list (line 1)
+cm: $(( )) takes numbers, not a map (line 1)
+cm: a condition is a command, true or false - $(( $n != 0 )) makes one of a number (line 1)
+as the message says
+false true true false
+status 0
