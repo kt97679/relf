@@ -989,6 +989,7 @@ do not trust the absence of a line below.
 - 963 — rill3: here-documents, at the owner's word - `cmd << END`, `$` values as in "...", `<< 'END'` as written, an indented END taking its indent off each line; the body read ahead by the front end, its temporary file taken away once its reader opens it; the prompt waits for END
 - 964 — rill3: $( ) of a function's number fast in (( )) - an operand's capture holds a number put before any byte and is that number, else prints it first; calls.cm 2.5 times as fast, fib 1.9, faster than `var x @(f)`; the same output as 963's for 28 changed scripts' code and 6,326 generated bodies
 - 965 — rill3: $(( )) gives a number or a boolean - one value alone read as the operators read theirs ($(( "7" )) is 7); a boolean in arithmetic an error (true + 1 had been 0); every refused kind named; the condition message points at $(( $n != 0 ))
+- 966 — rill3: an audit - fixed has of a list holding a number (it faulted), a negative index wrapping past the start, a text's index past its end ("" had come back), range of a negative (it ran for ever), return's status kept to 0-255 and a bare return the last status; five inconsistencies reported for the owner
 
 ### Not tied to an iteration
 

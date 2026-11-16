@@ -27,7 +27,8 @@ VARIABLE T-TARGET
   SWAP T-TARGET !  THROW ;
 : BREAK ( id-item --- )   D>N T-BREAK TRANSFER ;
 : CONTINUE ( id-item --- )   D>N T-CONTINUE TRANSFER ;
-: RETURN ( status id-item --- )   D>N SWAP STATUS !  T-RETURN TRANSFER ;
+: RETURN ( status id-item --- )   D>N SWAP 255 AND STATUS !  T-RETURN TRANSFER ;   \ 0 to 255, as exit's (966:
+  \ return 256 had been the status 256 - an untested one ended the script, the process's status 0)
 : MINE? ( code t-code --- f )   = T-TARGET @ ACT-TOP = AND ;
 
 \ for x @list { body }: the list, the element and the loop's number in slots of the def's frame;

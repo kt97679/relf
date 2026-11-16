@@ -83,7 +83,8 @@ after a `\` that is a word of its own at a line's end:
 Numbers are whole, 64-bit - -9223372036854775808 to 9223372036854775807, past which arithmetic is an
 error; wherever one is wanted - `$(( ))`, an index, `range`, `slice`, `exit` - a
 text that reads as one does, as `$(f)` gives a function's number back. Lists and maps are held by reference: two variables can hold one list.
-`$l[-1]` is a list's last item. An index may follow any value written in one word - a list or map, a
+`$l[-1]` is a list's last item, `$t[-1]` a text's last character; past either end an index is an error,
+where a slice stops at the ends. An index may follow any value written in one word - a list or map, a
 text, a capture - as it follows a variable; `@(cmd)[k]` is the k-th of cmd's values, spread if a list:
 
     echo [a b c][-1] [k: v  j: w][j] $(printf hello)[0] @(split 'a,b,c' ,)[2]
@@ -161,8 +162,8 @@ leaves the `date` program alone. A name may hold a `-` between letters: `run-tas
     # 49 [a b] 2
 
 A function is a command: its arguments are its words, given in the number its parameters name.
-`echo` writes bytes; `put` writes values, one by one. `return n` ends the function with status n,
-from inside its `if` and loop bodies; inside a block called as a function - a callback - it ends that
+`echo` writes bytes; `put` writes values, one by one. `return n` ends the function with status n -
+0 to 255, as `exit`'s; a bare `return`, the last command's status, as `exit` - from inside its `if` and loop bodies; inside a block called as a function - a callback - it ends that
 block. `break` and `continue` end or skip a loop's turn.
 
     var find {|x| for v @l { if $(( $v == $x )) { return 0 } }; return 1 }
@@ -249,7 +250,7 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 | `if c {..} elif c {..} else {..}`, `while c {..}`, `for x values... {..}` | control |
 | `var name {|params| ..}`, `return [n]`, `break`, `continue` | functions and loops |
 | `count v` | a list's or map's items, a text's characters (UTF-8) |
-| `range n` | 0 to n-1, put one by one |
+| `range n` | 0 to n-1, put one by one; none when n is 0 or less |
 | `split text sep`, `join sep values...` | a text's parts put; values joined into one text |
 | `slice v start [end]` | a list's items from start up to end, put one by one, or a text's characters as one text; negative from the end, held to the length |
 | `keys map`, `merge a b` | a map's keys put; a new map, b's entries over a's |

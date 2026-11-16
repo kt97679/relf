@@ -1,0 +1,19 @@
+var l [a b c]
+echo $l[-1] $l[-3]
+echo $l[-4]
+echo [a b c][-4]
+set l[-4] y
+del l[-5]
+var t abc
+echo $t[-1] $t[0] $t[2]
+echo $t[3]
+echo $t[-4]
+var e ""
+echo $e[0]
+echo $(slice $t 1 9) [$(slice $t 5 9)]
+var m [k: v]
+echo $m[j]
+del m[j]
+keys [a b]
+var f { return 1 2 }
+echo the session goes on

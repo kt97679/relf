@@ -33,7 +33,7 @@ VARIABLE TB  VARIABLE TB#  VARIABLE TB-CAP
   DUP D-KIND DUP K-LIST = IF DROP CELL+ @ @ ELSE DUP K-REC = IF DROP CELL+ @ @ @ ELSE
   K-TEXT = IF CELL+ @ R-T@ U-COUNT ELSE S" cm: count takes a list, a map or a text - count of a number's digits is count of its text" R-FAIL THEN THEN THEN  D-NUM PUT ;
 : RANGE-OF ( args --- )   DUP #ARGS 1 <> IF S" cm: range takes one number" R-FAIL THEN
-  0 ARGN D>N 0 ?DO I D-NUM PUT LOOP ;
+  0 ARGN D>N 0 MAX 0 ?DO I D-NUM PUT LOOP ;   \ none for a negative, as for 0 (966: ?DO ran -1 times round, for ever)
 : MERGE-OF ( args --- )   \ merge $a $b: a new map, a's entries, b's over them - the top level copied
   DUP #ARGS 2 <> IF S" cm: merge takes two maps" R-FAIL THEN
   R-NEW-RECORD K-REC R-BOX  SWAP
@@ -45,10 +45,10 @@ VARIABLE TB  VARIABLE TB#  VARIABLE TB-CAP
 CREATE ENV-BOX 9 , 0 ,                             \ $env: the environment, as a map (870) - outside the arena
 : SCRIPT-ARGS ( --- item )   R-ARGS K-LIST R-BOX ;  \ $args: the script's arguments, each a text (870)
 : CM-AT ( c k --- item )   OVER ENV-BOX = IF NIP D-TEXT R-ENV K-TEXT R-BOX EXIT THEN
-  OVER D-KIND K-LIST <> IF D-AT EXIT THEN  D>N SWAP D-LIST DUP R-LEN ROT SWAP D-IDX R-AT ;
+  OVER D-KIND K-LIST <> IF D-AT EXIT THEN  D>N SWAP D-LIST SWAP R-AT ;
 : CM-DEL ( c k --- )   OVER ENV-BOX = IF NIP D-TEXT R-UNSETENV EXIT THEN  D-DEL ;   \ del env[NAME]: unset (907)
 : CM-SET ( c k v --- )   2 PICK ENV-BOX = IF ROT DROP SWAP D-TEXT SWAP D-TEXT R-SETENV EXIT THEN   \ programs see it
-  2 PICK D-KIND K-LIST <> IF D-SET EXIT THEN  ROT D-LIST ROT D>N OVER R-LEN D-IDX R-SET ;
+  2 PICK D-KIND K-LIST <> IF D-SET EXIT THEN  ROT D-LIST ROT D>N R-SET ;
 \ ---- the library (870): what values need and programs cannot do - split, join, keys; has, count, range,
 \ merge, each above. Texts' other work - case, trimming, replacing - is tr's, sed's, cut's.
 VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N

@@ -1,0 +1,16 @@
+c a
+cm: index -4 past a list of 3 (line 1)
+cm: index -4 past a list of 3 (line 1)
+cm: index -4 past a list of 3 (line 1)
+cm: index -5 past a list of 3 (line 1)
+c a c
+cm: index 3 past a text of 3 characters (line 1)
+cm: index -4 past a text of 3 characters (line 1)
+cm: index 0 past a text of 0 characters (line 1)
+bc [""]
+cm: no key j (line 1)
+cm: no key j (line 1)
+cm: a map was wanted (line 1)
+cm: return takes one status (line 1)
+the session goes on
+status 0

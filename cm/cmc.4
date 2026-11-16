@@ -777,7 +777,9 @@ VARIABLE FN-NEXT   \ the var being made has a block written as its value: a func
   S" false" NAMED? IF 2DROP 2DROP T" 1 STATUS !" EXIT THEN
   2DUP S" break continue" IN-LIST? IF 2SWAP 2DROP  S" %loop" FIND-VAR ?DUP 0= IF S" outside a loop" ++ G-ERR THEN
     REF 2SWAP UPPER T-NAMED ++ EXIT THEN
-  S" return" NAMED? IF 2DROP 2DUP = IF 2DROP T" 0" ELSE DROP WORD-CODE T" D>N" ++ THEN
+  S" return" NAMED? IF 2DROP 2DUP = IF 2DROP T" STATUS @" ELSE  OVER NSKIP <> IF S" return takes one status" G-ERR THEN
+    WORD-CODE T" D>N" ++ THEN               \ (966: return 1 2 had been return 1; a bare return 0, where exit's is the last
+                                            \ status, as sh's both)
     S" %def" FIND-VAR REF ++ T" RETURN" ++ EXIT THEN
   S" if" NAMED? IF 2DROP IF-CMD EXIT THEN
   S" case" NAMED? IF 2DROP CASE-CMD EXIT THEN                   \ its arm's status, or 0 (910)

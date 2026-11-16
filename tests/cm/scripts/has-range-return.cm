@@ -1,0 +1,15 @@
+# three defects the 966 audit found, each failing on 965's image
+# has of a list holding numbers: a tagged number read as a box - it faulted (cm: error -9)
+has [1 2] 1 && echo has 1
+has [1 2] "2" && echo 'has "2", as == takes it'
+has [1 a] a && echo has a, past a number
+has [1] 3 || echo has no 3
+# range of a negative number: none, as of 0 - it had run for ever (?DO, -1 times round)
+echo [@(range -1)] [@(range 0)] [@(range 2)]
+# return's status 0 to 255, as exit's and sh's; a bare return the last status, as exit's - it had been 0
+var big { return 300 }
+var neg { return -1 }
+var bare { false; return }
+big || echo big: $status
+neg || echo neg: $status
+bare || echo bare: $status

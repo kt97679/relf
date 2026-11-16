@@ -10,15 +10,16 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
 : D-KIND ( item --- kind )   DUP 1 AND IF DROP K-NUM EXIT THEN  DUP IF @ THEN ;
 : D-ERR ( c-addr u --- )   R-FAIL ;
 : D-BOXED ( item --- box )   DUP 1 AND IF 2/ K-NUM R-BOX THEN ;
-: D-ITEM ( box --- item )   \ a number boxed, tagged - if it fits: past 62 bits it stays boxed (837)
-  DUP IF DUP @ K-NUM = IF DUP CELL+ @ DUP 2* 2/ = IF CELL+ @ 2* 1+ THEN THEN THEN ;
+: D-ITEM ( box --- item )   \ a number boxed, tagged - if it fits: past 62 bits it stays boxed (837); one tagged
+  DUP 1 AND IF EXIT THEN  DUP IF DUP @ K-NUM = IF DUP CELL+ @ DUP 2* 2/ = IF CELL+ @ 2* 1+ THEN THEN THEN ;   \ already, as it is
+  \ (966: read as a box, has [1 2] 1 faulted)
 : N>ITEM-D ( n --- item )   DUP 2* 2/ OVER = IF 2* 1+ ELSE K-NUM R-BOX THEN ;   \ tagged if it fits, else boxed
 : D>N0 ( item --- n )   DUP 1 AND IF 2/ EXIT THEN
   DUP D-KIND K-NUM <> IF S" cm: a whole number was wanted" D-ERR THEN CELL+ @ ;
 : D-TEXT ( item --- t )   ?DUP IF D-BOXED R-ANY>TEXT ELSE S" none" R-TEXT THEN ;
 : D-STR ( item --- text )   DUP D-KIND K-TEXT = IF EXIT THEN  D-TEXT K-TEXT R-BOX ;
 : D-LIST ( item --- l )   DUP D-KIND K-LIST <> IF S" cm: a list was wanted" D-ERR THEN CELL+ @ ;
-: D-REC ( item --- r )   DUP D-KIND K-REC <> IF S" cm: a record was wanted" D-ERR THEN CELL+ @ ;
+: D-REC ( item --- r )   DUP D-KIND K-REC <> IF S" cm: a map was wanted" D-ERR THEN CELL+ @ ;
 : BOTH# ( a b --- a b f )   2DUP AND 1 AND ;
 : NUMERIC? ( item --- f )   \ a text that reads as a whole number: -?[0-9]+
   DUP D-KIND K-TEXT <> IF DROP 0 EXIT THEN  D-TEXT R-T@  OVER C@ [CHAR] - = IF 1 /STRING THEN
@@ -83,7 +84,9 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
   DUP D-KIND K-REC = IF D-REC SWAP D-TEXT SWAP R-HAS D-BOOL EXIT THEN
   DUP D-KIND K-TEXT = IF D-TEXT SWAP D-TEXT R-CONTAINS D-BOOL EXIT THEN
   D-LIST DUP R-LEN 0 ?DO 2DUP I R-AT D-ITEM D== D-TRUE? IF 2DROP TRUE-BOX UNLOOP EXIT THEN LOOP  2DROP FALSE-BOX ;
-: D-IDX ( n len --- n' )   OVER 0< IF + ELSE DROP THEN ;          \ a negative index from the end
+: T-IDX ( n count --- n' )   \ a text's character n: from the end when negative; past either end an error, as a list's
+  OVER DUP 0< IF OVER + THEN  DUP 0< OVER 3 PICK < 0= OR IF   \ (966: "" had come back)
+    DROP R-ERR> ." cm: index " SWAP . ." past a text of " R-.N ."  characters" R-ERR-NL -4002 THROW THEN  NIP NIP ;
 : U-COUNT0 ( c-addr u --- n )   0 ROT ROT OVER + SWAP ?DO I C@ CONT? 0= - LOOP ;   \ a text's characters, UTF-8 (879)
 : U-FROM ( c-addr u off k --- off' )   \ from byte off, a character's start, k characters on: where the next starts, or u
   >R BEGIN DUP 2 PICK < WHILE
@@ -105,12 +108,12 @@ VARIABLE UC-A  VARIABLE UC-U  VARIABLE UC-N  VARIABLE UC-I  VARIABLE UC-B  VARIA
 : T-CHAR ( t i --- t2 )   >R DUP R-T@ R@ U-START  OVER R-T@ R> 1+ U-START  R-TSLICE ;   \ character i, its bytes
 : D-AT ( a i --- item )   \ a list's item, a text's character, a record's value
   OVER D-KIND K-REC = IF D-TEXT SWAP D-REC R-GET D-ITEM EXIT THEN
-  OVER D-KIND K-TEXT = IF D>N SWAP D-TEXT DUP R-T@ U-COUNT ROT SWAP D-IDX T-CHAR K-TEXT R-BOX EXIT THEN
-  D>N SWAP D-LIST DUP R-LEN ROT SWAP D-IDX R-AT D-ITEM ;
+  OVER D-KIND K-TEXT = IF D>N SWAP D-TEXT DUP R-T@ U-COUNT ROT SWAP T-IDX T-CHAR K-TEXT R-BOX EXIT THEN
+  D>N SWAP D-LIST SWAP R-AT D-ITEM ;   \ R-AT counts a negative from the end, once (966: twice - [a b c][-4] was c)
 : D-DEL ( x i --- )   \ del x[i]: a list's item, a map's key, taken out in place (905)
   OVER D-KIND K-REC = IF D-TEXT SWAP D-REC R-REC-DEL EXIT THEN
-  OVER D-KIND K-LIST = IF D>N SWAP D-LIST DUP R-LEN ROT SWAP D-IDX R-DEL EXIT THEN
+  OVER D-KIND K-LIST = IF D>N SWAP D-LIST SWAP R-DEL EXIT THEN
   2DROP S" cm: del takes an item of a list or a map" R-FAIL ;
 : D-SET ( x i v --- )   \ x[i] = v
   D-BOXED ROT  DUP D-KIND K-REC = IF D-REC ROT D-TEXT SWAP R-PUT EXIT THEN
-  D-LIST ROT D>N OVER R-LEN D-IDX R-SET ;
+  D-LIST ROT D>N R-SET ;
