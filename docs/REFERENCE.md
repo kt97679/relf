@@ -50,7 +50,7 @@ word's first character says what it is - as Forth reads its input:
 | `'` | a text, exactly as written | the next `'` |
 | `"` | a text with `$` values in it, and `\n` `\t` `\"` `\\` | the next `"` |
 | `$` | a value: `$x`, `$l[0]`, `$m[k][j]`; `$(cmd)` a capture; `$(( ))` arithmetic | the name and its `[...]`, or the `)` |
-| `@` | a spread: `@l`, `@(cmd)`, `@[a b c]` - several words | likewise |
+| `@` | a spread: `@l`, `@(cmd)`, `@[a b c]` - several words; inside `"..."` an error (`\@` the character) | likewise |
 | `[` | a list `[a b c]`, or a map `[k: v  j: w]`, `[:]` empty | the matching `]` |
 | `{` | a block `{ cmds }`, `{|a b| cmds }` | the matching `}` |
 | `#` | a comment | the line's end |
@@ -139,9 +139,10 @@ condition's status in `$status`. A condition that tests `$status` replaces it, a
 
 `case` tests a value's text against patterns - `*`, `?`, `[...]`, as `match` does - an arm a line, or
 several on one; the first arm one of whose patterns matches runs; none, status 0. A plain word is the
-pattern as written, not globbed:
+pattern as written, not globbed; a quoted one is a pattern too, as `match`'s - a `*` itself is `[*]`:
 
     case report.md { *.txt *.md { echo text } * { echo other } }
+    case '*' { '[*]' { echo a star } * { echo other } }
 
 ## Functions
 
@@ -165,6 +166,12 @@ block. `break` and `continue` end or skip a loop's turn.
     if find 4 { echo 4 is in l }
     find 9 || echo 9 is not
 
+A block alone as a command, or alone between `&&` and `||`, is a group, as sh's `{ ...; }`: its commands
+run in place, and `return`, `break` and `continue` in it are the function's and the loop's (960).
+
+    var need {|f| test -f $f || { echo no $f; return 1 }; echo have $f }
+    need /no/such || echo need: $status
+
 A value can stand first in a command: a block runs, its parameters the words after; a boolean gives its
 status; a text names a program to run, as `$EDITOR file` does: `var ed vi; $ed notes.txt`.
 
@@ -177,8 +184,9 @@ status; a text names a program to run, as `$EDITOR file` does: `var ed vi; $ed n
 
 - `$(cmd)` is **text**: everything the commands print - a program's bytes, `echo`'s, and values nobody
   takes, in their printed form - one text, its trailing newlines dropped. As sh's.
-- `@(cmd)` is **values**: a function's, one by one, or a program's lines - spread where they stand.
-  `[@(cmd)]` makes them a list.
+- `@(cmd)` is **values**: a function's, one by one, or a program's lines - spread where they stand -
+  when cmd is a pipeline ending in a program, or its last pipeline after `&&` or `||` is:
+  `[@(cd $dir && ls)]`. `[@(cmd)]` makes them a list.
 - `var x @(f)` and `set x @(f)` take the one value; none or several is an error.
 - `var` and `set` give the status of the last capture in their value, as sh's `x=$(cmd)`; 0 with none.
 
@@ -261,6 +269,7 @@ function that uses `return` - past it, `recursion too deep for the stacks`.
 - `[` is a list, not `test`: `test -f x`, or `$(( ))` for numbers.
 - `if has $m $k`, `if match $t '*.txt'`: statuses, as `test` gives.
 - `$(cmd)` is text - the same as sh's; `@(cmd)` takes a function's values.
+- `{ ... }` alone is a group, as sh's `{ ...; }`: `cmd || { echo failed; return 1 }` returns from the function.
 - No heredocs: a quoted text spans lines - `var msg '...'` over several, then `echo $msg | cmd`.
 - `trap` takes a block, and a signal it names ends the script after it - for cleaning up, as sh's is
   mostly used.

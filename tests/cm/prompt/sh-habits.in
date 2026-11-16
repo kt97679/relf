@@ -12,3 +12,5 @@ fi
 nosuchprog arg
 echo still here
 echo -n no newline
+echo "values: @(put a b)"
+echo "mail ada\@(home)"

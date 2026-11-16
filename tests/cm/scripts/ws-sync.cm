@@ -1,0 +1,58 @@
+# a whole script (960), in the language as it stands
+# two directory trees compared - files only in one, files in both that differ - and the
+# missing ones copied across, a dry run first; find for the lists, cmp for the contents. 960 found
+# @(cd $root && find ...) printed find's lines instead of taking them
+var base /tmp/cm-ws-sync
+rm -rf $base
+mkdir -p "$base/a/docs" "$base/a/src" "$base/b/src" "$base/b/old"
+echo readme > "$base/a/README"
+echo guide > "$base/a/docs/guide.txt"
+echo 'int main' > "$base/a/src/main.c"
+echo 'int main()' > "$base/b/src/main.c"
+echo util > "$base/a/src/util.c"
+echo util > "$base/b/src/util.c"
+echo stale > "$base/b/old/notes.txt"
+echo 'with a space' > "$base/a/docs/my notes.txt"
+trap { rm -rf $base } EXIT
+
+# a tree's files as a map: path below the root -> size in bytes
+var files-of {|root|
+  var m [:]
+  for f @(cd $root && find . -type f | sort) {
+    var rel $(slice $f 2)
+    set m[$rel] @(wc -c < "$root/$rel")
+  }
+  put $m
+}
+var a @(files-of "$base/a")
+var b @(files-of "$base/b")
+echo "a: $(count $a) files, b: $(count $b) files"
+
+var only-a []
+var only-b []
+var differ []
+for p @(keys $a) {
+  if ! has $b $p { append only-a $p } elif ! cmp -s "$base/a/$p" "$base/b/$p" { append differ $p }
+}
+for p @(keys $b) { if ! has $a $p { append only-b $p } }
+for p @only-a { echo "only in a: $p ($a[$p] bytes)" }
+for p @only-b { echo "only in b: $p" }
+for p @differ { echo "differ:    $p ($a[$p] and $b[$p] bytes)" }
+
+# a to b: what is missing, and what differs, copied - a dry run first, then for real
+var copy {|dry|
+  var n 0
+  for p @only-a @differ {
+    var dir $(dirname "$base/b/$p")
+    if $dry { echo "would copy $p" } else { mkdir -p $dir; cp "$base/a/$p" "$base/b/$p" }
+    set n $(( $n + 1 ))
+  }
+  put $n
+}
+var planned @(copy true)                 # @( ) takes the count it puts; its echo lines go on to the terminal
+echo "dry run: $planned files"
+var copied @(copy false)
+var b2 @(files-of "$base/b")
+var same 0
+for p @(keys $a) { if has $b2 $p && cmp -s "$base/a/$p" "$base/b/$p" { set same $(( $same + 1 )) } }
+echo "copied $copied; now $same of $(count $a) of a's files are in b alike, and b has $(count $b2)"

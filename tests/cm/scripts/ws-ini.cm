@@ -1,0 +1,94 @@
+# a whole script (960), in the language as it stands
+# an INI file read into a map of maps, changed, and written back - its sections and keys in
+# their order, its comments kept where they stood
+var file /tmp/cm-ws-ini.ini
+printf '%s\n' '; the server' '[server]' 'host = example.org' 'port=8080' '' '# who may log in' '[users]' \
+    'admin = ada' 'guest =' '[server]' 'timeout = 30' > $file
+
+var trim {|t|
+  var s 0
+  var e $(count $t)
+  while $(( $s < $e )) && has ' 	' $(slice $t $s $(( $s + 1 ))) { set s $(( $s + 1 )) }
+  while $(( $e > $s )) && has ' 	' $(slice $t $(( $e - 1 )) $e) { set e $(( $e - 1 )) }
+  put $(slice $t $s $e)
+}
+
+# the file as a list of entries: [kind: section/key/other  ...], and the values as conf[section][key]
+var entries []
+var conf [:]
+var order []
+var section ''
+var n 0
+var problems 0
+var line ''
+while read line {
+  set n $(( $n + 1 ))
+  var t @(trim $line)
+  if match $t '[[]*[]]' {
+    set section @(trim $(slice $t 1 -1))
+    if ! has $conf $section { set conf[$section] [:]; append order $section }
+    append entries [kind: section  name: $section]
+  } elif $(( $(count $t) == 0 )) || match $t '[;#]*' {
+    append entries [kind: other  text: $line]
+  } elif has $t = {
+    var parts [@(split $t =)]
+    var key @(trim $parts[0])
+    var value @(trim $(join = @(slice $parts 1)))
+    if $(( $section == '' )) { echo "line $n: $key outside a section"; set problems $(( $problems + 1 )); continue }
+    set conf[$section][$key] $value
+    append entries [kind: key  section: $section  key: $key]
+  } else {
+    echo "line $n: not a key = value: $t"
+    set problems $(( $problems + 1 ))
+  }
+} < $file
+
+for s @order { echo "[$s] $(count $conf[$s]) keys: $(join ' ' @(keys $conf[$s]))" }
+echo "server: $conf[server][host]:$conf[server][port], after $conf[server][timeout]s; guest [$conf[users][guest]]"
+
+# changes: one value, one key new to a section, one section new
+set conf[server][port] 9090
+set conf[users][editor] grace
+set conf[log] [level: info  file: /var/log/app.log]
+append order log
+
+# written back: each entry as it was, a key with its value now; a section's new keys after its last
+# line in the file; new sections at the end
+var written [:]
+var out []
+var last-of [:]
+for i @(range $(count $entries)) {
+  var e $entries[$i]
+  if $(( $e[kind] == 'key' )) { set last-of[$e[section]] $i }
+  if $(( $e[kind] == 'section' )) { set last-of[$e[name]] $i }
+}
+for i @(range $(count $entries)) {
+  var e $entries[$i]
+  case $e[kind] {
+    section { append out "[$e[name]]" }
+    key { append out "$e[key] = $conf[$e[section]][$e[key]]"; set written["$e[section]/$e[key]"] true }
+    * { append out $e[text] }
+  }
+  for s @order {
+    if has $last-of $s && $(( $last-of[$s] == $i )) {
+      for k @(keys $conf[$s]) {
+        if ! has $written "$s/$k" { append out "$k = $conf[$s][$k]"; set written["$s/$k"] true }
+      }
+    }
+  }
+}
+for s @order {
+  if ! has $last-of $s {
+    append out '' "[$s]"
+    for k @(keys $conf[$s]) { append out "$k = $conf[$s][$k]" }
+  }
+}
+join '
+' @out > $file
+echo --- the file now
+cat $file
+echo --- read again
+var again 0
+while read line { if match $line '*=*' { set again $(( $again + 1 )) } } < $file
+echo "$again keys, $problems problems"
+rm $file

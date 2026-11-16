@@ -124,7 +124,10 @@ VARIABLE IN-QU                                     \ reading a "...": ${name} al
   BEGIN CUR DUP [CHAR] " <> WHILE
     DUP 0= IF S" a closing quote is missing" P-ERR THEN
     DUP [CHAR] \ = IF DROP GET DROP GET  DUP [CHAR] n = IF DROP 10 THEN  DUP [CHAR] t = IF DROP 9 THEN  T,
-    ELSE [CHAR] $ = IF GET DROP T) -1 IN-QU ! DOLLAR-P 0 IN-QU ! IX? T0 ELSE GET T, THEN THEN   \ $(cmd)[k] indexed, as in a word
+    ELSE DUP [CHAR] $ = IF DROP GET DROP T) -1 IN-QU ! DOLLAR-P 0 IN-QU ! IX? T0 ELSE   \ $(cmd)[k] indexed, as in a word
+      \ @( ) here would be the characters themselves: written for $( ), three times in 960's round
+      [CHAR] @ = IF 1 PK [CHAR] ( = IF S" @( ) is not taken in a double-quoted text - $( ) is the text there, \@( the characters" P-ERR THEN THEN
+      GET T, THEN THEN
   REPEAT DROP GET DROP T) N) ;
 : SQUOTE-P ( --- )   \ after a ': the text to the next ', a leaf - '' too, an empty text
   T0 BEGIN CUR [CHAR] ' <> WHILE CUR 0= IF S" ' missing" P-ERR THEN GET T, REPEAT  GET DROP  TXS @ TXP @ OVER - N-TX N, T0 ;
@@ -305,18 +308,31 @@ VARIABLE SFL-A  VARIABLE SFL-U
 : ELSE-ON? ( w --- f )   \ a newline that does not end the command: an if's, its last word a block, else or elif next
   DUP N+ @ N-BK = SWAP N+ NSKIP @ 0= AND 0= IF 0 EXIT THEN    \ (904: a newline ends a command - rule 1 - so
   CUR-CMD @ N+ S" if" BARE= 0= IF 0 EXIT THEN  NEXT-ELSE? ;   \ } then else on the next line had been two)
+VARIABLE GROUP-W   \ a block first in its part of a command: a group if the part ends with it (960) - sh's
+\ { ...; }, made in place, return in it the function's as break and continue were the loop's: `cmd || { echo
+\ no; return 1 }` had gone on. Marked as read, as a body is (MARK): a walk of every command's words in the scan
+\ cost 1.5 % of a script's compiling - NSKIP goes through each word's nodes
+: GROUP-END ( --- )   GROUP-W @ ?DUP IF N+ 1 SWAP 2 CELLS + !  0 GROUP-W ! THEN ;
+: GROUP-NEXT ( last --- last )   \ before a word: the part ended - at the command's start, or && or || next - or not
+  GROUP-W @ 0= IF EXIT THEN  DUP 0= IF GROUP-END EXIT THEN
+  CUR [CHAR] & = 1 PK [CHAR] & = AND  CUR [CHAR] | = 1 PK [CHAR] | = AND OR IF GROUP-END ELSE 0 GROUP-W ! THEN ;
+: GROUP? ( w last --- w )   \ after a word: a block with no parameters, at the command's start or after && or ||
+  OVER N+ DUP @ N-BK = SWAP @A 0= AND 0= IF DROP EXIT THEN
+  DUP IF  DUP CUR-CMD @ = IF DROP EXIT THEN   \ after a \ at a line's end: last is the command's node, not known
+    DUP S" &&" BARE= SWAP S" ||" BARE= OR 0= IF EXIT THEN  ELSE DROP THEN  DUP GROUP-W ! ;
 : CMDS' ( close closer --- )   \ commands up to close - 0, the text's end - each a N-CMD of its words; the
   CUR-CMD @ >R
   0 BEGIN  0 SKIP-WS CUR       \ third cell: 0, or the command's last word so far
     BEGIN  DUP 0= 4 PICK 0= AND  2 PICK SF-SP @ OR 0<> AND  WHILE    \ a top-level text's end: a sourced file's, back (890)
       DROP ?DUP IF N) TOP-END THEN  CUR 0= IF SF-SP @ IF SF-POP THEN THEN  0 0 SKIP-WS CUR  REPEAT
-    DUP 0= IF DROP  2 PICK IF S" a closing bracket is missing" P-ERR THEN  IF N) THEN 2DROP R> CUR-CMD ! EXIT THEN
-    DUP 4 PICK = IF DROP GET DROP  IF N) THEN 2DROP R> CUR-CMD ! EXIT THEN
+    DUP 0= IF DROP  2 PICK IF S" a closing bracket is missing" P-ERR THEN  IF N) THEN 2DROP GROUP-END R> CUR-CMD ! EXIT THEN
+    DUP 4 PICK = IF DROP GET DROP  IF N) THEN 2DROP GROUP-END R> CUR-CMD ! EXIT THEN
     DUP 10 = 2 PICK BS-WORD? AND IF DROP GET DROP NDP ! CUR-CMD @      \ \ at the line's end: dropped, the line goes on
     ELSE DUP 10 = 2 PICK 0<> AND IF OVER GOES-ON? 2 PICK ELSE-ON? OR ELSE 0 THEN
     IF DROP GET DROP                                       \ after |, && or ||, or before else or elif: the line goes on
     ELSE DUP 10 = SWAP [CHAR] ; = OR IF GET DROP  IF N) OVER 0= IF TOP-END THEN THEN 0
-    ELSE DUP 0= IF  2 PICK 0= IF NDP @ TOP-CMD ! THEN  NDP @ CUR-CMD !  IN-LINE @ 0 N-CMD N,  THEN SET-FIRST? >R  NDP @ OVER R> IF SET-TARGET-P ELSE WORD-P THEN
+    ELSE GROUP-NEXT  DUP 0= IF  2 PICK 0= IF NDP @ TOP-CMD ! THEN  NDP @ CUR-CMD !  IN-LINE @ 0 N-CMD N,  THEN
+      DUP >R SET-FIRST? >R  NDP @ OVER R> IF SET-TARGET-P ELSE WORD-P THEN  R> GROUP?
       DUP BS-WORD? IF BS-AT-END THEN  THEN THEN THEN
   AGAIN ;
 ' CMDS' IS CMDS
@@ -442,16 +458,25 @@ DEFER IX-CODE ( c-addr u ix --- c-addr2 u2 )   \ a value's keys, each CM-AT (913
 : GPIECE ( p --- c-addr u )   DUP @ N-TX = IF PIECE ELSE PIECE T" GLOB-ESC" ++ THEN ;   \ a $'s, a quote's: no wildcards
 : GLOB-CODE ( w --- c-addr u )   \ a glob's pattern: its unquoted texts as they are, the rest escaped (881)
   N+ DUP GPIECE T" D-STR" ++ TOP$ ROT NSKIP BEGIN DUP @ WHILE DUP >R GPIECE T" JOIN" ++ SEQ+ R> NSKIP REPEAT DROP ;
+: CAP-CMD ( cp --- from to -1 | 0 )   \ a capture of one command: its words
+  N+ DUP @ N-CMD <> IF DROP 0 EXIT THEN  DUP NSKIP @ IF DROP 0 EXIT THEN  N+ DUP WORDS-END -1 ;
+: PROGRAM-LAST? ( from to --- f )   2DUP LAST-STAGE TUCK = IF 2DROP 0 EXIT THEN  NIP PROGRAM? ;   \ its last stage a program
 : PROG-CAP? ( cp --- f )   \ $( ) of one command, a pipeline ending in a program
-  N+ DUP @ N-CMD <> IF DROP 0 EXIT THEN  DUP NSKIP @ IF DROP 0 EXIT THEN
-  N+ DUP WORDS-END  2DUP TO-ANDOR OVER <> IF 2DROP 0 EXIT THEN
-  2DUP LAST-STAGE TUCK = IF 2DROP 0 EXIT THEN  NIP PROGRAM? ;
+  CAP-CMD 0= IF 0 EXIT THEN  2DUP TO-ANDOR OVER <> IF 2DROP 0 EXIT THEN  PROGRAM-LAST? ;
+: PROG-LIST? ( cp --- f )   \ one command, && or || in it, its last pipeline ending in a program (960)
+  CAP-CMD 0= IF 0 EXIT THEN  2DUP TO-ANDOR OVER = IF 2DROP 0 EXIT THEN
+  BEGIN 2DUP TO-ANDOR 2DUP <> WHILE ROT DROP NSKIP SWAP REPEAT DROP  PROGRAM-LAST? ;
 : PIPE-CAP ( cp c-addr u --- c-addr2 u2 )   \ that pipeline, ended so (859, 862)
   LN @ >R  ROT N+ DUP @A LN !  N+ DUP WORDS-END 2SWAP PIPELINE  R> LN ! ;
 : CAPTURE-WORD ( cp --- c-addr u )   \ a word of its own for the capture's commands: its name
   S" C" FRESH ROT SCOPE( N+ BODY-CODE )SCOPE 2OVER 2SWAP DEF-WORD ;
+: NO-TRANSFER? ( node --- f )   \ no break, continue or return in it: a capture of it needs no CATCH (878)
+  DUP S" break" BARE-IN? OVER S" continue" BARE-IN? OR SWAP S" return" BARE-IN? OR 0= ;
+: TEXT-CAP ( cp --- c-addr u )   \ what the commands print, one text
+  DUP NO-TRANSFER? >R CAPTURE-WORD T-TICK$  R> IF T" CAPTURE-TEXT-P" ELSE T" CAPTURE-TEXT" THEN ++ ;
 : SPREAD-CODE ( p --- c-addr u )   \ what @ spreads: a list
   DUP @ N-CP = IF DUP PROG-CAP? IF T" PIPE-LINES" PIPE-CAP EXIT THEN
+    DUP PROG-LIST? IF TEXT-CAP T" TEXT-LINES" ++ EXIT THEN   \ @(cd d && find .): the lines too, not to the terminal
     CAPTURE-WORD T-TICK$ T" CAPTURE" ++ EXIT THEN  PIECE ;
 : ARG-CODE ( w --- c-addr u )   DUP N+ @ N-SP = IF N+ N+ DUP NSKIP DUP @ N-IX = IF   \ @(cmd)[k]: its values' k-th,
     >R SPREAD-CODE R> IX-CODE T" ARG@1" ++ EXIT THEN  DROP SPREAD-CODE T" ARG@" ++ EXIT THEN   \ spread if a list (913)
@@ -527,8 +552,6 @@ VARIABLE SCAN-BK
   R> IF  >R  S" B" FRESH 2SWAP T-TICK$ T" BLK-GUARD" ++  2OVER 2SWAP T-DEF OUT+  R>  THEN   \ guarded: its word inside (931)
   0 0 TOP$ 2 PICK 2 CELLS + @ 0 ?DO  2 PICK I CAP@ REF SEQ+  LOOP
   ROT 2 CELLS + @ T#++ 2SWAP T-TICK$ ++ T" BLK-NEW" ++ ;
-: NO-TRANSFER? ( node --- f )   \ no break, continue or return in it: a capture of it needs no CATCH (878)
-  DUP S" break" BARE-IN? OVER S" continue" BARE-IN? OR SWAP S" return" BARE-IN? OR 0= ;
 : PIECE' ( p --- c-addr u )
   DUP @ CASE
     N-TX OF DUP @A SWAP @B TEXT-CODE ENDOF
@@ -536,8 +559,7 @@ VARIABLE SCAN-BK
     N-BO OF @A IF T" TRUE-BOX" ELSE T" FALSE-BOX" THEN ENDOF
     N-VR OF DUP @A OVER @B READ$ ROT IX-CODE' ENDOF
     N-QU OF N+ DUP @ IF PIECES ELSE DROP 0 0 TEXT-CODE THEN ENDOF
-    N-CP OF DUP PROG-CAP? IF T" PIPE-TEXT" PIPE-CAP ELSE DUP NO-TRANSFER? >R CAPTURE-WORD T-TICK$
-      R> IF T" CAPTURE-TEXT-P" ELSE T" CAPTURE-TEXT" THEN ++ THEN ENDOF
+    N-CP OF DUP PROG-CAP? IF T" PIPE-TEXT" PIPE-CAP ELSE TEXT-CAP THEN ENDOF
     N-AR OF ARITH ENDOF
     N-LS OF N+ DUP WORDS-END ARGS-CODE ENDOF
     N-MP OF MAP-CODE ENDOF
@@ -679,6 +701,7 @@ VARIABLE FN-NEXT   \ the var being made has a block written as its value: a func
 : CAP-IN? ( from to --- f )   \ a $( ) or @( ) among these words: var's and set's status theirs, as sh's x=$(cmd) (897)
   SWAP BEGIN 2DUP <> WHILE  DUP @ N-CP = IF 2DROP -1 EXIT THEN  N+ REPEAT 2DROP 0 ;
 : SINGLE ( from to --- c-addr u )   \ one command, not a program's
+  OVER N+ DUP @ N-BK = SWAP @B AND IF DROP INLINE EXIT THEN   \ a group, marked so (960)
   OVER BARE? 0= IF  OVER NSKIP OVER ARGS-CODE  ROT DROP ROT WORD-CODE ++ T" CALL-VALUE" ++ EXIT THEN   \ rule 11
   OVER BARE$ 2SWAP SWAP NSKIP SWAP 2SWAP
   S" var" NAMED? IF 2DROP 2DUP CAP-IN? >R VAR-CMD R> 0= IF OK$ THEN EXIT THEN   \ status: its value's capture's (897)
@@ -836,7 +859,7 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
   DUP 64 * 65536 + CH0 CHP CHE AREA   DUP 64 * 65536 + OU0 OUP OUE AREA
   SESSION @ RH0 @ 0<> AND IF DROP ELSE  16 * 4096 + CELLS  1 20 LSHIFT SESSION @ AND MAX  RH0 RHP RHE AREA  NAMES-NEW  THEN
   MAIN-FR @ FR !  MAIN-SC @ SC !  0 PL !  0 AP !     \ a session's line after an error: back at the top
-  ND0 @  0 0 CMDS N)  GEN0
+  ND0 @  0 GROUP-W !  0 0 CMDS N)  GEN0
   SCAN-CAPS
   SESSION @ 0= IF DUP BEGIN DUP @ WHILE  DUP HOIST  NSKIP REPEAT DROP THEN   \ (929) - the prompt's lines are compiled one by one
   0 0 TOP$ ROT BEGIN DUP @ WHILE  DUP >R CMD-CODE DUP IF T" R-GC?" 2SWAP ++ THEN SEQ+  R> NSKIP REPEAT DROP

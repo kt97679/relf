@@ -25,6 +25,7 @@ for i @(range 4) { if $(( $i == 1 )) { continue } elif $(( $i == 3 )) { break } 
 var n 0
 while $(( $n < 3 )) { set n $(( $n + 1 )) }
 case report.md { *.txt *.md { echo text } * { echo other } }
+case '*' { '[*]' { echo a star } * { echo other } }
 echo n $n
 # -- functions
 var greet {|who| echo hello $who }
@@ -38,6 +39,8 @@ echo $both $one $(kind $one)
 var find {|x| for v @l { if $(( $v == $x )) { return 0 } }; return 1 }
 if find 4 { echo 4 is in l }
 find 9 || echo 9 is not
+var need {|f| test -f $f || { echo no $f; return 1 }; echo have $f }
+need /no/such || echo need: $status
 # -- blocks
 var twice {|f x| $f $($f $x) }
 echo $($twice { |v| put $(( $v * 2 )) } 5)

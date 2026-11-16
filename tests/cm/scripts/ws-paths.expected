@@ -1,0 +1,20 @@
+normalise [/a/./b/../c] = /a/c
+normalise [//usr///local/bin/] = /usr/local/bin
+normalise [a/../../b] = ../b
+normalise [.] = .
+normalise [] = .
+normalise [../x/./y/..] = ../x
+normalise [/../etc] = /etc
+normalise [a/b/c/../../d] = a/d
+relative /home/ada/src/app from /home/ada = src/app
+relative /home/ada from /home/ada/src/app = ../..
+relative /etc/hosts from /var/log = ../../etc/hosts
+relative a/b from c = ../a/b
+relative /x from /x = .
+/usr/lib/libz.so.1: dir /usr/lib, base libz.so.1, ext [.1]
+notes.txt: dir ., base notes.txt, ext [.txt]
+/etc/.profile: dir /etc, base .profile, ext []
+archive.tar.gz: dir ., base archive.tar.gz, ext [.gz]
+/usr/: dir /, base usr, ext []
+dir/file: dir dir, base file, ext []
+status 0

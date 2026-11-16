@@ -1,0 +1,82 @@
+# a whole script (960), in the language as it stands
+# arithmetic written as text, evaluated by a recursive-descent parser - a tokenizer by
+# character index, then expr := term (+|- term)*, term := unary (*|/|% unary)*, unary := -unary | atom
+var tokenize {|text|
+  var toks []
+  var i 0
+  var n $(count $text)
+  while $(( $i < $n )) {
+    var c $text[$i]
+    if has ' 	' $c { set i $(( $i + 1 )); continue }
+    if match $c '[0-9]' {
+      var j $i
+      while $(( $j < $n )) && match $text[$j] '[0-9]' { set j $(( $j + 1 )) }
+      append toks [num: $(slice $text $i $j)]
+      set i $j
+      continue
+    }
+    if has '+-*/%()' $c { append toks [op: $c]; set i $(( $i + 1 )); continue }
+    put "unexpected '$c' at $i"
+    return 1
+  }
+  put $toks
+}
+
+# the parser's state: the tokens and where it stands; each rule puts its value, or fails with a message
+var toks []
+var pos 0
+var err ''
+var peek {|| if $(( $pos < $(count $toks) )) { put $toks[$pos] } else { put [op: end] } }
+var is-op {|tok o| has $tok op && $(( $tok[op] == $o )) }
+var fail {|msg| if $(( $err == '' )) { set err $msg }; put 0 }
+
+var expr {||}
+var atom {||
+  var t @(peek)
+  if has $t num { set pos $(( $pos + 1 )); put $t[num]; return 0 }
+  if is-op $t '(' {
+    set pos $(( $pos + 1 ))
+    var v @(expr)
+    if is-op @(peek) ')' { set pos $(( $pos + 1 )); put $v } else { fail "a ) missing at token $pos" }
+    return 0
+  }
+  fail "a number wanted at token $pos, not $t[op]"
+}
+var unary {|| if is-op @(peek) - { set pos $(( $pos + 1 )); put $(( 0 - $(unary) )) } else { atom } }
+var term {||
+  var v @(unary)
+  while is-op @(peek) '*' || is-op @(peek) / || is-op @(peek) % {
+    var o @(peek)[0][op]
+    set pos $(( $pos + 1 ))
+    var r @(unary)
+    if $(( $o != '*' && $r == 0 )) { fail 'division by zero'; return 0 }
+    # '[*]': a quoted '*' is still a pattern, and matches anything - and [*] unquoted is a list
+    case $o { '[*]' { set v $(( $v * $r )) } / { set v $(( $v / $r )) } % { set v $(( $v % $r )) } }
+  }
+  put $v
+}
+set expr {||
+  var v @(term)
+  while is-op @(peek) + || is-op @(peek) - {
+    var o @(peek)[0][op]
+    set pos $(( $pos + 1 ))
+    var r @(term)
+    if $(( $o == '+' )) { set v $(( $v + $r )) } else { set v $(( $v - $r )) }
+  }
+  put $v
+}
+
+var calc {|text|
+  var t ''
+  if ! set t @(tokenize $text) { echo "$text: $t"; return 0 }     # not `|| { ... return }`: that returns from the block alone
+  set toks $t
+  set pos 0
+  set err ''
+  var v @(expr)
+  if $(( $err == '' && $pos < $(count $toks) )) { set err "left over from token $pos" }
+  if $(( $err == '' )) { echo "$text = $v" } else { echo "$text: $err" }
+}
+
+for e @['1 + 2 * 3' '(1 + 2) * 3' '-4 + 10 / 3' '2 * -(3 - 5) % 3' '((7))' '100 / (5 - 5)' '1 +' '(2' '3 4' '2 $ 3' '- - 8'] {
+  calc $e
+}

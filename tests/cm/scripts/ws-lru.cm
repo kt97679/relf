@@ -1,0 +1,57 @@
+# a whole script (960), in the language as it stands
+# a least-recently-used cache - a map for the values, a list for the order of use - made by a
+# function that keeps them, and used through the functions it gives back
+var make-cache {|capacity|
+  var values [:]
+  var order []                 # least recent first
+  var hits 0
+  var misses 0
+  var evicted []
+  var touch {|key|
+    for i @(range $(count $order)) { if $(( $order[$i] == $key )) { del order[$i]; break } }
+    append order $key
+  }
+  put [
+    get: {|key|
+      if has $values $key { set hits $(( $hits + 1 )); touch $key; put $values[$key]; return 0 }
+      set misses $(( $misses + 1 ))
+      return 1
+    }
+    put: {|key value|
+      if ! has $values $key && $(( $(count $order) >= $capacity )) {
+        var old $order[0]
+        del order[0]
+        del values[$old]
+        append evicted $old
+      }
+      set values[$key] $value
+      touch $key
+    }
+    stats: {|| put "hits $hits, misses $misses, evicted [$(join ' ' @evicted)], order [$(join ' ' @order)]" }
+  ]
+}
+
+var cache @(make-cache 3)
+# a slow lookup the cache stands in front of: the length of a word, counted
+var lookups 0
+var slow-len {|w| set lookups $(( $lookups + 1 )); put $(count $w) }
+var cached-len {|w|
+  var got []                                       # a list: a miss gives no value, and status 1
+  if set got [@($cache[get] $w)] { put $got[0]; return 0 }
+  var v @(slow-len $w)
+  $cache[put] $w $v
+  put $v
+}
+for w @[apple pear apple fig plum apple pear kiwi fig apple] {
+  echo "$w $(cached-len $w)"
+}
+echo @($cache[stats])
+echo "slow lookups: $lookups of 10"
+
+# two caches, each its own state
+var small @(make-cache 1)
+$small[put] a 1
+$small[put] b 2
+$small[get] a || echo "a gone from the small cache"
+echo "small: $($small[stats])"
+echo "big:   $($cache[stats])"

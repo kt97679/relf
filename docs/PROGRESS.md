@@ -983,6 +983,7 @@ do not trust the absence of a line below.
 - 957 — the hybrid's engine code removed (952's NATIVE, NRET, CODE-MAP, CODE-SEAL, hybrid.4): relfasm64 18,400 bytes again, relfshasm64 137,299, the kernels as at 951 byte for byte; NATIVE.md 18, the tools and reports kept as the record
 - 958 — the project checked before rill3: relf builds itself with no compiler, assembler, linker, make or Python, 10 of 10, run by relfsh too (tools/selfhost-check.sh, make selfhost); README, make help and the docs brought up to date; coverage 92 % to 95 % (tools/coverage.py rewritten; tests/kernel-words.fth, run-coverage-958); ten defects fixed - kill -SEGV $$ taken for a fault, signals 16 and 26-31 unnamed, printf overflow wrapping, test -t missing, -O and -G false, unknown test operators silent, ulimit taking any word, set -x dropping prefix assignments, `.` stopping at 793, getopts silent
 - 959 — rill3: the front end measured (cm/cmc.4 27 % of the image; a third of its code strings, its 79 messages about 2,960 bytes - kept, the owner's choice) and its repeated logic merged: the image 79,381 to 79,045 bytes, the code made of every test script the same, compiling +0.05 % in dispatches; tests/cm/bench/for.expected added (cm-bench had stopped since 936)
+- 960 — rill3: seven whole scripts (diff, INI, a parser, paths, an LRU cache, a tree sync, cron), three defects fixed: @( ) in "..." an error; @( ) of `a && prog` takes prog's lines; a block alone between && and || is a group, return in it the function's
 
 ### Not tied to an iteration
 

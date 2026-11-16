@@ -1,0 +1,13 @@
+a: 5 files, b: 3 files
+only in a: README (7 bytes)
+only in a: docs/guide.txt (6 bytes)
+only in a: docs/my notes.txt (13 bytes)
+only in b: old/notes.txt
+differ:    src/main.c (9 and 11 bytes)
+would copy README
+would copy docs/guide.txt
+would copy docs/my notes.txt
+would copy src/main.c
+dry run: 4 files
+copied 4; now 5 of 5 of a's files are in b alike, and b has 6
+status 0

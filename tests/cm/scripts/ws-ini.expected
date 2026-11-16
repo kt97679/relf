@@ -1,0 +1,23 @@
+[server] 3 keys: host port timeout
+[users] 2 keys: admin guest
+server: example.org:8080, after 30s; guest []
+--- the file now
+; the server
+[server]
+host = example.org
+port = 9090
+
+# who may log in
+[users]
+admin = ada
+guest = 
+editor = grace
+[server]
+timeout = 30
+
+[log]
+level = info
+file = /var/log/app.log
+--- read again
+8 keys, 0 problems
+status 0

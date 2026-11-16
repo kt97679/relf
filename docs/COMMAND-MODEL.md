@@ -57,8 +57,8 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
    (867: no `${name}` - `$name` the one way); `@name` and `@name[key]` spread a list into several arguments. `$(cmd)` is
    text: everything the commands print - a program's bytes, `echo`'s, and values nobody takes, in their
    printed form - one text, its trailing newlines dropped, as sh's (896; until then a function's one
-   value, an error for none or several). `@(cmd)` is values - a function's, a program's lines - spread
-   where they stand; `[@(cmd)]` a list, and `var x @(cmd)` (or set's) the one value, an error for
+   value, an error for none or several). `@(cmd)` is values - a function's, a program's lines (a
+   pipeline ending in one, or the last after `&&` or `||`, 960) - spread where they stand; `[@(cmd)]` a list, and `var x @(cmd)` (or set's) the one value, an error for
    none or several (896). `has` gives a status, as `match` does: `if has $m $k { }`.
    `var` and `set` give the status of the last `$( )` or `@( )` in their value, 0 with none, as sh's
    `x=$(cmd)` (897).

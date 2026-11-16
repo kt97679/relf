@@ -1,0 +1,25 @@
+0a1
+> zero
+2d2
+< two
+4a5
+> six
+5a7
+> seven
+common: 4 of 5 and 7 lines
+===
+2c2
+< b
+---
+> x
+4,5d3
+< d
+< e
+common: 2 of 5 and 3 lines
+===
+0a1
+> only
+common: 0 of 0 and 1 lines
+===
+common: 1 of 1 and 1 lines
+status 0

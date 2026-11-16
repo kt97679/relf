@@ -1,0 +1,87 @@
+# a whole script (960), in the language as it stands
+# the lines two texts differ by, in diff's normal format - a longest common subsequence,
+# its table a list of lists, walked from the start
+var range-of {|from to| if $(( $from == $to )) { put $from } else { put "$from,$to" } }
+
+var diff-lines {|a b|
+  var n $(count $a)
+  var m $(count $b)
+  # t[i][j]: how long the common part of a from i and b from j can be
+  var t []
+  for i @(range $(( $n + 1 ))) {
+    var row []
+    for j @(range $(( $m + 1 ))) { append row 0 }
+    append t $row
+  }
+  var i $(( $n - 1 ))
+  while $(( $i >= 0 )) {
+    var j $(( $m - 1 ))
+    while $(( $j >= 0 )) {
+      if $(( $a[$i] == $b[$j] )) {
+        set t[$i][$j] $(( $t[$(( $i + 1 ))][$(( $j + 1 ))] + 1 ))
+      } else {
+        var down $t[$(( $i + 1 ))][$j]
+        var right $t[$i][$(( $j + 1 ))]
+        if $(( $down >= $right )) { set t[$i][$j] $down } else { set t[$i][$j] $right }
+      }
+      set j $(( $j - 1 ))
+    }
+    set i $(( $i - 1 ))
+  }
+  # the edit script: runs of deletions and additions between common lines, as `diff` prints them
+  var dels []
+  var adds []
+  var da 0
+  var db 0
+  var flush {||
+    var nd $(count $dels)
+    var na $(count $adds)
+    if $(( $nd == 0 && $na == 0 )) { return 0 }
+    var left $(range-of $(( $da + 1 )) $(( $da + $nd )))
+    var right $(range-of $(( $db + 1 )) $(( $db + $na )))
+    if $(( $na == 0 )) { echo "${left}d$db" } elif $(( $nd == 0 )) { echo "${da}a$right" } else { echo "${left}c$right" }
+    for l @dels { echo "< $l" }
+    if $(( $nd > 0 && $na > 0 )) { echo --- }
+    for l @adds { echo "> $l" }
+    set dels []
+    set adds []
+  }
+  set i 0
+  var j 0
+  while $(( $i < $n || $j < $m )) {
+    var same false
+    if $(( $i < $n && $j < $m )) { if $(( $a[$i] == $b[$j] )) { set same true } }
+    if $same {
+      flush
+      set i $(( $i + 1 )); set j $(( $j + 1 ))
+      set da $i; set db $j
+      continue
+    }
+    # a's line goes when b is done, or when dropping it keeps the longer common part
+    var drop-a $(( $j >= $m ))
+    if $(( $i < $n && $j < $m )) { set drop-a $(( $t[$(( $i + 1 ))][$j] >= $t[$i][$(( $j + 1 ))] )) }
+    if $drop-a { append dels $a[$i]; set i $(( $i + 1 )) } else { append adds $b[$j]; set j $(( $j + 1 )) }
+  }
+  flush
+  echo "common: $t[0][0] of $n and $m lines"
+}
+
+var lines {|text| put [@(split $text '
+')] }
+diff-lines @(lines 'one
+two
+three
+four
+five') @(lines 'zero
+one
+three
+four
+six
+five
+seven')
+echo ===
+diff-lines [a b c d e] [a x c]
+echo ===
+diff-lines [] [only]
+echo ===
+diff-lines [same] [same]

@@ -1,0 +1,13 @@
+ok:    */15 9-10 * * 1-5 backup
+ok:    0 0 1 * * rotate logs
+ok:    30 2 * * 0,6 weekend report
+ok:    0 12 31 1 * once a year
+error: 5 70 * * * bad hour - hour: 70 is outside 0-23
+error: */0 * * * * bad step - minute: a step of 0
+error: 1-x * * * * bad number - minute: x is not a number
+error: too few - five fields and a command wanted
+backup: 01-29 09:00 (4), 01-29 09:15 (4), 01-29 09:30 (4)
+rotate logs: 02-01 00:00 (0)
+weekend report: 01-31 02:30 (6), 02-01 02:30 (0)
+once a year: 01-31 12:00 (6)
+status 0

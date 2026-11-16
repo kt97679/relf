@@ -1,0 +1,16 @@
+apple 5
+pear 4
+apple 5
+fig 3
+plum 4
+apple 5
+pear 4
+kiwi 4
+fig 3
+apple 5
+hits 2, misses 8, evicted [pear fig plum apple pear], order [kiwi fig apple]
+slow lookups: 8 of 10
+a gone from the small cache
+small: hits 0, misses 1, evicted [a], order [b]
+big:   hits 2, misses 8, evicted [pear fig plum apple pear], order [kiwi fig apple]
+status 0

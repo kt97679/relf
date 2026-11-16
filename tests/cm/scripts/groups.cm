@@ -1,0 +1,25 @@
+# 960: a block alone between && and || is a group, as sh's { ...; }: return in it the function's -
+# `cmd || { echo no; return 1 }` had ended the block alone, and the function went on
+var need {|x| $(( $x > 0 )) || { echo "need: $x is not positive"; return 1 }; echo "need: $x" }
+need 3
+need 0 || echo "status $status"
+var first {|l| for v @l { $(( $v > 10 )) && { put $v; return 0 } }; return 1 }
+echo @(first [3 12 40])
+first [1 2] || echo none over 10
+for i @(range 4) { $(( $i == 1 )) && { continue }; $(( $i == 3 )) && { break }; echo i $i }
+{ var inside 1; echo a group on its own }
+var g {|| { return 4 }; echo not reached }
+g || echo "g: $status"
+var h {|| true && { echo in; false } || { echo "after: $status" } }
+h
+# a block with words after it, or in a pipeline, is still a value that runs
+{ |w| echo block got $w } word
+{ put x y } | each {|v| echo stage $v }
+# 960: @( ) of a command whose last pipeline, after && or ||, ends in a program takes that program's lines
+var d /tmp/cm-groups-dir
+rm -rf $d; mkdir -p $d; touch "$d/b" "$d/a"
+var names [@(cd $d && ls)]
+echo $(count $names) names: $names
+echo [@(false || printf 'p\nq\n' | sort -r)]
+echo [@(true && printf 'one\n')] [@(false && printf 'never\n')]
+rm -rf $d

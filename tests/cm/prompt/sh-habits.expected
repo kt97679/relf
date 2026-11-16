@@ -12,4 +12,6 @@ cm: fi is sh's - blocks: if cond { }, while cond { }, for x values { }, case v {
 cm: nosuchprog: no such program (line 1)
 still here
 cm: echo -n and -e are sh's - echo prints its words and a newline; printf '%s' text prints none (line 1)
+cm: @( ) is not taken in a double-quoted text - $( ) is the text there, \@( the characters (line 1)
+mail ada@(home)
 status 0

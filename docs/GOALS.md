@@ -268,7 +268,8 @@ the account of what each gained and cost.
    $( ) text and @( ) values (896); words read by their first character, operators words
    of their own (899); del, wait $job, backslash continuation, case, trap, slice, upper
    and lower, TAB completion, an index after any value (904-914). Open (docs/progress/
-   0900-0999.md, the last handoff): more whole scripts - each round has found something;
+   0900-0999.md, the last handoff): more whole scripts - each round has found something (960's
+   seven: three defects - @( ) in "...", @( ) of `a && prog`, return in `|| { }`);
    docs/SIMILAR-PROJECTS.md (921): projects like kbool, and eleven action items from them;
    by the owner's word not now: $( ) of a def's number (`var x @(f)` the fast form), recursion's
    depth, heredocs. The front end smaller - begun at 959: cm/cmc.4 is 21,282 of the image's 79,045

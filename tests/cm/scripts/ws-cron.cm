@@ -1,0 +1,99 @@
+# a whole script (960), in the language as it stands
+# crontab lines read - each field a set of numbers from *, a, a-b, */n and a-b/n, joined by commas -
+# and the next times each runs after a given minute, walked a minute at a time through a week
+var limits [[0 59] [0 23] [1 31] [1 12] [0 6]]
+var names [minute hour day month weekday]
+
+var field-set {|text i|
+  var lo $limits[$i][0]
+  var hi $limits[$i][1]
+  var nums [:]
+  for part @(split $text ,) {
+    var step 1
+    var range $part
+    if has $part / {
+      var ps [@(split $part /)]
+      set range $ps[0]
+      set step $ps[1]
+      if ! match $step '[0-9]*' || $(( $step == 0 )) { put "$names[$i]: a step of $step"; return 1 }
+    }
+    var from $lo
+    var to $hi
+    if $(( $range != '*' )) {
+      var ends [@(split $range -)]
+      for e @ends { if ! match $e '[0-9]*' || match $e '*[!0-9]*' { put "$names[$i]: $e is not a number"; return 1 } }
+      set from $ends[0]
+      if $(( $(count $ends) == 2 )) { set to $ends[1] } elif has $part / { set to $hi } else { set to $from }
+    }
+    if $(( $from < $lo || $to > $hi || $from > $to )) { put "$names[$i]: $range is outside $lo-$hi"; return 1 }
+    var v $from
+    while $(( $v <= $to )) { set nums[$v] true; set v $(( $v + $step )) }
+  }
+  put $nums
+}
+
+var parse {|line|
+  var fields [@(split $line ' ')]
+  if $(( $(count $fields) < 6 )) { put 'five fields and a command wanted'; return 1 }
+  var sets []
+  for i @(range 5) {
+    var s ''
+    if ! set s @(field-set $fields[$i] $i) { put $s; return 1 }
+    append sets $s
+  }
+  put [sets: $sets  command: $(join ' ' @(slice $fields 5))]
+}
+
+# a calendar to walk: month lengths of a year that is not a leap year, its 1 January a Thursday (4)
+var month-days [31 28 31 30 31 30 31 31 30 31 30 31]
+var tick {|t|
+  var m @(merge $t [:])          # a copy: a map is held by reference, and var m $t would change the caller's
+  set m[minute] $(( $t[minute] + 1 ))
+  if $(( $m[minute] < 60 )) { put $m; return 0 }
+  set m[minute] 0
+  set m[hour] $(( $t[hour] + 1 ))
+  if $(( $m[hour] < 24 )) { put $m; return 0 }
+  set m[hour] 0
+  set m[weekday] $(( ($t[weekday] + 1) % 7 ))
+  set m[day] $(( $t[day] + 1 ))
+  if $(( $m[day] <= $month-days[$(( $t[month] - 1 ))] )) { put $m; return 0 }
+  set m[day] 1
+  set m[month] $(( $t[month] % 12 + 1 ))
+  put $m
+}
+var runs-at {|job t|
+  var s $job[sets]
+  has $s[0] $t[minute] && has $s[1] $t[hour] && has $s[2] $t[day] && has $s[3] $t[month] && has $s[4] $t[weekday]
+}
+var two {|n| if $(( $n < 10 )) { put "0$n" } else { put $n } }
+var show {|t| put "$(two $t[month])-$(two $t[day]) $(two $t[hour]):$(two $t[minute]) ($t[weekday])" }
+
+var lines [
+  '*/15 9-10 * * 1-5 backup'
+  '0 0 1 * * rotate logs'
+  '30 2 * * 0,6 weekend report'
+  '0 12 31 1 * once a year'
+  '5 70 * * * bad hour'
+  '*/0 * * * * bad step'
+  '1-x * * * * bad number'
+  'too few'
+]
+var jobs []
+for l @lines {
+  var j ''
+  if set j @(parse $l) { append jobs $j; echo "ok:    $l" } else { echo "error: $l - $j" }
+}
+
+# from Wednesday 28 January, 23:58 (the 28th of a year whose 1 January is a Thursday: a Wednesday, 3)
+var start [month: 1  day: 28  hour: 23  minute: 58  weekday: 3]
+for j @jobs {
+  var t $start
+  var found []
+  var steps 0
+  while $(( $(count $found) < 3 && $steps < 7 * 24 * 60 )) {
+    set t @(tick $t)
+    set steps $(( $steps + 1 ))
+    if runs-at $j $t { append found @(show $t) }
+  }
+  echo "$j[command]: $(join ', ' @found)"
+}

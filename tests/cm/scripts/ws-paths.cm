@@ -1,0 +1,53 @@
+# a whole script (960), in the language as it stands
+# paths as texts - normalised (. and .. and repeated slashes), one directory relative to
+# another, and a path's directory, base name and extension - as Python's os.path, but // is /
+var parts {|p| for s @(split $p /) { if $(( $s != '' && $s != '.' )) { put $s } } }
+
+var normalise {|p|
+  var abs false
+  if match $p '/*' { set abs true }
+  var out []
+  for s @(parts $p) {
+    if $(( $s == '..' )) {
+      if $(( $(count $out) > 0 )) && $(( $out[-1] != '..' )) { del out[-1] } elif ! $abs { append out .. }
+    } else { append out $s }
+  }
+  var body $(join / @out)
+  if $abs { put "/$body" } elif $(( $body == '' )) { put . } else { put $body }
+}
+
+var relative {|to from|
+  var t [@(parts @(normalise $to))]
+  var f [@(parts @(normalise $from))]
+  var i 0
+  while $(( $i < $(count $t) && $i < $(count $f) )) && $(( $t[$i] == $f[$i] )) { set i $(( $i + 1 )) }
+  var up []
+  for _ @(range $(( $(count $f) - $i ))) { append up .. }
+  var rel $(join / @up @(slice $t $i))
+  if $(( $rel == '' )) { put . } else { put $rel }
+}
+
+var dirname {|p|
+  var n @(normalise $p)
+  if $(( $n == '/' )) { put /; return 0 }
+  var ps [@(parts $n)]
+  if $(( $(count $ps) <= 1 )) { if match $n '/*' { put / } else { put . }; return 0 }
+  if match $n '/*' { put "/$(join / @(slice $ps 0 -1))" } else { put $(join / @(slice $ps 0 -1)) }
+}
+var basename {|p| var ps [@(parts $p)]; if $(( $(count $ps) == 0 )) { put '' } else { put $ps[-1] } }
+var extension {|p|
+  var b @(basename $p)
+  var dot -1
+  for i @(range $(count $b)) { if $(( $b[$i] == '.' && $i > 0 )) { set dot $i } }
+  if $(( $dot < 0 )) { put '' } else { put $(slice $b $dot) }
+}
+
+for p @[/a/./b/../c '//usr///local/bin/' a/../../b . '' ../x/./y/.. /../etc a/b/c/../../d] {
+  echo "normalise [$p] = $(normalise $p)"
+}
+for pair @[[/home/ada/src/app /home/ada] [/home/ada /home/ada/src/app] [/etc/hosts /var/log] [a/b c] [/x /x]] {
+  echo "relative $pair[0] from $pair[1] = $(relative $pair[0] $pair[1])"
+}
+for p @[/usr/lib/libz.so.1 notes.txt /etc/.profile archive.tar.gz /usr/ dir/file] {
+  echo "$p: dir $(dirname $p), base $(basename $p), ext [$(extension $p)]"
+}

@@ -212,7 +212,8 @@ DEFER RUN-NAMED ( args text --- )   \ the program a text names: below, once PSTA
     2DUP NL-AT  >R  OVER R@ TXT  3 PICK SWAP ARG DROP                    ( list c-addr u )  ( R: i )
     R> 1+ OVER MIN  TUCK - >R + R>                                      ( list c-addr' u' )
   REPEAT 2DROP ;
-: PIPE-LINES ( --- list )   PIPE-TEXT CELL+ @ R-T@  ARGL ROT ROT LINES+ ;   \ @( ): a program's lines, each a text
+: TEXT-LINES ( item --- list )   CELL+ @ R-T@  ARGL ROT ROT LINES+ ;   \ a text's lines, each a text
+: PIPE-LINES ( --- list )   PIPE-TEXT TEXT-LINES ;   \ @( ): a program's lines
 
 \ ---- trap { block } [EXIT INT TERM HUP] (910): the block run when the script ends - normally, by exit, by an
 \ error, or by a signal it names, which then ends it, status 128 + the signal - as sh's trap is mostly used, to
