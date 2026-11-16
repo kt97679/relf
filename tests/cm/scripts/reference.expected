@@ -47,6 +47,9 @@ more
 hello file
 waited, status 0
 var status 2
+hello grace, 5 numbers
+  last 5
+AS $WRITTEN
 program sees hello
 args [] 0
 /tmp/cm-ref.txt

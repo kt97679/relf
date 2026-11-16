@@ -1,0 +1,13 @@
+a body's own quote, don't, and brackets [ { ( held open: 7
+the prompt waited for END, not for the quote
+THE BODY, THEN THE LINE GOES ON AFTER |
+it's in a block, $n as written
+a's
+b
+cm: <<END and <<- are sh's - << END, blanks round it; an END indented takes that much off each line (line 1)
+cm: <<END and <<- are sh's - << END, blanks round it; an END indented takes that much off each line (line 1)
+cm: a redirection wants a file (line 1)
+cm: a here-document's quoted END is not closed (line 1)
+each said, the prompt goes on
+cm: << NEVER: no line after it that is NEVER alone, the here-document's end (line 1)
+status 0

@@ -84,7 +84,9 @@ VARIABLE SF-BASE  VARIABLE SF-LINE0      \ at the prompt the files read on earli
 VARIABLE IN-TEXT  VARIABLE IN-LEN  VARIABLE IN-POS           \ the text, its length, where reading is
 : PK ( k --- c )   IN-POS @ + DUP IN-LEN @ < IF IN-TEXT @ + C@ ELSE DROP 0 THEN ;   \ the character k ahead; 0 past the end
 : CUR ( --- c )   0 PK ;
-: GET ( --- c )   CUR  DUP 10 = IF 1 IN-LINE +! THEN  1 IN-POS +! ;
+VARIABLE HD-AT  -1 HD-AT !  VARIABLE HD-TO   \ a line's newline, past which reading jumps over the here-documents read ahead (963)
+: HD-JUMP ( --- )   HD-TO @ HD-AT @ 1+ ?DO  IN-TEXT @ I + C@ 10 = IF 1 IN-LINE +! THEN  LOOP  HD-TO @ 1- IN-POS !  -1 HD-AT ! ;
+: GET ( --- c )   CUR  DUP 10 = IF 1 IN-LINE +!  IN-POS @ HD-AT @ = IF HD-JUMP THEN THEN  1 IN-POS +! ;
 : HERE-IN ( --- c-addr )   IN-TEXT @ IN-POS @ + ;
 : BLANK? ( c nl? --- f )   OVER 10 = AND  OVER BL = OR  OVER 9 = OR  SWAP 13 = OR ;
 : DIG? ( c --- f )   [CHAR] 0 [CHAR] 9 1+ WITHIN ;
@@ -166,9 +168,9 @@ VARIABLE BARE                                      \ the word read so far: plain
   OVER CELL+ ! N-BO SWAP ! ;
 VARIABLE GLOBW                                     \ an unquoted * or ? read in the word: a glob (872; with $s, 881)
 : OP= ( c-addr u c-addr2 u2 --- c-addr u f )   2OVER COMPARE 0= ;
-: OPERATOR? ( c-addr u --- f )   \ | || && & > >> < 2> 2>> &> 2>&1 >&2 1>&2
+: OPERATOR? ( c-addr u --- f )   \ | || && & > >> < << 2> 2>> &> 2>&1 >&2 1>&2
   DUP 1 = IF DROP C@ S" |&><" ONE-OF? EXIT THEN
-  S" ||" OP= >R  S" &&" OP= >R  S" >>" OP= >R  S" 2>" OP= >R  S" &>" OP= >R  S" 2>>" OP= >R  S" >&2" OP= >R  S" 2>&1" OP= >R
+  S" <<" OP= IF 2DROP -1 EXIT THEN  S" ||" OP= >R  S" &&" OP= >R  S" >>" OP= >R  S" 2>" OP= >R  S" &>" OP= >R  S" 2>>" OP= >R  S" >&2" OP= >R  S" 2>&1" OP= >R
   S" 1>&2" OP=  R> OR R> OR R> OR R> OR R> OR R> OR R> OR R> OR  NIP NIP ;
 : GLUED? ( c-addr u --- f )   \ an operator glued to a word, as sh reads it: 2>/dev/null, >out, hi|tr, cmd& (899)
   2DUP OPERATOR? IF 2DROP 0 EXIT THEN
@@ -188,6 +190,8 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
     GET DUP [CHAR] * = OVER [CHAR] ? = OR IF -1 GLOBW ! THEN T,   \ \ too (867): quotes are the one way to escape
   REPEAT DROP
   TXS @ TXP @ OVER - DUP 2 > IF + 2 - 2 S" ()" COMPARE 0= IF S" name() { } is sh's - def name { } makes a function" P-ERR THEN ELSE 2DROP THEN   \ (916)
+  TXP @ TXS @ - 2 > IF  TXS @ 2 S" <<" COMPARE 0= IF                                  \ (963)
+    S" <<END and <<- are sh's - << END, blanks round it; an END indented takes that much off each line" P-ERR THEN THEN
   TXS @ TXP @ OVER - GLUED? IF S" an operator glued to a word - | > < & and 2> are words of their own, blanks round them" P-ERR THEN
   TXS @ TXP @ OVER - DUP 1 > IF  + 1- C@ [CHAR] \ =  CUR 10 = CUR 13 = OR AND
     IF S" a \ that continues the line is a word of its own - a blank before it" P-ERR THEN  ELSE 2DROP THEN   \ (906)
@@ -286,8 +290,8 @@ VARIABLE SFL-A  VARIABLE SFL-U
   SF-SP @ 5 * CELLS SF-STACK +  IN-TEXT @ OVER !  IN-LEN @ OVER CELL+ !  IN-POS @ OVER 2 CELLS + !
     IN-LINE @ OVER 3 CELLS + !  SF-CUR @ SWAP 4 CELLS + !  1 SF-SP +!
   SF-N @ SF >R  SF-NEXT @ R@ !  2DUP LINES# DUP R@ CELL+ !  SF-NEXT +!  OVER R@ 4 CELLS + !  LN @ R@ 5 CELLS + !
-  IN-LEN ! IN-TEXT !  HEAP$ R@ 3 CELLS + ! R@ 2 CELLS + !  0 IN-POS !  R> @ 1+ IN-LINE !  SF-N @ SF-CUR !  1 SF-N +! ;
-: SF-POP ( --- )   -1 SF-SP +!  SF-SP @ 5 * CELLS SF-STACK +
+  IN-LEN ! IN-TEXT !  HEAP$ R@ 3 CELLS + ! R@ 2 CELLS + !  0 IN-POS !  -1 HD-AT !  R> @ 1+ IN-LINE !  SF-N @ SF-CUR !  1 SF-N +! ;
+: SF-POP ( --- )   -1 SF-SP +!  -1 HD-AT !  SF-SP @ 5 * CELLS SF-STACK +
   DUP @ IN-TEXT !  DUP CELL+ @ IN-LEN !  DUP 2 CELLS + @ IN-POS !  DUP 3 CELLS + @ IN-LINE !  4 CELLS + @ SF-CUR ! ;
 : SOURCE-ERR ( --- )   S" source takes one file name" G-ERR ;
 : TOP-END ( --- )   \ a top-level command just ended: source file read in its place, its nodes dropped
@@ -295,19 +299,64 @@ VARIABLE SFL-A  VARIABLE SFL-U
   DUP @A LN !  DUP N+ NSKIP  DUP @ 0= IF SOURCE-ERR THEN  DUP BARE? 0= IF SOURCE-ERR THEN
   DUP NSKIP @ IF SOURCE-ERR THEN  BARE$ SF-PATH  ROT NDP !  SF-PUSH ;
 : LINE-REST ( i --- i' )   BEGIN DUP IN-LEN @ < WHILE IN-TEXT @ OVER + C@ 10 = IF EXIT THEN 1+ REPEAT ;
+\ ---- here-documents (963): cmd << END - the lines after the line holding it, up to one that is END alone,
+\ are cmd's stdin, $values in them as in "...", \$ and \\ the characters, " and @ as written; << 'END' or
+\ << "END": all as written. END may be indented: that much is taken off each line. The body is read ahead
+\ when the << is, its pieces the word's, as a "..."'s; the line's newline, when read, jumps past it (GET).
+VARIABLE HD-D  VARIABLE HD-DU  VARIABLE HD-Q  VARIABLE HD-IND  VARIABLE HD-SP  VARIABLE HD-SL
+: HD-BL? ( c --- f )   DUP BL = SWAP 9 = OR ;
+: HD-DELIM ( closer --- closer )   \ the word after <<: END, 'END' or "END" - in HD-D, HD-DU, HD-Q
+  >R  CUR [CHAR] ' = CUR [CHAR] " = OR DUP HD-Q !  IF
+    GET HERE-IN  BEGIN CUR 2 PICK <> WHILE  CUR DUP 0= SWAP 10 = OR IF S" a here-document's quoted END is not closed" P-ERR THEN  GET DROP  REPEAT
+    HERE-IN OVER -  GET DROP ROT DROP
+  ELSE  HERE-IN  BEGIN CUR R@ WORD-END? 0= WHILE GET DROP REPEAT  HERE-IN OVER -  THEN
+  DUP 0= IF S" << wants the word that ends the here-document" P-ERR THEN  HD-DU ! HD-D !  R> ;
+: HD-SEEK ( start --- term | -1 )   \ from start: the line that is END alone, blanks round it - its start; its blanks
+  BEGIN DUP IN-LEN @ < WHILE                                           \ before END in HD-IND
+    DUP IN-TEXT @ + OVER LINE-REST 2 PICK -  0 >R
+    BEGIN DUP IF OVER C@ HD-BL? ELSE 0 THEN WHILE 1 /STRING R> 1+ >R REPEAT
+    BEGIN DUP IF 2DUP + 1- C@ DUP HD-BL? SWAP 13 = OR ELSE 0 THEN WHILE 1- REPEAT
+    HD-D @ HD-DU @ COMPARE 0= IF R> HD-IND ! EXIT THEN  R> DROP
+    LINE-REST 1+ REPEAT  DROP -1 ;
+: BS-LINE? ( eol --- f )   \ the line ending at eol ends with a \ word: the line goes on (906)
+  BEGIN DUP 0> IF DUP 1- IN-TEXT @ + C@ HD-BL? ELSE 0 THEN WHILE 1- REPEAT
+  DUP 1 < IF DROP 0 EXIT THEN  DUP 1- IN-TEXT @ + C@ [CHAR] \ <> IF DROP 0 EXIT THEN
+  DUP 2 < IF DROP -1 EXIT THEN  2 - IN-TEXT @ + C@ DUP HD-BL? SWAP 10 = OR ;
+: HD-EOL ( i --- eol )   \ i's line's end - after a \ at it, the next one's: the body comes after the command's lines
+  BEGIN LINE-REST DUP IN-LEN @ < IF DUP BS-LINE? ELSE 0 THEN WHILE 1+ REPEAT ;
+: HD-LS ( --- )   \ a body line's start: HD-IND blanks at most off it
+  HD-IND @ 0 ?DO  CUR HD-BL? 0= IF LEAVE THEN  GET DROP  LOOP ;
+: HD-BODY ( start term --- )   \ the body, start up to the END line at term: a N-QU's pieces
+  SWAP IN-POS !  0 0 N-QU N,  T0  HD-LS
+  BEGIN IN-POS @ OVER < WHILE
+    CUR 10 = IF GET T, HD-LS
+    ELSE HD-Q @ IF GET T,
+    ELSE CUR [CHAR] \ = 1 PK DUP [CHAR] $ = SWAP [CHAR] \ = OR AND IF GET DROP GET T,
+    ELSE CUR [CHAR] $ = IF GET DROP T) -1 IN-QU ! DOLLAR-P 0 IN-QU ! IX? T0
+    ELSE GET T, THEN THEN THEN THEN
+  REPEAT DROP T) N) ;
+: HEREDOC-P ( closer --- )   \ the word after <<: its body, read ahead - after this line, or the body before on it
+  0 0 N-WRD N,  HD-DELIM  WORD-ENDS  IN-POS @ HD-SP !  IN-LINE @ HD-SL !
+  IN-POS @ HD-EOL  DUP HD-AT @ = IF DROP HD-TO @ ELSE 1+ THEN                       ( start )
+  DUP HD-SEEK  DUP 0< IF S" << " HD-D @ HD-DU @ CAT S" : no line after it that is " CAT HD-D @ HD-DU @ CAT
+    S"  alone, the here-document's end" CAT P-ERR THEN                                ( start term )
+  OVER HD-SP @ ?DO  IN-TEXT @ I + C@ 10 = IF 1 IN-LINE +! THEN  LOOP               \ its errors said at its lines
+  DUP LINE-REST 1+ IN-LEN @ MIN >R  HD-BODY
+  HD-SP @ HD-EOL HD-AT !  R> HD-TO !  HD-SP @ IN-POS !  HD-SL @ IN-LINE !  N) ;
 : ELSE-WORD? ( i --- f )   \ else or elif at i, a word of its own
   IN-LEN @ OVER - 4 < IF DROP 0 EXIT THEN
   IN-TEXT @ OVER + 4 2DUP S" else" COMPARE 0= >R S" elif" COMPARE 0= R> OR 0= IF DROP 0 EXIT THEN
   4 + DUP IN-LEN @ < 0= IF DROP -1 EXIT THEN
   IN-TEXT @ + C@ DUP -1 BLANK? SWAP [CHAR] { = OR ;
 : NEXT-ELSE? ( --- f )   \ past the newline at IN-POS - blanks, blank lines, comments - else or elif starts a line
-  IN-POS @ 1+ BEGIN DUP IN-LEN @ < WHILE
+  IN-POS @ DUP HD-AT @ = IF DROP HD-TO @ ELSE 1+ THEN  BEGIN DUP IN-LEN @ < WHILE   \ past the here-documents after it (963)
     IN-TEXT @ OVER + C@  -1 BLANK? IF 1+
     ELSE IN-TEXT @ OVER + C@ [CHAR] # = IF LINE-REST ELSE ELSE-WORD? EXIT THEN THEN
   REPEAT DROP 0 ;
 : ELSE-ON? ( w --- f )   \ a newline that does not end the command: an if's, its last word a block, else or elif next
   DUP N+ @ N-BK = SWAP N+ NSKIP @ 0= AND 0= IF 0 EXIT THEN    \ (904: a newline ends a command - rule 1 - so
   CUR-CMD @ N+ S" if" BARE= 0= IF 0 EXIT THEN  NEXT-ELSE? ;   \ } then else on the next line had been two)
+: HD-OP? ( last --- f )   DUP IF S" <<" BARE= THEN ;   \ the word before this one <<: this one its END (963)
 VARIABLE GROUP-W   \ a block first in its part of a command: a group if the part ends with it (960) - sh's
 \ { ...; }, made in place, return in it the function's as break and continue were the loop's: `cmd || { echo
 \ no; return 1 }` had gone on. Marked as read, as a body is (MARK): a walk of every command's words in the scan
@@ -332,7 +381,8 @@ VARIABLE GROUP-W   \ a block first in its part of a command: a group if the part
     IF DROP GET DROP                                       \ after |, && or ||, or before else or elif: the line goes on
     ELSE DUP 10 = SWAP [CHAR] ; = OR IF GET DROP  IF N) OVER 0= IF TOP-END THEN THEN 0
     ELSE GROUP-NEXT  DUP 0= IF  2 PICK 0= IF NDP @ TOP-CMD ! THEN  NDP @ CUR-CMD !  IN-LINE @ 0 N-CMD N,  THEN
-      DUP >R SET-FIRST? >R  NDP @ OVER R> IF SET-TARGET-P ELSE WORD-P THEN  R> GROUP?
+      DUP >R  DUP HD-OP? IF DROP 1 ELSE SET-FIRST? THEN >R  NDP @ OVER
+      R> ?DUP IF 0> IF HEREDOC-P ELSE SET-TARGET-P THEN ELSE WORD-P THEN  R> GROUP?
       DUP BS-WORD? IF BS-AT-END THEN  THEN THEN THEN
   AGAIN ;
 ' CMDS' IS CMDS
@@ -746,6 +796,7 @@ VARIABLE PL          \ the pipeline being made: [to][end][end's length][state: 0
   S" >" NAMED? IF 2DROP T" W/O 1 RD-FILE" 1 EXIT THEN
   S" >>" NAMED? IF 2DROP T" A/O 1 RD-FILE" 1 EXIT THEN
   S" <" NAMED? IF 2DROP T" R/O 0 RD-FILE" 1 EXIT THEN
+  S" <<" NAMED? IF 2DROP T" HD-FILE -2 0 RD-FILE" 1 EXIT THEN          \ its file read, then taken away (963)
   S" 2>" NAMED? IF 2DROP T" W/O 2 RD-FILE" 1 EXIT THEN
   S" 2>>" NAMED? IF 2DROP T" A/O 2 RD-FILE" 1 EXIT THEN
   S" &>" NAMED? IF 2DROP T" W/O 1 RD-FILE 1 2 R-RD-DUP" 1 EXIT THEN
@@ -854,7 +905,7 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
   DUP BARE$ 2DUP NAME? 0= IF 2DROP DROP EXIT THEN  2DUP IN-SCOPE? IF 2DROP DROP EXIT THEN        ( w c u )
   0 DECLARE -1 OVER 6 CELLS + !  SWAP NSKIP DUP @ IF N+ @ N-BK = ELSE DROP 0 THEN SWAP 7 CELLS + ! ;
 : CM-COMPILE1 ( c-addr u --- c-addr2 u2 )   \ a script's text made Forth - the output, to EVALUATE
-  DUP IN-LEN ! OVER IN-TEXT ! 0 IN-POS ! 1 IN-LINE !  2DUP SF-START  NIP SF-MORE @ +
+  DUP IN-LEN ! OVER IN-TEXT ! 0 IN-POS ! 1 IN-LINE ! -1 HD-AT !  2DUP SF-START  NIP SF-MORE @ +
   DUP 6 * 64 + 3 * CELLS ND0 NDP NDE AREA   DUP 2* 64 + TX0 TXP TXE AREA
   DUP 64 * 65536 + CH0 CHP CHE AREA   DUP 64 * 65536 + OU0 OUP OUE AREA
   SESSION @ RH0 @ 0<> AND IF DROP ELSE  16 * 4096 + CELLS  1 20 LSHIFT SESSION @ AND MAX  RH0 RHP RHE AREA  NAMES-NEW  THEN

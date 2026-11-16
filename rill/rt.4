@@ -304,12 +304,20 @@ VARIABLE RR-N
   RR-N @ RR-MAX = IF R-ERR> ." cm: more than 32 redirections on one command" R-ERR-NL -4004 THROW THEN
   RR-F RR-N @ CELLS + !  RR-M RR-N @ CELLS + !  RR-T RR-N @ CELLS + !  1 RR-N +! ;
 : R-RD-DUP ( from fd --- )   >R -1 SWAP R> R-RD-FILE ;
+\ A here-document's file (963, cm/pipe.4's HD-FILE): mode -2 - opened read-only and at once taken away, by the
+\ child for a program, by RD-RUN for a builtin or function; a command that fails first takes away the ones
+\ it never opened. So no file is left, and none is taken away before its reader has it - a job's too.
+: RR-OPEN ( i --- fid ior )   \ the i-th redirection's file, opened
+  DUP CELLS RR-T + @ R-T@  ROT CELLS RR-M + @  DUP -2 = IF  DROP 2DUP R/O OPEN-FILE 2SWAP DELETE-FILE DROP  EXIT THEN
+  OPEN-FILE ;
+: RR-HD-DEL ( i --- )   \ the here-documents' files of the redirections from i on, never opened: taken away
+  RR-N @ SWAP ?DO  RR-M I CELLS + @ -2 = IF  RR-T I CELLS + @ R-T@ DELETE-FILE DROP  THEN  LOOP ;
 : R-RD-APPLY ( --- )
   RR-N @ 0 ?DO
     RR-T I CELLS + @ -1 = IF  RR-M I CELLS + @  RR-F I CELLS + @  DUP2 DROP
     ELSE
-      RR-T I CELLS + @ R-T@  RR-M I CELLS + @  OPEN-FILE IF
-        DROP R-ERR> ." cm: cannot open " RR-T I CELLS + @ R-TYPE R-NL  1 SYS-EXIT
+      I RR-OPEN IF
+        DROP I RR-HD-DEL  R-ERR> ." cm: cannot open " RR-T I CELLS + @ R-TYPE R-NL  1 SYS-EXIT
       THEN
       DUP RR-F I CELLS + @ DUP2 DROP  CLOSE-FILE DROP
     THEN

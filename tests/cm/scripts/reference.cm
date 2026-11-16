@@ -69,6 +69,16 @@ sleep 0 &
 wait
 echo waited, status $status
 var out $(grep x /no/such 2>&1) || echo var status $status
+var greet-all {
+    cat << END
+        hello $name, $(count $l) numbers
+          last $l[-1]
+        END
+}
+greet-all
+tr a-z A-Z << 'END' | cat
+as $written
+END
 # -- the environment and arguments
 set env[CM_REF] hello
 sh -c 'echo program sees $CM_REF'

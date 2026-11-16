@@ -88,8 +88,8 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
   PAD 0 1 WRITE DROP  RR-N @ 0 ?DO
     RR-F I CELLS + @  DUP 10 DUP-FROM  RDK-PUSH
     RR-T I CELLS + @ -1 = IF  RR-M I CELLS + @  RR-F I CELLS + @  DUP2 DROP
-    ELSE  RR-T I CELLS + @ R-T@  RR-M I CELLS + @  OPEN-FILE IF
-        DROP I 1+ RDK-BACK  R-ERR> ." cm: cannot open " RR-T I CELLS + @ R-TYPE R-ERR-NL R-OUT-BACK  DROP 1 STATUS !  UNLOOP EXIT THEN
+    ELSE  I RR-OPEN IF
+        DROP I RR-HD-DEL  I 1+ RDK-BACK  R-ERR> ." cm: cannot open " RR-T I CELLS + @ R-TYPE R-ERR-NL R-OUT-BACK  DROP 1 STATUS !  UNLOOP EXIT THEN
       DUP RR-F I CELLS + @ DUP2 DROP  CLOSE-FILE DROP  THEN
   LOOP  CT-ON @ >R  RD-FD1? IF 0 CT-ON ! THEN          \ stdout redirected: to its file, not $( )'s text (896)
   RR-N @ >R  CATCH  R-OUT-BACK  R> RDK-BACK  R> CT-ON !  THROW ;   \ an error told inside: its telling undone first, then

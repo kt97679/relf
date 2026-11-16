@@ -986,6 +986,7 @@ do not trust the absence of a line below.
 - 960 — rill3: seven whole scripts (diff, INI, a parser, paths, an LRU cache, a tree sync, cron), three defects fixed: @( ) in "..." an error; @( ) of `a && prog` takes prog's lines; a block alone between && and || is a group, return in it the function's
 - 961 — rill3: recursion 16 times as deep (R-DEEP? takes the 1 MB return stack: 40,000 calls, 17,000 through $( ), 5,000-12,000 with return), and four defects found on the way: the collector recursed a call a level of a value's nesting and left the heap half moved past 42,000 (now a work list past 16 KB); `[1 2] == [1 2]` faulted; after an error in a redirected function stdout stayed the file, at the prompt and for a trap; and after one in $( ) the trap's output went into the capture
 - 962 — rill3: six whole scripts where 961 reached (a flood fill 1,606 deep, eight queens, a topological sort against tsort(1), Huffman coding, a reader for a list 2,000 deep, steps logged with a trap), each checked against another program - no defect found; R-CMP's list and record branches, unreached since 961, out (-168 bytes)
+- 963 — rill3: here-documents, at the owner's word - `cmd << END`, `$` values as in "...", `<< 'END'` as written, an indented END taking its indent off each line; the body read ahead by the front end, its temporary file taken away once its reader opens it; the prompt waits for END
 
 ### Not tied to an iteration
 

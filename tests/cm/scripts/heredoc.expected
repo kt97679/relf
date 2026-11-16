@@ -1,0 +1,25 @@
+hello world, worlds, first a, all [a b c], sum 3, said hi
+  "quotes" and @signs as written, $HOME and \ the characters, \n and \t as written
+as written: $name ${name} $(echo no) \$ \\
+as written too: $name
+in a function, world
+  two more
+one less than END's
+     1	PIPED WORLD
+the last stage's own
+first
+second
+BEFORE THE NEXT STAGE
+AFTER THE LINE IT GOES ON TO
+line: one
+line: two three
+read: only the first
+A FUNCTION'S STDIN
+up: status 0
+[captured
+  kept as it was]
+empty above
+else after the body
+in the background
+left: 0
+status 0

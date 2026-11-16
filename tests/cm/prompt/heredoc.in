@@ -1,0 +1,26 @@
+var n 7
+cat << END
+a body's own quote, don't, and brackets [ { ( held open: $n
+END
+echo the prompt waited for END, not for the quote
+cat << END |
+the body, then the line goes on after |
+END
+tr a-z A-Z
+if true {
+    cat << 'END'
+    it's in a block, $n as written
+    END
+}
+cat << A; cat << B
+a's
+A
+b
+B
+cat <<END
+cat <<- END
+cat <<
+cat << 'END
+echo each said, the prompt goes on
+cat << NEVER
+not ended at the input's end

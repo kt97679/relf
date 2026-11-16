@@ -6,15 +6,29 @@
 \ ends what runs; the input's end ends the prompt, with the last status. Rill 2's prompt (835), as cm.
 65536 CONSTANT CL-MAX   VARIABLE CL-BUF  VARIABLE CL#  VARIABLE CL-TTY  VARIABLE CL-D  VARIABLE CL-Q
 : CL@ ( i --- c )   DUP CL# @ < IF CL-BUF @ + C@ ELSE DROP 0 THEN ;
+VARIABLE CL-HAT  VARIABLE CL-HTO  VARIABLE CL-TAIL   \ here-documents (963): the line's end the scan jumps from, to
+: CL-HD? ( i --- f )   \ << at i, a word of its own                  \ where; the entry's end before its last bodies
+  DUP 1+ CL@ 60 = OVER 2 + CL@ HD-BL? AND  SWAP DUP IF 1- CL@ DUP HD-BL? SWAP 10 = OR ELSE DROP -1 THEN AND ;
+: CL-HD ( i --- i' open? )   \ its END word, as the front end reads it, and a line END after the line: else open -
+  CL-BUF @ IN-TEXT !  CL# @ IN-LEN !  2 + IN-POS !        \ more lines wanted; an END word wrong, the front end's to say
+  BEGIN CUR HD-BL? WHILE 1 IN-POS +! REPEAT
+  CUR DUP 39 = SWAP 34 = OR IF  CUR 1 IN-POS +!  HERE-IN  BEGIN CUR 2 PICK <> CUR 10 <> AND CUR AND WHILE 1 IN-POS +! REPEAT
+    CUR 2 PICK <> IF 2DROP IN-POS @ 1- 0 EXIT THEN  HERE-IN OVER -  1 IN-POS +!  ROT DROP
+  ELSE  HERE-IN  BEGIN CUR DUP HD-BL? 0= SWAP S" ;})]" ONE-OF? 0= AND CUR 10 <> AND CUR AND WHILE 1 IN-POS +! REPEAT  HERE-IN OVER -  THEN
+  DUP 0= IF 2DROP IN-POS @ 1- 0 EXIT THEN  HD-DU ! HD-D !
+  IN-POS @ HD-EOL  DUP CL-HAT @ = IF DROP CL-HTO @ ELSE 1+ THEN  HD-SEEK  DUP 0< IF DROP IN-POS @ -1 EXIT THEN
+  LINE-REST 1+ CL# @ MIN CL-HTO !  IN-POS @ HD-EOL CL-HAT !  IN-POS @ 1- 0 ;
 : CL-OPEN? ( --- f )   \ a bracket or a quote open at the input's end, or its last word |, && or ||
-  0 CL-D !  0 CL-Q !  0  BEGIN DUP CL# @ < WHILE
+  0 CL-D !  0 CL-Q !  -1 CL-HAT !  CL# @ CL-TAIL !  0  BEGIN DUP CL# @ < WHILE
+    DUP CL-HAT @ = IF  CL-HTO @ CL# @ < 0= IF DUP CL-TAIL ! THEN  DROP CL-HTO @  -1 CL-HAT !  ELSE
     CL-Q @ IF DUP CL@ DUP 92 = CL-Q @ 34 = AND IF DROP 1+ ELSE CL-Q @ = IF 0 CL-Q ! THEN THEN ELSE
     DUP CL@ CASE  34 OF 34 CL-Q ! ENDOF  39 OF 39 CL-Q ! ENDOF
       35 OF BEGIN DUP 1+ CL@ DUP 10 <> SWAP 0<> AND WHILE 1+ REPEAT ENDOF
+      60 OF DUP CL-HD? IF CL-HD IF DROP -1 EXIT THEN THEN ENDOF
       123 OF 1 CL-D +! ENDOF  91 OF 1 CL-D +! ENDOF  40 OF 1 CL-D +! ENDOF
-      125 OF -1 CL-D +! ENDOF  93 OF -1 CL-D +! ENDOF  41 OF -1 CL-D +! ENDOF  ENDCASE THEN  1+
+      125 OF -1 CL-D +! ENDOF  93 OF -1 CL-D +! ENDOF  41 OF -1 CL-D +! ENDOF  ENDCASE THEN  1+  THEN
   REPEAT DROP  CL-D @ 0> CL-Q @ 0<> OR IF -1 EXIT THEN
-  CL# @ BEGIN 1- DUP 0< IF DROP 0 EXIT THEN DUP CL@ BL > UNTIL
+  CL-TAIL @ BEGIN 1- DUP 0< IF DROP 0 EXIT THEN DUP CL@ BL > UNTIL
   DUP CL@ [CHAR] | = IF DROP -1 EXIT THEN  DUP CL@ [CHAR] & = SWAP 1- CL@ [CHAR] & = AND ;
 VARIABLE CL-CAP                                    \ the entry's buffer, grown as a line needs (907: 64 KB before)
 : CL-ROOM ( --- )   CL-CAP @ CL# @ - 4096 < IF  CL-CAP @ 2* DUP CL-CAP !  CL-BUF @ SWAP RESIZE THROW CL-BUF !  THEN ;

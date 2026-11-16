@@ -35,7 +35,7 @@ an eleventh.
 8. Every command has a status; `if`, `while`, `&&`, `||` and `!` test it. In a script, a command that
    fails and is not tested ends it, with its status.
 9. `|` carries bytes between programs and values between functions; `>` `>>` `<` `2>` `&>` `2>&1`
-   redirect as sh's.
+   redirect as sh's, and `<< END` makes the lines after its line, up to `END`, the command's stdin.
 10. The rest are builtins (the table below): control (`if` `for` `while` `case` `return`
    `break` `continue`), values (`put` `count` `split` `slice` ...), the script (`source` `trap`
    `exit` `forth`).
@@ -65,8 +65,8 @@ marks where a name ends:
     echo "name: $name, first: $l[0], sum: $(( $l[0] + $l[1] )), line ${k}d" 'no $subst here'
     # name: grace, first: 3, sum: 4, line 3d no $subst here
 
-Operators are words of their own, with blanks round them: `|` `&&` `||` `&` `>` `>>` `<` `2>` `2>>`
-`&>` `2>&1` `>&2`. Glued to a word, as sh writes `2>/dev/null` or `a|b`, they are an error when the
+Operators are words of their own, with blanks round them: `|` `&&` `||` `&` `>` `>>` `<` `<<` `2>`
+`2>>` `&>` `2>&1` `>&2`. Glued to a word, as sh writes `2>/dev/null` or `a|b`, they are an error when the
 script is read. A substituted value is never split into words and never globbed.
 
 A newline ends a command, except after `|`, `&&` or `||`, before `else` or `elif`, inside brackets, and
@@ -214,6 +214,22 @@ its values' printed forms, a line each.
     sleep 0 &
     wait                                                      # every job started with &
 
+A here-document, `cmd << END`, is the lines after the one holding it, up to a line that is `END`
+alone - cmd's stdin, as `< file` would be. `$` values in them as in `"..."`; `\$` and `\\` are the
+characters, and `"`, `@` and every other `\` as written. `<< 'END'` takes them all as written. `END`
+may be indented: that much is taken off each line, so a here-document can sit in a block:
+
+    var greet-all {
+        cat << END
+            hello $name, $(count $l) numbers
+              last $l[-1]
+            END
+    }
+    greet-all                                                 # hello grace, 5 numbers / "  last 5"
+    tr a-z A-Z << 'END' | cat                                 # AS $WRITTEN
+    as $written
+    END
+
 A pipeline's status is its rightmost failing stage's. `&` starts a pipeline of programs without waiting
 and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the script's end any left get TERM.
 
@@ -271,6 +287,7 @@ as deep as memory allows, though printing or comparing one nested past about 20,
 - `if has $m $k`, `if match $t '*.txt'`: statuses, as `test` gives.
 - `$(cmd)` is text - the same as sh's; `@(cmd)` takes a function's values.
 - `{ ... }` alone is a group, as sh's `{ ...; }`: `cmd || { echo failed; return 1 }` returns from the function.
-- No heredocs: a quoted text spans lines - `var msg '...'` over several, then `echo $msg | cmd`.
+- Here-documents as sh's, `<< END` with blanks round it; an indented `END` takes its indent off each
+  line, where sh's `<<-` takes tabs. Inside, `$` is rill3's: `\$5` for a dollar sign.
 - `trap` takes a block, and a signal it names ends the script after it - for cleaning up, as sh's is
   mostly used.

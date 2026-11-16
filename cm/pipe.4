@@ -21,6 +21,9 @@ VARIABLE TMP#
 : TMP-PATH ( --- text )   1 TMP# +!  S" /tmp/cm" TXT GETPID D-NUM JOIN S" ." TXT JOIN TMP# @ D-NUM JOIN ;
 : PATH$ ( text --- c-addr u )   CELL+ @ R-T@ ;
 : DEL-PATH ( text --- )   PATH$ DELETE-FILE DROP ;
+: HD-FILE ( item --- path )   \ a here-document (963): its text in a temporary file - opened, and taken away, by the
+  TMP-PATH >R  R@ PATH$ W/O CREATE-FILE IF S" cm: cannot make a temporary file" R-FAIL THEN    \ redirection
+  SWAP D-STR CELL+ @ R-T@ 2 PICK WRITE-FILE DROP  CLOSE-FILE DROP  R> ;                     \ (RR-OPEN, mode -2)
 \ A function's stage after another (882): its input, a list, is its stdin too while it runs - its lines in
 \ a temporary file - so a program in it reads them, as `cmd | f` does in sh; each reads the list. The
 \ first stage's input is 0: none, stdin as it was.

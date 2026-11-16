@@ -1,0 +1,85 @@
+# here-documents (963): cmd << END - the lines after its line, up to END alone, cmd's stdin
+var name world
+var l [a b c]
+cat << END
+hello $name, ${name}s, first $l[0], all $l, sum $(( 1 + 2 )), said $(echo hi)
+  "quotes" and @signs as written, \$HOME and \\ the characters, \n and \t as written
+END
+cat << 'END'
+as written: $name ${name} $(echo no) \$ \\
+END
+cat << "END"
+as written too: $name
+END
+# END indented: that much off each line - so one sits in a block
+var show {
+    cat << END
+        in a function, $name
+          two more
+       one less than END's
+        END
+}
+show
+# a pipeline's first stage; a stage's own; two on one line, in order
+tr a-z A-Z << END | cat -n
+piped $name
+END
+cat << END | tr a-z A-Z | cat << INNER
+not read: INNER is the last cat's stdin
+END
+the last stage's own
+INNER
+cat << A; cat << B
+first
+A
+second
+B
+# a line that goes on after | - its body first, then the next stage; after a \ - the body after it
+cat << END |
+before the next stage
+END
+tr a-z A-Z
+cat << END \
+    | tr a-z A-Z
+after the line it goes on to
+END
+# builtins and functions read it
+var line ''
+while read line { echo "line: $line" } << END
+one
+two three
+END
+var first ''
+read first << END
+only the first
+second
+END
+echo "read: $first"
+var up { tr a-z A-Z; echo "up: status $status" }
+up << END
+a function's stdin
+END
+# captured; an empty one; else after an if whose block holds one
+var t $(cat << END
+captured
+  kept as it was
+END
+)
+echo "[$t]"
+cat << END
+END
+echo empty above
+if false { cat << END }
+not shown
+END
+else { echo else after the body }
+# in the background, into a file
+cat << END > /tmp/cm-heredoc.txt &
+in the background
+END
+wait
+cat /tmp/cm-heredoc.txt
+rm /tmp/cm-heredoc.txt
+# its file taken away once open - none left of this script's
+var pid $(sh -c 'echo $PPID')
+echo "left: $(count [@(glob "/tmp/cm$pid.*")])"
