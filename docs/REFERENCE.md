@@ -107,8 +107,9 @@ use one printed form - a list as `[a b]`, a map as `[k: v]`, a block as `<block>
 Scope is lexical. A function - a block - sees its parameters, its own variables, the variables around
 it, and the script's top-level variables wherever they are declared: those are known from the script's
 start, though one read before its `var` has run is not yet set. A loop's variable is a new one each time round, so a block made in a loop keeps that time's
-value. `$env[HOME]` reads the environment, `set env[NAME] value` sets it for programs run after, and
-`del env[NAME]` takes it away;
+value. `$env` is the environment, a map: `$env[HOME]` reads a name - one not set is an error, as a
+map's missing key is; `$env get EDITOR vi` gives a default - `$env has NAME`, `$env keys` and `$env count`
+as any map's; `set env[NAME] value` sets it for programs run after, and `del env[NAME]` takes it away;
 `$args` is the script's arguments, a list; `$status` the last command's status; `$job` the last job `&`
 started, for `wait $job` (sh's `$!`). Reading a variable
 that does not exist is an error.
@@ -198,6 +199,7 @@ puts what it makes, as a function does, taken with `$( )` or `@( )`; `has` and `
 | operation | list | map | text |
 |---|---|---|---|
 | `count` | its items | its entries | its characters (UTF-8) |
+| `get key default` | | the key's value, or the default when it has none | |
 | `has x` | status 0 if an item `==` x | if x is a key | if x is part of it |
 | `slice start [end]` | its items from start up to end, put one by one | | its characters, one text |
 | `join sep` | one text, sep between the items' printed forms | | |
@@ -208,7 +210,7 @@ puts what it makes, as a function does, taken with `$( )` or `@( )`; `has` and `
 
 `slice`'s start and end may be negative, from the end, and are held to the length. A word as the
 operation's name may be a value too, `$l $op`. A kind that has not the operation is an error that names
-the ones it has: `cm: a map has no split - its operations: count has keys merge`. A number has none -
+the ones it has: `cm: a map has no split - its operations: count has keys merge get`. A number has none -
 `$(( ))` does its arithmetic, and `"$n" count` counts its digits.
 
     echo $($m count) $($name upper) [@($l slice 1 3)] $($l join -) @('a,b' split ,) @([b: 1  a: 2] keys)
@@ -252,8 +254,9 @@ its values' printed forms, a line each.
     wait                                                      # every job started with &
 
 A here-document, `cmd << END`, is the lines after the one holding it, up to a line that is `END`
-alone - cmd's stdin, as `< file` would be. `$` values in them as in `"..."`; `\$` and `\\` are the
-characters, and `"`, `@` and every other `\` as written. `<< 'END'` takes them all as written. `END`
+alone - cmd's stdin, as `< file` would be. Its lines read as a `"..."` does - `$` values, `\n` a newline,
+`\t` a tab, `\` before any other character that character, `@( )` refused - but for `"`, which is itself
+there. `<< 'END'` takes them all as written, as `'...'` does: for a program's text in one. `END`
 may be indented: that much is taken off each line, so a here-document can sit in a block:
 
     var greet-all {
@@ -321,6 +324,8 @@ as deep as memory allows, though printing or comparing one nested past about 20,
 - `$(cmd)` is text - the same as sh's; `@(cmd)` takes a function's values.
 - `{ ... }` alone is a group, as sh's `{ ...; }`: `cmd || { echo failed; return 1 }` returns from the function.
 - Here-documents as sh's, `<< END` with blanks round it; an indented `END` takes its indent off each
-  line, where sh's `<<-` takes tabs. Inside, `$` is rill3's: `\$5` for a dollar sign.
+  line, where sh's `<<-` takes tabs. Inside, the escapes are `"..."`'s: `\$5` for a dollar sign, `\n`
+  a newline; awk's or a program's text goes in `<< 'END'`.
+- `$env[NAME]` of a name not set is an error, not "": `$env get NAME ''`.
 - `trap` takes a block, and a signal it names ends the script after it - for cleaning up, as sh's is
   mostly used.

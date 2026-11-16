@@ -1,9 +1,12 @@
-# here-documents (963): cmd << END - the lines after its line, up to END alone, cmd's stdin
+# here-documents (963): cmd << END - the lines after its line, up to END alone, cmd's stdin; read as "..."
+# is (969), but for " - << 'END' as '...'
 var name world
 var l [a b c]
 cat << END
 hello $name, ${name}s, first $l[0], all $l, sum $(( 1 + 2 )), said $(echo hi)
-  "quotes" and @signs as written, \$HOME and \\ the characters, \n and \t as written
+  "quotes" and @signs as written, \$HOME and \\ the characters, \" a quote, \d a d
+  a tab:\tthere, a line:\nhere, a \\ at a line's end gone, its newline kept \
+as "..." does
 END
 cat << 'END'
 as written: $name ${name} $(echo no) \$ \\

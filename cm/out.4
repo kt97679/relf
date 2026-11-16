@@ -31,7 +31,7 @@ DEFER SHOW ( item --- )
 ' CT-FLUSH' IS CT-FLUSH
 : CT-OWN ( --- )   CT-HELD @ IF CT-FLUSH THEN ;   \ before a text of its own is made after it in CT-BUF
 : SHOW-IMPL ( item --- )
-  DUP 0= IF DROP S" none" OUT-TYPE EXIT THEN
+  DUP 0= IF DROP S" none" OUT-TYPE EXIT THEN  DUP ENV-BOX = IF DROP ENV>MAP THEN   \ $env, a map (969: it recursed)
   DUP D-KIND  DUP K-LIST = IF DROP CELL+ @ SHOW-LIST EXIT THEN
   DUP K-REC = IF DROP CELL+ @ SHOW-MAP EXIT THEN
   DUP K-BLOCK = IF 2DROP S" <block>" OUT-TYPE EXIT THEN

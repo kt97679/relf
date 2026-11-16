@@ -12,7 +12,7 @@ set env[CM907] here
 sh -c 'echo child sees ${CM907:-nothing}'
 del env[CM907]
 sh -c 'echo after del: ${CM907:-nothing}'
-echo "read back: [$env[CM907]]"
+echo "read back: [$($env get CM907 '')]"
 set env[CM907] again
 sh -c 'echo set again: $CM907'
 for i @(range 40) { set env["CM907_$i"] $i }

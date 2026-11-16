@@ -37,14 +37,15 @@ VARIABLE TB  VARIABLE TB#  VARIABLE TB-CAP
 : MERGE-OF ( args --- )   \ $a merge $b: a new map, a's entries, b's over them - the top level copied
   DUP #ARGS 2 <> IF S" cm: merge takes one map - $m merge $m2" R-FAIL THEN
   R-NEW-RECORD K-REC R-BOX  SWAP
-  2 0 DO  DUP I ARGN  DUP D-KIND K-REC <> IF S" cm: merge takes a map - $m merge $m2" R-FAIL THEN
+  2 0 DO  DUP I ARGN  DUP ENV-BOX = IF DROP ENV>MAP THEN  DUP D-KIND K-REC <> IF S" cm: merge takes a map - $m merge $m2" R-FAIL THEN
     CELL+ @  DUP @ @ 0 ?DO  DUP @ R-ITEMS I CELLS + @  OVER CELL+ @ R-ITEMS I CELLS + @
       4 PICK ROT ROT D-SET  LOOP DROP  LOOP DROP PUT ;
 \ ---- an element of a list or a map (865): a list keeps its items as they are - not boxed, as rill2's
 \ D-AT and D-SET take a list's - so $l[0] read a number as a box and faulted; a map's go through D-SET
-CREATE ENV-BOX 9 , 0 ,                             \ $env: the environment, as a map (870) - outside the arena
 : SCRIPT-ARGS ( --- item )   R-ARGS K-LIST R-BOX ;  \ $args: the script's arguments, each a text (870)
-: CM-AT ( c k --- item )   OVER ENV-BOX = IF NIP D-TEXT R-ENV K-TEXT R-BOX EXIT THEN
+: ENV-NO ( t --- )   R-ERR> ." cm: no " R-TYPE ."  in $env - $env get NAME '' for a default" R-ERR-NL -4003 THROW ;
+: CM-AT ( c k --- item )   \ $env[NAME]: one not set an error, as a map's missing key (969: it had been "")
+  OVER ENV-BOX = IF NIP D-TEXT DUP ENV-SET? 0= IF ENV-NO THEN R-ENV K-TEXT R-BOX EXIT THEN
   OVER D-KIND K-LIST <> IF D-AT EXIT THEN  D>N SWAP D-LIST SWAP R-AT ;
 : CM-DEL ( c k --- )   OVER ENV-BOX = IF NIP D-TEXT R-UNSETENV EXIT THEN  D-DEL ;   \ del env[NAME]: unset (907)
 : CM-SET ( c k v --- )   2 PICK ENV-BOX = IF ROT DROP SWAP D-TEXT SWAP D-TEXT R-SETENV EXIT THEN   \ programs see it
@@ -122,7 +123,8 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
   SWAP ?DO  DUP I R-AT PUT  LOOP DROP ;          \ a list's items put one by one, as split's and keys' are (888)
 : KIND$ ( k --- c-addr u )   \ a kind's name, as kind says it
   DUP K-NUM = IF DROP S" number" EXIT THEN  DUP K-TEXT = IF DROP S" text" EXIT THEN  DUP K-BOOL = IF DROP S" bool" EXIT THEN
-  DUP K-LIST = IF DROP S" list" EXIT THEN  DUP K-REC = IF DROP S" map" EXIT THEN  K-BLOCK = IF S" block" EXIT THEN  S" other" ;
+  DUP K-LIST = IF DROP S" list" EXIT THEN  DUP K-REC = OVER K-ENV = OR IF DROP S" map" EXIT THEN   \ $env too (969)
+  K-BLOCK = IF S" block" EXIT THEN  S" other" ;
 : KIND-OF ( args --- )   \ kind value: text, number, bool, list, map or block (886)
   DUP #ARGS 1 <> IF S" cm: kind takes one value" R-FAIL THEN  0 ARGN D-KIND KIND$ TXT PUT ;
 VARIABLE JOB                                       \ $job: the last job & started - its last stage's pid (905)
@@ -175,15 +177,16 @@ CREATE CALLING 2 CELLS ALLOT                      \ the def a call with @ binds,
   STATUS @ R-STATUS !  R-ERR> ." cm: status " STATUS @ . ." - the script stops" R-ERR-NL  -4000 THROW ;
 \ ---- a value's operations (967): $v op words - the value the command, the operation its subcommand, as a
 \ program's: git commit. A list's, a map's, a text's; a block runs, a bool is its status, a number has none
-: OP-NAMES ( --- c-addr u )   S" count has slice join keys merge split upper lower match" ;
-10 CONSTANT OPS#
+: OP-NAMES ( --- c-addr u )   S" count has slice join keys merge split upper lower match get" ;
+11 CONSTANT OPS#
 1 K-TEXT LSHIFT CONSTANT B-T   1 K-LIST LSHIFT CONSTANT B-L   1 K-REC LSHIFT CONSTANT B-M
 CREATE OP-MASKS   \ the kinds each is for, a bit each
-  B-L B-M OR B-T OR DUP , ,  B-L B-T OR ,  B-L ,  B-M DUP , ,  B-T DUP , DUP , DUP , ,
+  B-L B-M OR B-T OR DUP , ,  B-L B-T OR ,  B-L ,  B-M DUP , ,  B-T DUP , DUP , DUP , ,  B-M ,
 : OP-MASK ( i --- mask )   CELLS OP-MASKS + @ ;
 : OP-NAME ( i --- c-addr u )   OP-NAMES ROT 0 ?DO  BL SCAN 1 /STRING  LOOP  2DUP BL SCAN NIP - ;
-: OP# ( c-addr u --- i | -1 )   \ an operation's number
-  OPS# 0 DO  2DUP I OP-NAME COMPARE 0= IF 2DROP I UNLOOP EXIT THEN  LOOP 2DROP -1 ;
+: OP# ( c-addr u --- i | -1 )   \ an operation's number: OP-NAMES walked once (969: OP-NAME each from the start)
+  OP-NAMES  OPS# 0 DO  2DUP 2DUP BL SCAN NIP -  5 PICK 5 PICK COMPARE 0= IF 2DROP 2DROP I UNLOOP EXIT THEN
+    BL SCAN 1 /STRING  LOOP  2DROP 2DROP -1 ;
 : OPS. ( kind --- )   \ the operations a kind has, a blank between
   1 SWAP LSHIFT 0  OPS# 0 DO  OVER I OP-MASK AND IF DUP IF SPACE THEN I OP-NAME TYPE 1+ THEN  LOOP 2DROP ;
 : OPS-SAY ( kind --- )   \ an error's end: the operations the kind has
@@ -199,15 +202,17 @@ CREATE OP-MASKS   \ the kinds each is for, a bit each
   NIP  R-ERR> ." cm: " DUP A-KIND. ."  is a value, not a command"
   DUP K-TEXT = IF ." ; run $t runs the program it names" THEN  DUP OPS-SAY
   K-LIST = IF ." ; [ -f x ] is test -f x; @(cmd) takes a command's values, a list needs no @( )" THEN  R-ERR-NL -4004 THROW ;
+: ARG0! ( item args --- )   CELL+ @ R-ITEMS ! ;
 DEFER OP-RUN ( args i --- )   \ the operation's word: below, once they all are
 : OP-DO ( args i --- )   \ the operation, args[0] its value - of a kind it is for; the status 0, has's and match's theirs
+  OVER 0 ARGN ENV-BOX = IF ENV>MAP 2 PICK ARG0! THEN   \ $env count: a map's (969)
   OVER 0 ARGN D-KIND  1 OVER LSHIFT  2 PICK OP-MASK AND 0= IF  SWAP OP-NAME NO-OP  THEN DROP
   0 STATUS !  OP-RUN ;
 : OP-HINT ( c-addr u --- )   \ count, has... as a program: a value's operations - said so (967)
   2DUP OP# 0< IF 2DROP EXIT THEN  ."  - " 2DUP TYPE ."  is a value's operation: $v " TYPE ;
-: ARG0! ( item args --- )   CELL+ @ R-ITEMS ! ;
 : CALL-ITEM ( args item --- )   \ rule 11: a value as a command's first word - a block run, given the words after it;
   \ a bool its status; a list's, a map's or a text's operation, the word after it its name (967)
+  DUP ENV-BOX = IF DROP ENV>MAP THEN   \ $env alone: a map's error (969)
   DUP D-KIND K-BLOCK = IF BLK-CALL EXIT THEN
   OVER #ARGS IF  OVER 0 ARGN DUP D-KIND K-TEXT = IF
       D-TEXT R-T@ OP# DUP 0< 0= IF  >R OVER ARG0! R> OP-DO EXIT THEN  THEN DROP  NOT-CMD  THEN
@@ -292,10 +297,13 @@ VARIABLE CASE-T
   DUP #ARGS 2 <> IF S" cm: join takes one separator - $l join ', '" R-FAIL THEN
   DUP 0 ARGN D-LIST  TXT(
   DUP R-LEN 0 ?DO  I IF OVER 1 ARGN D-TEXT R-T@ TXT+ THEN  DUP I R-AT D-TEXT R-T@ TXT+  LOOP  2DROP  )TXT PUT ;
+: GET-OF ( args --- )   \ $m get key default (969): the key's value, or the default when the map has no such key
+  DUP #ARGS 3 <> IF S" cm: get takes a key and a default - $m get k 0" R-FAIL THEN
+  DUP 1 ARGN OVER 0 ARGN D-IN D-TRUE? IF DUP 0 ARGN SWAP 1 ARGN CM-AT ELSE 2 ARGN THEN PUT ;
 CREATE OP-XTS  OPS# CELLS ALLOT   \ each operation's word, in OP-NAMES' order - as offsets (!XT): the image is reloaded
 : OP-XT! ( xt i --- )   CELLS OP-XTS + !XT ;
 ' COUNT-OF 0 OP-XT!  ' HAS-OF 1 OP-XT!  ' SLICE-OF 2 OP-XT!  ' JOIN-M 3 OP-XT!  ' KEYS-OF 4 OP-XT!
-' MERGE-OF 5 OP-XT!  ' SPLIT-OF 6 OP-XT!  ' UPPER-OF 7 OP-XT!  ' LOWER-OF 8 OP-XT!  ' MATCH-OF 9 OP-XT!
+' MERGE-OF 5 OP-XT!  ' SPLIT-OF 6 OP-XT!  ' UPPER-OF 7 OP-XT!  ' LOWER-OF 8 OP-XT!  ' MATCH-OF 9 OP-XT!  ' GET-OF 10 OP-XT!
 : OP-RUN' ( args i --- )   CELLS OP-XTS + @XT EXECUTE ;   ' OP-RUN' IS OP-RUN
 : NO-PROG ( c-addr u --- )   2DUP R-NO-PROG' OP-HINT ;   ' NO-PROG IS R-NO-PROG
 : CALL-METHOD ( args i --- )   \ $v op words, op a bare word naming an operation: args[0] the value, then the words -

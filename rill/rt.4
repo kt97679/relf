@@ -218,8 +218,9 @@ VARIABLE RH-R  VARIABLE RH-K
     RH-MAINTAIN
     EXIT  THEN
   ROT DROP SWAP R-VALS SWAP R-SET ;
-: R-GET ( key r --- box )
-  2DUP R-FIND DUP 0< IF DROP DROP R-ERR> ." cm: no key " R-TYPE R-ERR-NL -4003 THROW THEN  ROT DROP SWAP R-VALS SWAP R-AT ;
+: R-GET ( key r --- box )   \ a missing key an error - and get, the way to a default (969)
+  2DUP R-FIND DUP 0< IF DROP DROP R-ERR> ." cm: no key " R-TYPE ."  - $m get k x for a default" R-ERR-NL -4003 THROW THEN
+  ROT DROP SWAP R-VALS SWAP R-AT ;
 : R-HAS ( key r --- f )   R-FIND 0< 0= ;
 : R-DEL ( l i --- )   \ the item at i taken out, those after it moved down: in place (905)
   OVER @ OVER U> 0= IF R-INDEX THEN

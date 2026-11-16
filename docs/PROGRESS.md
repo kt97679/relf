@@ -991,6 +991,8 @@ do not trust the absence of a line below.
 - 965 — rill3: $(( )) gives a number or a boolean - one value alone read as the operators read theirs ($(( "7" )) is 7); a boolean in arithmetic an error (true + 1 had been 0); every refused kind named; the condition message points at $(( $n != 0 ))
 - 966 — rill3: an audit - fixed has of a list holding a number (it faulted), a negative index wrapping past the start, a text's index past its end ("" had come back), range of a negative (it ran for ever), return's status kept to 0-255 and a bare return the last status; five inconsistencies reported for the owner
 - 967 — rill3: the value is the command, the operation its subcommand - `$l count`, `$m has $k`, `$t split ,`; an operation a kind has not names the ones it has; `run` runs the program a text names; the ten moved builtins programs as a first word, with a hint; a function named like a builtin an error; `$b x` no longer faults; tools/cm-migrate-ops.py rewrote 514 calls in 118 files
+- 968 — rill3: every stage of a pipeline counts for its status (`false | cat` fails); `!`, `&&` and `||` in `$(( ))` take true or false only; `return` outside a function is an error, as break and continue outside a loop
+- 969 — rill3: a here-document reads as "..." does (`\n`, `\t`), `<< 'END'` as '...'; `$env` a map in every way - kind, count, has, keys, merge, printed - a name not set an error; `$m get key default`
 
 ### Not tied to an iteration
 

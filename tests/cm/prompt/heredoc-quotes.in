@@ -1,0 +1,9 @@
+cat << END
+a tab\there "quoted" \d \$ \\
+END
+cat << END
+@(echo no)
+END
+cat << 'END'
+@(echo as written) \t
+END

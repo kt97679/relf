@@ -12,4 +12,4 @@ for line @($settings split "\n") {
 sh -c 'echo "mode=$APP_MODE level=$APP_LEVEL off=${APP_OFF:-unset}"'
 del env[APP_LEVEL]
 sh -c 'echo "after del: level=${APP_LEVEL:-unset}"'
-echo "read back: [$env[APP_MODE]] [$env[APP_LEVEL]]"
+echo "read back: [$env[APP_MODE]] [$($env get APP_LEVEL '')]"

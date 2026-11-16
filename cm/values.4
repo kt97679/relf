@@ -6,6 +6,8 @@
 \ Left out: what only Rill 2 used (slices, FIXED-BOX, D2N, D-SEQ).
 : D-NUM ( n --- item )   2* 1+ ;
 CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the arena: never moved
+9 CONSTANT K-ENV   CREATE ENV-BOX K-ENV , 0 ,   \ $env: the environment, a map (870; 969: one in every way, made by
+                                               \ ENV>MAP, below, where a map's operations, a print or kind look)
 : D-BOOL ( f --- item )   IF TRUE-BOX ELSE FALSE-BOX THEN ;
 : D-KIND ( item --- kind )   DUP 1 AND IF DROP K-NUM EXIT THEN  DUP IF @ THEN ;
 : D-ERR ( c-addr u --- )   R-FAIL ;
@@ -41,7 +43,7 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
   DUP D-KIND  DUP K-NUM = IF DROP ." the number " D-TEXT R-T@ TYPE EXIT THEN
   DUP K-TEXT = IF DROP D-TEXT R-T@ ?DUP IF ." the text " TYPE ELSE DROP ." an empty text" THEN EXIT THEN
   DUP K-BOOL = IF DROP ." the boolean " D-TEXT R-T@ TYPE EXIT THEN
-  DUP K-LIST = IF 2DROP ." a list" EXIT THEN  DUP K-REC = IF 2DROP ." a map" EXIT THEN
+  DUP K-LIST = IF 2DROP ." a list" EXIT THEN  DUP K-REC = OVER K-ENV = OR IF 2DROP ." a map" EXIT THEN
   IF ." a block" ELSE ." none" THEN DROP ;   \ kinds left: a block's, none's 0
 : D-NOT-NUM ( item --- )   \ what (( )) took that is no number, named (887: "a text that reads as none" said not which)
   R-ERR> ." cm: $(( )) takes numbers, not " D-WHAT. R-ERR-NL -4004 THROW ;
@@ -127,3 +129,17 @@ VARIABLE UC-A  VARIABLE UC-U  VARIABLE UC-N  VARIABLE UC-I  VARIABLE UC-B  VARIA
 : D-SET ( x i v --- )   \ x[i] = v
   D-BOXED ROT  DUP D-KIND K-REC = IF D-REC ROT D-TEXT SWAP R-PUT EXIT THEN
   D-LIST ROT D>N R-SET ;
+\ $env a map (969): the process's environment, what setenv gave it and del took from it over it - made each time
+\ a map's operation, a print or merge wants it. Its $env[NAME] reads the name alone, as it did
+VARIABLE EV-A  VARIABLE EV-U
+: ENV-ADD ( m c-addr u --- m )   \ NAME=value, its entry; none without its =
+  2DUP [CHAR] = SCAN DUP 0= IF 2DROP 2DROP EXIT THEN
+  1 /STRING EV-U ! EV-A !  EV-U @ 1+ -  R-TEXT K-TEXT R-BOX  OVER SWAP  EV-A @ EV-U @ R-TEXT K-TEXT R-BOX  D-SET ;
+: ENV>MAP ( --- item )
+  R-NEW-RECORD K-REC R-BOX
+  0 BEGIN DUP ENV-AT ?DUP WHILE  DUP CSTRLEN ROT >R ENV-ADD R> 1+  REPEAT DROP
+  SE-N @ 0 ?DO  I CELLS SE-A + @ DUP CSTRLEN  OVER SE-UNSET? IF
+      8 /STRING R-TEXT K-TEXT R-BOX  2DUP SWAP D-IN D-TRUE? IF OVER SWAP D-DEL ELSE DROP THEN
+    ELSE ENV-ADD THEN  LOOP ;
+: ENV-SET? ( t --- f )   \ env[NAME] set - by setenv, or the process's and not taken away
+  DUP R-T@ SE-FIND DUP 0< IF DROP R-CSTR GETENV 0<> EXIT THEN  NIP CELLS SE-A + @ SE-UNSET? 0= ;

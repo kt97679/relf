@@ -1,0 +1,4 @@
+a tab	here "quoted" d $ \
+cm: @( ) is not taken in a double-quoted text or a here-document - $( ) is the text there, \@( the characters (line 2)
+@(echo as written) \t
+status 0

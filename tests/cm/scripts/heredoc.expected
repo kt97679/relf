@@ -1,5 +1,8 @@
 hello world, worlds, first a, all [a b c], sum 3, said hi
-  "quotes" and @signs as written, $HOME and \ the characters, \n and \t as written
+  "quotes" and @signs as written, $HOME and \ the characters, " a quote, d a d
+  a tab:	there, a line:
+here, a \ at a line's end gone, its newline kept 
+as "..." does
 as written: $name ${name} $(echo no) \$ \\
 as written too: $name
 in a function, world

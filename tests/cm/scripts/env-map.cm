@@ -1,0 +1,18 @@
+# $env a map (969): kind, count, has, keys, get, merge, printed - a name not set an error, as a missing key is
+set env[CM969_A] one
+echo $(kind $env) $(( $($env count) > 0 ))
+$env has CM969_A && echo has CM969_A
+$env has CM969_NOT || echo not CM969_NOT
+echo $($env get CM969_A x) $($env get CM969_NOT default) "[$($env get CM969_NOT '')]"
+[@($env keys)] has CM969_A && echo a key
+var m @([a: 1] merge $env)
+echo $m[a] $m[CM969_A] $($m get CM969_NOT none)
+echo $env | grep -c 'CM969_A: one'
+del env[CM969_A]
+$env has CM969_A || echo gone
+var o $env
+echo $(kind $o) $($o get CM969_NOT fine)
+# get: a map's, a default for a missing key
+var p [name: ada  1: one]
+echo $($p get name x) $($p get born 1815) $($p get 1 x)
+echo $env[CM969_A]

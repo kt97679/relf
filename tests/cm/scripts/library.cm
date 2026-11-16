@@ -9,5 +9,5 @@ if "hello world" has "lo w" { echo has lo w }       # has gives a status, as mat
 $m has c || echo no c
 set env[CM_870] hello
 sh -c 'echo a program sees $CM_870'
-echo $env[CM_870] "$env[CM_870_NOT_SET]."
+echo $env[CM_870] "$($env get CM_870_NOT_SET '')."
 echo args: $args $($args count)

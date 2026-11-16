@@ -1,0 +1,12 @@
+map true
+has CM969_A
+not CM969_NOT
+one default []
+a key
+1 one none
+1
+gone
+map fine
+ada 1815 one
+cm: no CM969_A in $env - $env get NAME '' for a default (line 18)
+status 2

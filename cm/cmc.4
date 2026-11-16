@@ -121,15 +121,16 @@ VARIABLE IN-QU                                     \ reading a "...": ${name} al
 : IX? ( --- )   \ [key]... after a value written in one word - a list or map, a text, a capture, a spread's capture -
   \ a N-IX of its keys, after the value (913): as $name[key] is a variable's, so [a b c][1] and $(cmd)[0]
   CUR [CHAR] [ <> IF EXIT THEN  0 0 N-IX N, KEYS-P ;
+: QU-ESC ( --- )   \ a \ and the character after it, in "..." and a here-document (969): \n a newline, \t a tab, else
+  GET DROP GET  DUP [CHAR] n = IF DROP 10 THEN  DUP [CHAR] t = IF DROP 9 THEN  T, ;      \ the character
+: QU-DOLLAR ( --- )   GET DROP T) -1 IN-QU ! DOLLAR-P 0 IN-QU ! IX? T0 ;   \ $(cmd)[k] indexed, as in a word
+: QU-AT ( c --- )   \ @( ) here would be the characters themselves: written for $( ), three times in 960's round
+  [CHAR] @ = IF 1 PK [CHAR] ( = IF S" @( ) is not taken in a double-quoted text or a here-document - $( ) is the text there, \@( the characters" P-ERR THEN THEN ;
 : QUOTED-P ( --- )   \ "...": a N-QU of texts - \n, \t and \ before any other character in them - and $s
   0 0 N-QU N,  T0
   BEGIN CUR DUP [CHAR] " <> WHILE
     DUP 0= IF S" a closing quote is missing" P-ERR THEN
-    DUP [CHAR] \ = IF DROP GET DROP GET  DUP [CHAR] n = IF DROP 10 THEN  DUP [CHAR] t = IF DROP 9 THEN  T,
-    ELSE DUP [CHAR] $ = IF DROP GET DROP T) -1 IN-QU ! DOLLAR-P 0 IN-QU ! IX? T0 ELSE   \ $(cmd)[k] indexed, as in a word
-      \ @( ) here would be the characters themselves: written for $( ), three times in 960's round
-      [CHAR] @ = IF 1 PK [CHAR] ( = IF S" @( ) is not taken in a double-quoted text - $( ) is the text there, \@( the characters" P-ERR THEN THEN
-      GET T, THEN THEN
+    DUP [CHAR] \ = IF DROP QU-ESC ELSE  DUP [CHAR] $ = IF DROP QU-DOLLAR ELSE  QU-AT GET T,  THEN THEN
   REPEAT DROP GET DROP T) N) ;
 : SQUOTE-P ( --- )   \ after a ': the text to the next ', a leaf - '' too, an empty text
   T0 BEGIN CUR [CHAR] ' <> WHILE CUR 0= IF S" ' missing" P-ERR THEN GET T, REPEAT  GET DROP  TXS @ TXP @ OVER - N-TX N, T0 ;
@@ -326,14 +327,14 @@ VARIABLE HD-D  VARIABLE HD-DU  VARIABLE HD-Q  VARIABLE HD-IND  VARIABLE HD-SP  V
   BEGIN LINE-REST DUP IN-LEN @ < IF DUP BS-LINE? ELSE 0 THEN WHILE 1+ REPEAT ;
 : HD-LS ( --- )   \ a body line's start: HD-IND blanks at most off it
   HD-IND @ 0 ?DO  CUR HD-BL? 0= IF LEAVE THEN  GET DROP  LOOP ;
-: HD-BODY ( start term --- )   \ the body, start up to the END line at term: a N-QU's pieces
-  SWAP IN-POS !  0 0 N-QU N,  T0  HD-LS
-  BEGIN IN-POS @ OVER < WHILE
+: HD-BODY ( start term --- )   \ the body, start up to the END line at term: a N-QU's pieces - read as a "..." is,
+  SWAP IN-POS !  0 0 N-QU N,  T0  HD-LS                \ but for " and the lines; as a '...' when END is quoted (969:
+  BEGIN IN-POS @ OVER < WHILE                          \ it had followed sh's, \n two characters where "..." makes one)
     CUR 10 = IF GET T, HD-LS
     ELSE HD-Q @ IF GET T,
-    ELSE CUR [CHAR] \ = 1 PK DUP [CHAR] $ = SWAP [CHAR] \ = OR AND IF GET DROP GET T,
-    ELSE CUR [CHAR] $ = IF GET DROP T) -1 IN-QU ! DOLLAR-P 0 IN-QU ! IX? T0
-    ELSE GET T, THEN THEN THEN THEN
+    ELSE CUR [CHAR] \ = IF  1 PK 10 = IF GET DROP ELSE QU-ESC THEN     \ \ at a line's end: the newline, as "..."'s
+    ELSE CUR [CHAR] $ = IF QU-DOLLAR
+    ELSE CUR QU-AT GET T, THEN THEN THEN THEN
   REPEAT DROP T) N) ;
 : HEREDOC-P ( closer --- )   \ the word after <<: its body, read ahead - after this line, or the body before on it
   0 0 N-WRD N,  HD-DELIM  WORD-ENDS  IN-POS @ HD-SP !  IN-LINE @ HD-SL !
