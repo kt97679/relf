@@ -1,0 +1,43 @@
+# Huffman coding (962): a text's characters counted, the tree built by joining the two lightest nodes
+# until one is left, each character's code read off it by a recursive walk, the text encoded to bits
+# and decoded by walking the tree again - the same text back, in fewer bits than eight a character
+var text 'it was the best of times, it was the worst of times; it was the age of wisdom, it was the age of foolishness - ünïcödé too'
+var freq [:]
+for i @(range $(count $text)) {
+    var ch $text[$i]
+    if has $freq $ch { set freq[$ch] $(( $freq[$ch] + 1 )) } else { set freq[$ch] 1 }
+}
+# a leaf [weight char], a node [weight left right]
+var nodes []
+for ch @(keys $freq) { append nodes [$freq[$ch] $ch] }
+var lightest {
+    var at 0
+    for i @(range $(count $nodes)) { if $(( $nodes[$i][0] < $nodes[$at][0] )) { set at $i } }
+    var n $nodes[$at]
+    del nodes[$at]
+    put $n
+}
+while $(( $(count $nodes) > 1 )) {
+    var a @(lightest)
+    var b @(lightest)
+    append nodes [$(( $a[0] + $b[0] )) $a $b]
+}
+var tree $nodes[0]
+var codes [:]
+var walk {|t prefix|
+    if $(( $(count $t) == 2 )) { set codes[$t[1]] $prefix; return }
+    walk $t[1] "${prefix}0"
+    walk $t[2] "${prefix}1"
+}
+walk $tree ''
+var bits ''
+for i @(range $(count $text)) { set bits "$bits$codes[$text[$i]]" }
+var out ''
+var at $tree
+for i @(range $(count $bits)) {
+    if $(( $bits[$i] == 0 )) { set at $at[1] } else { set at $at[2] }
+    if $(( $(count $at) == 2 )) { set out "$out$at[1]"; set at $tree }
+}
+echo "$(count $text) characters, $(count $freq) distinct, $(count $bits) bits - $(( $(count $bits) * 100 / (8 * $(count $text)) )) % of eight a character"
+echo "decoded the same: $(( $out == $text ))"
+echo "e: $codes[e], ' ': $codes[' '], ü: $(count $codes[ü]) bits"

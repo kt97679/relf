@@ -1,0 +1,7 @@
+order: docs libc compiler kernel drivers stdlib app tests release
+every pair kept
+tsort's order kept too: 9 names, the same set: true
+a loop among: app compiler drivers kernel libc release stdlib tests
+order: status 1
+tsort: status 1
+status 0

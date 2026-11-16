@@ -550,18 +550,10 @@ VARIABLE RS-NEW
 
 
 \ ---- What the second pilot needs (Iteration 758) ---------------------------
-: R-CMP ( b1 b2 --- n )   \ Python's order: numbers by value, texts by bytes, lists item by item, then length
-  OVER @ OVER @ 2DUP <> IF
-    > IF 2DROP 1 ELSE 2DROP -1 THEN EXIT THEN
-  DUP K-REC = IF R-ERR> ." cm: records have no order - sort-by(list, field) puts them in a field's order" R-ERR-NL -4001 THROW THEN   \ 798
-  DROP
-  DUP K-TEXT = IF DROP CELL+ @ R-T@ ROT CELL+ @ R-T@ 2SWAP COMPARE EXIT THEN
-  K-LIST = IF  CELL+ @ SWAP CELL+ @ SWAP
-    OVER R-LEN OVER R-LEN MIN 0 ?DO
-      OVER I R-AT OVER I R-AT RECURSE ?DUP IF NIP NIP UNLOOP EXIT THEN
-    LOOP
-    R-LEN SWAP R-LEN SWAP 2DUP = IF 2DROP 0 ELSE < IF -1 ELSE 1 THEN THEN EXIT THEN
-  CELL+ @ SWAP CELL+ @ SWAP 2DUP = IF 2DROP 0 ELSE < IF -1 ELSE 1 THEN THEN ;
+: R-CMP ( b1 b2 --- n )   \ two boxes: by kind, then texts by bytes, else by what the box holds - a number's value,
+  OVER @ OVER @ 2DUP <> IF  > IF 2DROP 1 ELSE 2DROP -1 THEN EXIT THEN   \ a block's address (962: Rill's lists item by
+  DROP K-TEXT = IF CELL+ @ R-T@ ROT CELL+ @ R-T@ 2SWAP COMPARE EXIT THEN   \ item, and its records' refusal, unreached
+  CELL+ @ SWAP CELL+ @ SWAP 2DUP = IF 2DROP 0 ELSE < IF -1 ELSE 1 THEN THEN ;   \ since 961: cm's == compares lists itself)
 VARIABLE SRT
 : R-SORT ( l --- l2 )   \ sort(list): a copy, in Python's order, stable
   R-NEW-LIST SRT !  DUP R-LEN 0 ?DO DUP I R-AT SRT @ R-PUSH LOOP DROP

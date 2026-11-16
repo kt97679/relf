@@ -268,8 +268,9 @@ the account of what each gained and cost.
    $( ) text and @( ) values (896); words read by their first character, operators words
    of their own (899); del, wait $job, backslash continuation, case, trap, slice, upper
    and lower, TAB completion, an index after any value (904-914). Open (docs/progress/
-   0900-0999.md, the last handoff): more whole scripts - each round has found something (960's
-   seven: three defects - @( ) in "...", @( ) of `a && prog`, return in `|| { }`);
+   0900-0999.md, the last handoff): more whole scripts - each round had found something (960's
+   seven: three defects - @( ) in "...", @( ) of `a && prog`, return in `|| { }`), until 962's six,
+   written where 961 reached, found none;
    docs/SIMILAR-PROJECTS.md (921): projects like kbool, and eleven action items from them;
    deferred, offered again at 961: $( ) of a def's number (`var x @(f)` the fast form), heredocs.
    Recursion's depth done at 961 - the 1 MB stack, 16 times as deep - and found by it: the collector

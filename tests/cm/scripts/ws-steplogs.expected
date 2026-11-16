@@ -1,0 +1,8 @@
+two steps done
+cm: index 2 past a list of 2 (line 16)
+trap: 3 logs
+  build.log: building, 4 in all
+  check.log: checking, 1 in all
+  fetch.log: fetching, 2 in all
+trap: /tmp/cm-ws-steplogs removed
+status 2

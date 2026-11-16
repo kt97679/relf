@@ -1,0 +1,46 @@
+# eight queens by backtracking (962): a queen a row, each column tried and taken back - every solution
+# found, the first drawn, and those distinct under the board's rotations and reflections counted
+var n 8
+var sols []
+var cols []
+var safe {|c|
+    var r $(count $cols)
+    for i @(range $r) {
+        var d $(( $cols[$i] - $c ))
+        if $(( $d == 0 || $d == $r - $i || $d == $i - $r )) { return 1 }
+    }
+    return 0
+}
+var place {
+    if $(( $(count $cols) == $n )) { append sols [@cols]; return 0 }
+    for c @(range $n) {
+        if safe $c {
+            append cols $c
+            place
+            del cols[-1]
+        }
+    }
+}
+place
+var rot {|q| var o [@(range $n)]; for r @(range $n) { set o[$q[$r]] $(( $n - 1 - $r )) }; put $o }
+var flip {|q| var o []; for c @q { append o $(( $n - 1 - $c )) }; put $o }
+var canon {|q|
+    var forms []
+    var cur $q
+    for i @(range 4) {
+        append forms $(join '' @cur)
+        var f @(flip $cur)
+        append forms $(join '' @f)
+        set cur @(rot $cur)
+    }
+    put @forms | sort | head -1
+}
+var distinct [:]
+for q @sols { set distinct[$(canon $q)] true }
+echo "$(count $sols) solutions, $(count $distinct) distinct; the first:"
+for r @(range $n) {
+    var cells []
+    for c @(range $n) { if $(( $sols[0][$r] == $c )) { append cells Q } else { append cells . } }
+    echo $(join ' ' @cells)
+}
+echo last $sols[-1]

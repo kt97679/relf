@@ -1,0 +1,66 @@
+# a grid's regions by flood fill (962): a 60 by 40 grid of walls and floor from a seeded generator, each
+# region of floor filled recursively - a call a cell, as deep as a region is large - then again by a queue,
+# and the two compared: how many regions, the largest five, the cells of each kind
+var w 60
+var h 40
+var seed 2026
+var rnd { set seed $(( ($seed * 1103515245 + 12345) % 2147483648 )); put $(( $seed / 65536 )) }
+var grid []
+for y @(range $h) {
+    var row []
+    for x @(range $w) { var r @(rnd); if $(( $r % 100 < 30 )) { append row '#' } else { append row . } }
+    append grid $row
+}
+echo $(join '' @grid[0]) ...
+var seen [:]
+var fill {|y x|
+    if $(( $y < 0 || $y >= $h || $x < 0 || $x >= $w )) { put 0; return }
+    if $(( $grid[$y][$x] == '#' )) { put 0; return }
+    var k "$y,$x"
+    if has $seen $k { put 0; return }
+    set seen[$k] true
+    var n 1
+    for d @[[0 1] [1 0] [0 -1] [-1 0]] {
+        var m @(fill $(( $y + $d[0] )) $(( $x + $d[1] )))
+        set n $(( $n + $m ))
+    }
+    put $n
+}
+var sizes []
+for y @(range $h) {
+    for x @(range $w) {
+        if $(( $grid[$y][$x] == '.' )) && ! has $seen "$y,$x" { append sizes @(fill $y $x) }
+    }
+}
+var byqueue {
+    var done [:]
+    var out []
+    for y @(range $h) {
+        for x @(range $w) {
+            if $(( $grid[$y][$x] == '#' )) || has $done "$y,$x" { continue }
+            var q [[$y $x]]
+            set done["$y,$x"] true
+            var i 0
+            while $(( $i < $(count $q) )) {
+                var c $q[$i]
+                set i $(( $i + 1 ))
+                for d @[[0 1] [1 0] [0 -1] [-1 0]] {
+                    var ny $(( $c[0] + $d[0] ))
+                    var nx $(( $c[1] + $d[1] ))
+                    if $(( $ny < 0 || $ny >= $h || $nx < 0 || $nx >= $w )) { continue }
+                    if $(( $grid[$ny][$nx] == '#' )) || has $done "$ny,$nx" { continue }
+                    set done["$ny,$nx"] true
+                    append q [$ny $nx]
+                }
+            }
+            append out $(count $q)
+        }
+    }
+    put $out
+}
+var sizes2 @(byqueue)
+echo "regions $(count $sizes), the same by a queue: $(( $sizes == $sizes2 ))"
+var floor 0
+for s @sizes { set floor $(( $floor + $s )) }
+echo "floor $floor, walls $(( $w * $h - $floor ))"
+echo largest: @(put @sizes | sort -rn | head -5)

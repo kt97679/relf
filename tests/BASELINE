@@ -10,11 +10,11 @@ asm:shell 1
 asm:shell-image reproduces
 bundle:pullable 1
 cm-asm:failed 0
-cm-asm:passed 212
+cm-asm:passed 218
 cm-busybox:failed 0
-cm-busybox:passed 212
+cm-busybox:passed 218
 cm:failed 0
-cm:passed 212
+cm:passed 218
 core:4byte 1
 core:8byte 1
 core:libc 1
@@ -73,7 +73,7 @@ native:os-ported 62
 native:peep same
 native:posix:failed 0
 native:prims same
-native:rill3 207/207
+native:rill3 213/213
 native:rill3-bytes 273928
 native:self-built same
 native:shell 1
@@ -120,7 +120,7 @@ size:engine-code-i386 31489
 size:engine-code-x86_64 30290
 size:i386 143503
 size:image-i386 110303
-size:image-rill3 79853
+size:image-rill3 79685
 size:image-x86_64 119115
 size:x86_64 152675
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
