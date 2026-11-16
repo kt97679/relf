@@ -1,4 +1,5 @@
-# join takes the separator first, then items (884): a list first is an error that shows how
+# join (884, 967): the list's operation, the separator after it - a text has no join, a separator is one word
 var l [a b]
-echo $(join - @l)
-echo $(join $l -)
+echo $($l join -)
+echo $([x] join -) "[$([] join -)]" $([1 2 3] join ', ')
+'-' join $l

@@ -5,7 +5,7 @@ var depth 2000
 var l []
 for i @(range $depth) { set l [$(( $depth - $i )) $l] }
 var text "$l"
-echo "$(count $text) characters: $(slice $text 0 24)...$(slice $text -12)"
+echo "$($text count) characters: $($text slice 0 24)...$($text slice -12)"
 var pos 0
 var read-value {
     if $(( $text[$pos] == '[' )) {
@@ -21,16 +21,16 @@ var read-value {
         return 0
     }
     var start $pos
-    while $(( $pos < $(count $text) )) && match $text[$pos] '[0-9]' { set pos $(( $pos + 1 )) }
+    while $(( $pos < $($text count) )) && $text[$pos] match '[0-9]' { set pos $(( $pos + 1 )) }
     if $(( $pos == $start )) { echo "a number or [ wanted at $pos, not '$text[$pos]'" >&2; return 1 }
-    put $(( $(slice $text $start $pos) + 0 ))
+    put $(( $($text slice $start $pos) + 0 ))
 }
 var back @(read-value)
 echo "read back the same: $(( $back == $l )), $pos characters read"
 var d 0
 var p $back
-while $(( $(count $p) > 0 )) { set d $(( $d + 1 )); set p $p[1] }
+while $(( $($p count) > 0 )) { set d $(( $d + 1 )); set p $p[1] }
 echo "$d levels, the first three numbers $back[0] $back[1][0] $back[1][1][0]"
 set text '[1 [2 [3 x] 4]]'
 set pos 0
-var bad [@(read-value)] || echo "read: status $status, $(count $bad) values"
+var bad [@(read-value)] || echo "read: status $status, $($bad count) values"

@@ -1,6 +1,6 @@
 # set's target read as $'s is (881): a key any word - $k, $(...), a number - for maps and lists, nested
 var counts [:]
-for w @(printf "x\ny\nx\n") { if has $counts $w { set counts[$w] $(( $counts[$w] + 1 )) } else { set counts[$w] 1 } }
+for w @(printf "x\ny\nx\n") { if $counts has $w { set counts[$w] $(( $counts[$w] + 1 )) } else { set counts[$w] 1 } }
 echo $counts
 var l [a b c]
 var i 1

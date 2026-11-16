@@ -1,7 +1,7 @@
 # a whole script (887): the directories in a PATH checked, split on : - each there, or missing
 var path /bin:/no/such/dir-887:/usr/bin
 var n 0
-for d @(split $path :) {
+for d @($path split :) {
     set n $(( $n + 1 ))
     if test -d $d { echo "$n." $d is there } else { echo "$n." "$d:" missing }
 }

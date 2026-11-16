@@ -5,7 +5,7 @@ var q true
 if ! $p { echo a }
 if $p && true { echo b } else { echo not-b }
 if ! $p && true { echo c }
-if ! has [x] y && true { echo d }
+if ! [x] has y && true { echo d }
 if false || $q { echo e }
 if false { echo no } elif true && $q { echo f }
 if true { echo g } && echo h

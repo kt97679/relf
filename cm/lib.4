@@ -29,15 +29,15 @@ VARIABLE TB  VARIABLE TB#  VARIABLE TB-CAP
 : ECHO ( args --- )   DUP #ARGS 0 ?DO  I IF BL OUT-EMIT THEN  DUP I ARGN SHOW  LOOP DROP R-NL ;   \ a newline, no carriage return (882): files and pipes get lines
 : PUTS ( args --- )   DUP #ARGS 0 ?DO  DUP I ARGN PUT  LOOP DROP ;
 : APPEND ( list args --- )   SWAP D-LIST SWAP  DUP #ARGS 0 ?DO  DUP I ARGN  2 PICK R-PUSH  LOOP 2DROP ;
-: COUNT-OF ( args --- )   DUP #ARGS 1 <> IF S" cm: count takes one value" R-FAIL THEN  0 ARGN
+: COUNT-OF ( args --- )   DUP #ARGS 1 <> IF S" cm: count takes no words after it - $v count" R-FAIL THEN  0 ARGN
   DUP D-KIND DUP K-LIST = IF DROP CELL+ @ @ ELSE DUP K-REC = IF DROP CELL+ @ @ @ ELSE
   K-TEXT = IF CELL+ @ R-T@ U-COUNT ELSE S" cm: count takes a list, a map or a text - count of a number's digits is count of its text" R-FAIL THEN THEN THEN  D-NUM PUT ;
 : RANGE-OF ( args --- )   DUP #ARGS 1 <> IF S" cm: range takes one number" R-FAIL THEN
   0 ARGN D>N 0 MAX 0 ?DO I D-NUM PUT LOOP ;   \ none for a negative, as for 0 (966: ?DO ran -1 times round, for ever)
-: MERGE-OF ( args --- )   \ merge $a $b: a new map, a's entries, b's over them - the top level copied
-  DUP #ARGS 2 <> IF S" cm: merge takes two maps" R-FAIL THEN
+: MERGE-OF ( args --- )   \ $a merge $b: a new map, a's entries, b's over them - the top level copied
+  DUP #ARGS 2 <> IF S" cm: merge takes one map - $m merge $m2" R-FAIL THEN
   R-NEW-RECORD K-REC R-BOX  SWAP
-  2 0 DO  DUP I ARGN  DUP D-KIND K-REC <> IF S" cm: merge takes maps" R-FAIL THEN
+  2 0 DO  DUP I ARGN  DUP D-KIND K-REC <> IF S" cm: merge takes a map - $m merge $m2" R-FAIL THEN
     CELL+ @  DUP @ @ 0 ?DO  DUP @ R-ITEMS I CELLS + @  OVER CELL+ @ R-ITEMS I CELLS + @
       4 PICK ROT ROT D-SET  LOOP DROP  LOOP DROP PUT ;
 \ ---- an element of a list or a map (865): a list keeps its items as they are - not boxed, as rill2's
@@ -50,23 +50,18 @@ CREATE ENV-BOX 9 , 0 ,                             \ $env: the environment, as a
 : CM-SET ( c k v --- )   2 PICK ENV-BOX = IF ROT DROP SWAP D-TEXT SWAP D-TEXT R-SETENV EXIT THEN   \ programs see it
   2 PICK D-KIND K-LIST <> IF D-SET EXIT THEN  ROT D-LIST ROT D>N R-SET ;
 \ ---- the library (870): what values need and programs cannot do - split, join, keys; has, count, range,
-\ merge, each above. Texts' other work - case, trimming, replacing - is tr's, sed's, cut's.
+\ merge, each above; most a value's operations since 967. Texts' other work - trimming, replacing - is sed's, cut's.
 VARIABLE SPL-A  VARIABLE SPL-U  VARIABLE SPL-S  VARIABLE SPL-N
 : SPL-AT ( i --- f )   SPL-A @ + SPL-N @ SPL-S @ SPL-N @ COMPARE 0= ;
-: SPLIT-OF ( args --- )   \ split $text sep: each part put
-  DUP #ARGS 2 <> IF S" cm: split takes a text and a separator" R-FAIL THEN
+: SPLIT-OF ( args --- )   \ $text split sep: each part put
+  DUP #ARGS 2 <> IF S" cm: split takes one separator - $t split ','" R-FAIL THEN
   DUP 1 ARGN D-TEXT R-T@ SPL-N ! SPL-S !  0 ARGN D-TEXT R-T@ SPL-U ! SPL-A !
   SPL-N @ 0= IF S" cm: split's separator is empty" R-FAIL THEN
   0 0 BEGIN DUP SPL-N @ + SPL-U @ > 0= WHILE
     DUP SPL-AT IF  2DUP SWAP - >R OVER SPL-A @ + R> TXT PUT  SPL-N @ + NIP DUP  ELSE 1+ THEN
   REPEAT DROP  SPL-A @ OVER + SPL-U @ ROT - TXT PUT ;
-: JOIN-OF ( args --- )   \ join sep items...: one text, sep between the items' texts
-  DUP #ARGS 0= IF S" cm: join takes a separator, then items" R-FAIL THEN
-  DUP 0 ARGN D-KIND K-LIST = IF S" cm: join takes the separator first - join ' ' @list" R-FAIL THEN   \ (884)
-  TXT(  DUP #ARGS 1 ?DO  I 1 > IF DUP 0 ARGN D-TEXT R-T@ TXT+ THEN  DUP I ARGN D-TEXT R-T@ TXT+  LOOP   \ in one buffer (917):
-  )TXT PUT DROP ;          \ each item had made a new text of all before it, and 20,000 ran out of the arena
-: KEYS-OF ( args --- )   \ keys $map: each key put
-  DUP #ARGS 1 <> IF S" cm: keys takes one map" R-FAIL THEN  0 ARGN D-REC R-KEYS  DUP R-LEN 0 ?DO DUP I R-AT PUT LOOP DROP ;
+: KEYS-OF ( args --- )   \ $map keys: each key put
+  DUP #ARGS 1 <> IF S" cm: keys takes no words after it - $m keys" R-FAIL THEN  0 ARGN D-REC R-KEYS  DUP R-LEN 0 ?DO DUP I R-AT PUT LOOP DROP ;
 4096 BUFFER: GE-BUF
 : GLOB-ESC ( item --- text )   \ a value in a glob's pattern: its * ? [ and \ escaped, matched as they are (881)
   D-STR CELL+ @ R-T@  DUP 2* 4096 > IF S" cm: a value in a glob too long" R-FAIL THEN
@@ -102,8 +97,8 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
   D-KIND K-LIST = IF S" cm: a list is no condition - [ ] makes a list here; test -f x tests a file" R-FAIL THEN
   S" cm: a condition is a command, true or false - $(( $n != 0 )) makes one of a number" R-FAIL ;   \ (965: it had pointed
   \ at if $(( $n )), a number too)
-: MATCH-OF ( args --- )   \ match text pattern: status 0 if the whole text matches - * ? [...], as a glob's (877)
-  DUP #ARGS 2 <> IF S" cm: match takes a text and one pattern - quote the pattern, or it is globbed" R-FAIL THEN
+: MATCH-OF ( args --- )   \ $text match pattern: status 0 if the whole text matches - * ? [...], as a glob's (877)
+  DUP #ARGS 2 <> IF S" cm: match takes one pattern - quote it, or it is globbed" R-FAIL THEN
   DUP 0 ARGN D-TEXT SWAP 1 ARGN D-TEXT R-GLOB? 0= 1 AND STATUS ! ;
 : STDIN-LINE ( --- item )   \ read name: a line of stdin, a byte at a time, so what comes after it is left for the
   PAD 0 1 WRITE DROP  0                             \ next reader - status 0, or 1 at the end with nothing read (886)
@@ -117,19 +112,19 @@ VARIABLE RDK-CAP  RDK-MAX RDK-CAP !   ' RDK >BODY START @ - CONSTANT RDK'   \ gr
 : SLICE-AB ( args n --- a b )   \ slice's start and end, held to 0..n and the end not before the start
   OVER 1 ARGN D-NUMERIC D>N OVER SLICE-IDX >R  OVER #ARGS 3 = IF SWAP 2 ARGN D-NUMERIC D>N SWAP SLICE-IDX ELSE NIP THEN
   R> SWAP 2DUP > IF DROP DUP THEN ;
-: SLICE-OF ( args --- )   \ slice v start [end]: a list's items from start up to end, not it, put one by one - [@(slice ..)]
+: SLICE-OF ( args --- )   \ $v slice start [end]: a list's items from start up to end, not it, put one by one - [@($l slice ..)]
   \ a new list - or a text's characters, one text; negative from the end, held to the length; no end, to the end (909)
-  DUP #ARGS DUP 2 < SWAP 3 > OR IF DROP S" cm: slice takes a list or a text, a start, and an end or none" R-FAIL THEN
+  DUP #ARGS DUP 2 < SWAP 3 > OR IF DROP S" cm: slice takes a start, and an end or none - $v slice 1 3" R-FAIL THEN
   DUP 0 ARGN  DUP D-KIND K-TEXT = IF
     D-TEXT SWAP OVER R-T@ U-COUNT SLICE-AB                          ( t a b )
     >R >R  DUP R-T@ R> U-START  OVER R-T@ R> U-START  R-TSLICE K-TEXT R-BOX PUT EXIT  THEN
   D-LIST SWAP OVER R-LEN SLICE-AB                                   ( l a b )
   SWAP ?DO  DUP I R-AT PUT  LOOP DROP ;          \ a list's items put one by one, as split's and keys' are (888)
+: KIND$ ( k --- c-addr u )   \ a kind's name, as kind says it
+  DUP K-NUM = IF DROP S" number" EXIT THEN  DUP K-TEXT = IF DROP S" text" EXIT THEN  DUP K-BOOL = IF DROP S" bool" EXIT THEN
+  DUP K-LIST = IF DROP S" list" EXIT THEN  DUP K-REC = IF DROP S" map" EXIT THEN  K-BLOCK = IF S" block" EXIT THEN  S" other" ;
 : KIND-OF ( args --- )   \ kind value: text, number, bool, list, map or block (886)
-  DUP #ARGS 1 <> IF S" cm: kind takes one value" R-FAIL THEN  0 ARGN D-KIND
-  DUP K-NUM = IF DROP S" number" ELSE DUP K-TEXT = IF DROP S" text" ELSE DUP K-BOOL = IF DROP S" bool" ELSE
-  DUP K-LIST = IF DROP S" list" ELSE DUP K-REC = IF DROP S" map" ELSE DUP K-BLOCK = IF DROP S" block" ELSE
-  DROP S" other" THEN THEN THEN THEN THEN THEN  TXT PUT ;
+  DUP #ARGS 1 <> IF S" cm: kind takes one value" R-FAIL THEN  0 ARGN D-KIND KIND$ TXT PUT ;
 VARIABLE JOB                                       \ $job: the last job & started - its last stage's pid (905)
 VARIABLE DONE  VARIABLE DONE#  VARIABLE DONE-CAP   \ jobs a plain wait reaped: [job][status] each, for a wait $job after
 : DONE+ ( job status --- )
@@ -157,9 +152,9 @@ VARIABLE DONE  VARIABLE DONE#  VARIABLE DONE-CAP   \ jobs a plain wait reaped: [
 : EXIT-OF ( args --- )   \ exit [n]: the script ends - or the prompt - with n, else the last status (873)
   DUP #ARGS DUP 1 > IF S" cm: exit takes one status" R-FAIL THEN
   IF 0 ARGN D-NUMERIC D>N ELSE DROP STATUS @ THEN  R-EXIT ;
-: HAS-OF ( args --- )   \ has $m key, has $l value: status 0 if the map has the key, the list the value (865) - a
-  \ status, as match's, since $( ) is text (896): `if has $m $k { }`, not `if $(has $m $k) { }`
-  DUP #ARGS 2 <> IF S" cm: has takes a map or list and a value" R-FAIL THEN  DUP 1 ARGN SWAP 0 ARGN D-IN D-TRUE? 0= 1 AND STATUS ! ;
+: HAS-OF ( args --- )   \ $m has key, $l has value: status 0 if the map has the key, the list the value (865) - a
+  \ status, as match's, since $( ) is text (896): `if $m has $k { }`, not `if $($m has $k) { }`
+  DUP #ARGS 2 <> IF S" cm: has takes one value - $m has key, $l has v" R-FAIL THEN  DUP 1 ARGN SWAP 0 ARGN D-IN D-TRUE? 0= 1 AND STATUS ! ;
 : FOR-ONE ( args --- args )   \ for x $l: one value, a list - @ spreads it
   DUP #ARGS 1 = IF DUP 0 ARGN D-KIND K-LIST = IF S" cm: for over one list - @ spreads it" R-FAIL THEN THEN ;
 
@@ -178,32 +173,65 @@ CREATE CALLING 2 CELLS ALLOT                      \ the def a call with @ binds,
 : ?FAIL ( --- )   \ a statement's command failed, its status untested: the script ends there, with it (927)
   FAIL-ON @ 0= TESTING @ OR IF EXIT THEN
   STATUS @ R-STATUS !  R-ERR> ." cm: status " STATUS @ . ." - the script stops" R-ERR-NL  -4000 THROW ;
-DEFER RUN-NAMED ( args text --- )   \ the program a text names: below, once PSTAGE is
-: CALL-VALUE ( args item --- )   \ rule 11: a value as a command's first word
+\ ---- a value's operations (967): $v op words - the value the command, the operation its subcommand, as a
+\ program's: git commit. A list's, a map's, a text's; a block runs, a bool is its status, a number has none
+: OP-NAMES ( --- c-addr u )   S" count has slice join keys merge split upper lower match" ;
+10 CONSTANT OPS#
+1 K-TEXT LSHIFT CONSTANT B-T   1 K-LIST LSHIFT CONSTANT B-L   1 K-REC LSHIFT CONSTANT B-M
+CREATE OP-MASKS   \ the kinds each is for, a bit each
+  B-L B-M OR B-T OR DUP , ,  B-L B-T OR ,  B-L ,  B-M DUP , ,  B-T DUP , DUP , DUP , ,
+: OP-MASK ( i --- mask )   CELLS OP-MASKS + @ ;
+: OP-NAME ( i --- c-addr u )   OP-NAMES ROT 0 ?DO  BL SCAN 1 /STRING  LOOP  2DUP BL SCAN NIP - ;
+: OP# ( c-addr u --- i | -1 )   \ an operation's number
+  OPS# 0 DO  2DUP I OP-NAME COMPARE 0= IF 2DROP I UNLOOP EXIT THEN  LOOP 2DROP -1 ;
+: OPS. ( kind --- )   \ the operations a kind has, a blank between
+  1 SWAP LSHIFT 0  OPS# 0 DO  OVER I OP-MASK AND IF DUP IF SPACE THEN I OP-NAME TYPE 1+ THEN  LOOP 2DROP ;
+: OPS-SAY ( kind --- )   \ an error's end: the operations the kind has
+  DUP K-NUM = IF DROP ."  - a number has no operations; $(( )) does its arithmetic" EXIT THEN
+  DUP K-BOOL = IF DROP ."  - a bool has no operations; alone, as a command, it is its status" EXIT THEN
+  1 OVER LSHIFT B-L B-M OR B-T OR AND 0= IF DROP ."  - it has no operations" EXIT THEN
+  ."  - its operations: " OPS. ;
+: A-KIND. ( kind --- )   DUP 1 8 WITHIN IF ." a " KIND$ TYPE ELSE DROP ." the value" THEN ;
+: NO-OP ( kind c-addr u --- )   \ $v op: an operation its kind has not
+  R-ERR> ." cm: " ROT DUP A-KIND. ."  has no " ROT ROT TYPE OPS-SAY R-ERR-NL -4004 THROW ;
+: NOT-CMD ( args item --- )   \ a value as a command, no operation of its named: what it is, what it has
+  D-KIND DUP K-TEXT <> IF  OVER #ARGS IF  OVER 0 ARGN DUP D-KIND K-TEXT = IF  D-TEXT R-T@ NO-OP  THEN DROP  THEN  THEN
+  NIP  R-ERR> ." cm: " DUP A-KIND. ."  is a value, not a command"
+  DUP K-TEXT = IF ." ; run $t runs the program it names" THEN  DUP OPS-SAY
+  K-LIST = IF ." ; [ -f x ] is test -f x; @(cmd) takes a command's values, a list needs no @( )" THEN  R-ERR-NL -4004 THROW ;
+DEFER OP-RUN ( args i --- )   \ the operation's word: below, once they all are
+: OP-DO ( args i --- )   \ the operation, args[0] its value - of a kind it is for; the status 0, has's and match's theirs
+  OVER 0 ARGN D-KIND  1 OVER LSHIFT  2 PICK OP-MASK AND 0= IF  SWAP OP-NAME NO-OP  THEN DROP
+  0 STATUS !  OP-RUN ;
+: OP-HINT ( c-addr u --- )   \ count, has... as a program: a value's operations - said so (967)
+  2DUP OP# 0< IF 2DROP EXIT THEN  ."  - " 2DUP TYPE ."  is a value's operation: $v " TYPE ;
+: ARG0! ( item args --- )   CELL+ @ R-ITEMS ! ;
+: CALL-ITEM ( args item --- )   \ rule 11: a value as a command's first word - a block run, given the words after it;
+  \ a bool its status; a list's, a map's or a text's operation, the word after it its name (967)
   DUP D-KIND K-BLOCK = IF BLK-CALL EXIT THEN
-  DUP D-KIND K-TEXT = IF RUN-NAMED EXIT THEN           \ a text names a program: $EDITOR file (907)
-  DUP D-KIND K-BOOL = IF NIP D-TRUE? 0= 1 AND STATUS ! EXIT THEN     \ false: status 1, not -1 (869)
-  DUP D-KIND K-LIST = IF S" cm: a list is a value, not a command - [ -f x ] is test -f x; @(cmd) takes a command's values, a list needs no @( )" R-FAIL THEN
-  S" cm: a value as a command is a block, a boolean or a text naming a program" R-FAIL ;   \ the list's hint (917)
+  OVER #ARGS IF  OVER 0 ARGN DUP D-KIND K-TEXT = IF
+      D-TEXT R-T@ OP# DUP 0< 0= IF  >R OVER ARG0! R> OP-DO EXIT THEN  THEN DROP  NOT-CMD  THEN
+  DUP D-KIND K-BOOL = IF NIP D-TRUE? 0= 1 AND STATUS ! EXIT THEN   \ false: status 1, not -1 (869)
+  NOT-CMD ;
+: CALL-VALUE ( args item --- )   S" the block" CALLING 2!  CALL-ITEM ;   \ $b x: BIND-K says "the block" (967: it said
+\ the last function called by name, or faulted with none called yet)
 : CALL-NAMED ( args item c-addr u --- )   \ a function called by its name (929): its arity said with the name
   CALLING 2!  DUP 0= IF  R-ERR> ." cm: " CALLING 2@ TYPE ."  is called before it is set" R-ERR-NL -4004 THROW  THEN
-  CALL-VALUE ;
+  CALL-ITEM ;
 : PACK-ARGS ( a1 .. ak k --- list )   ARGL SWAP DUP 0 ?DO  DUP 1+ ROLL  ROT SWAP ARG SWAP  LOOP DROP ;
 : CALL-NAMED-S ( a1 .. ak k item c-addr u --- )   \ the same, its arguments on the stack - none a spread (930)
   CALLING 2!  DUP 0= IF  R-ERR> ." cm: " CALLING 2@ TYPE ."  is called before it is set" R-ERR-NL -4004 THROW  THEN
-  DUP D-KIND K-BLOCK = IF BLK-RUN EXIT THEN  >R PACK-ARGS R> CALL-VALUE ;
+  DUP D-KIND K-BLOCK = IF BLK-RUN EXIT THEN  >R PACK-ARGS R> CALL-ITEM ;
 
 \ ---- programs (859): a command whose first word names no builtin, def or value - its words as texts
 : ARG-TEXTS ( args --- l )   \ each as a text - a number its digits, true or false; a list, map or block an error (rule 12)
   ARGL SWAP  DUP #ARGS 0 ?DO  DUP I ARGN  DUP D-KIND  DUP K-LIST = OVER K-REC = OR SWAP K-BLOCK = OR
-    IF S" cm: a list, map or block given to a program - @ spreads a list's items" R-FAIL THEN
+    IF  R-ERR> ." cm: a list, map or block given to a program - @ spreads a list's items"
+      DROP DUP 0 ARGN D-TEXT R-T@ OP-HINT  R-ERR-NL -4004 THROW  THEN   \ count $l: count, a program, and a hint (967)
     D-STR  ROT SWAP ARG SWAP  LOOP DROP  CELL+ @ ;   \ a number given as it was (870: head -n 1 faulted)
 : RD-FILE ( item mode fd --- )   ROT D-STR CELL+ @ ROT ROT R-RD-FILE ;
 : PSTAGE ( args last? --- )   >R ARG-TEXTS R> PL-STAGE-L ;
 : PIPE-END ( --- )   PL-CAPR @ -1 <> >R  PL-END STATUS !  R> IF R-T@ CT+ THEN ;   \ read for a $( ) (896)
-: RUN-NAMED' ( args text --- )   \ its arguments after it, a pipeline of one program - captured as any is (907)
-  2 PL-BEGIN  ARGL SWAP ARG  SWAP DUP #ARGS 0 ?DO  DUP I ARGN ROT SWAP ARG SWAP  LOOP DROP  -1 PSTAGE PIPE-END ;
-' RUN-NAMED' IS RUN-NAMED
 : TRIM-NLS ( t --- t )   \ every trailing newline off (rule 4 of C.1)
   BEGIN  DUP @ DUP IF OVER CELL+ + 1- C@ 10 = THEN  WHILE  -1 OVER +!  REPEAT ;   \ an empty text: its 0 the flag (881:
 \ it was left under one, so a capture of nothing - $(printf "") - made a broken value and the next use crashed)
@@ -257,6 +285,19 @@ VARIABLE CASE-T
 : CASE-MAP ( c-addr u tbl --- item )   \ the text, each character mapped
   CASE-T !  TXT(
   BEGIN DUP WHILE  2DUP U-CP >R  CASE-T @ CASE-OF U-PUT  R> /STRING  REPEAT 2DROP  )TXT ;
-: CASE-ARG ( args --- c-addr u )   DUP #ARGS 1 <> IF DROP S" cm: upper and lower take one text" R-FAIL THEN  0 ARGN D-TEXT R-T@ ;
+: CASE-ARG ( args --- c-addr u )   DUP #ARGS 1 <> IF DROP S" cm: upper and lower take no words after them - $t upper" R-FAIL THEN  0 ARGN D-TEXT R-T@ ;
 : UPPER-OF ( args --- )   CASE-ARG CASE-UP CASE-MAP PUT ;
 : LOWER-OF ( args --- )   CASE-ARG CASE-LO CASE-MAP PUT ;
+: JOIN-M ( args --- )   \ $l join sep: one text, sep between the list's items' texts - in one buffer (917)
+  DUP #ARGS 2 <> IF S" cm: join takes one separator - $l join ', '" R-FAIL THEN
+  DUP 0 ARGN D-LIST  TXT(
+  DUP R-LEN 0 ?DO  I IF OVER 1 ARGN D-TEXT R-T@ TXT+ THEN  DUP I R-AT D-TEXT R-T@ TXT+  LOOP  2DROP  )TXT PUT ;
+CREATE OP-XTS  OPS# CELLS ALLOT   \ each operation's word, in OP-NAMES' order - as offsets (!XT): the image is reloaded
+: OP-XT! ( xt i --- )   CELLS OP-XTS + !XT ;
+' COUNT-OF 0 OP-XT!  ' HAS-OF 1 OP-XT!  ' SLICE-OF 2 OP-XT!  ' JOIN-M 3 OP-XT!  ' KEYS-OF 4 OP-XT!
+' MERGE-OF 5 OP-XT!  ' SPLIT-OF 6 OP-XT!  ' UPPER-OF 7 OP-XT!  ' LOWER-OF 8 OP-XT!  ' MATCH-OF 9 OP-XT!
+: OP-RUN' ( args i --- )   CELLS OP-XTS + @XT EXECUTE ;   ' OP-RUN' IS OP-RUN
+: NO-PROG ( c-addr u --- )   2DUP R-NO-PROG' OP-HINT ;   ' NO-PROG IS R-NO-PROG
+: CALL-METHOD ( args i --- )   \ $v op words, op a bare word naming an operation: args[0] the value, then the words -
+  OVER CELL+ @ R-ITEMS @ D-KIND  1 OVER LSHIFT  2 PICK OP-MASK AND IF  DROP 0 STATUS ! OP-RUN' EXIT THEN   \ its kind's, run
+  K-BLOCK = IF  OVER 0 ARGN >R  OP-NAME TXT OVER ARG0!  R> CALL-VALUE EXIT THEN  OP-DO ;   \ a block given op; else the error

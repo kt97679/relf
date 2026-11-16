@@ -8,9 +8,9 @@ printf '%0300d' 0 > "$dir/b/y.txt"
 printf '%050d' 0 > "$dir/b/z.log"
 var sizes [:]
 for f @(find $dir -type f) {
-    var ext [@(split $f .)][-1]
+    var ext [@($f split .)][-1]
     var n $(stat -c %s $f)
-    if has $sizes $ext { set sizes[$ext] $(( $sizes[$ext] + $n )) } else { set sizes[$ext] $n }
+    if $sizes has $ext { set sizes[$ext] $(( $sizes[$ext] + $n )) } else { set sizes[$ext] $n }
 }
-for e @(keys $sizes) { echo "$sizes[$e] $e" } | sort -n
+for e @($sizes keys) { echo "$sizes[$e] $e" } | sort -n
 rm -rf $dir

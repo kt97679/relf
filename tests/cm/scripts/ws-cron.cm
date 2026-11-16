@@ -8,22 +8,22 @@ var field-set {|text i|
   var lo $limits[$i][0]
   var hi $limits[$i][1]
   var nums [:]
-  for part @(split $text ,) {
+  for part @($text split ,) {
     var step 1
     var range $part
-    if has $part / {
-      var ps [@(split $part /)]
+    if $part has / {
+      var ps [@($part split /)]
       set range $ps[0]
       set step $ps[1]
-      if ! match $step '[0-9]*' || $(( $step == 0 )) { put "$names[$i]: a step of $step"; return 1 }
+      if ! $step match '[0-9]*' || $(( $step == 0 )) { put "$names[$i]: a step of $step"; return 1 }
     }
     var from $lo
     var to $hi
     if $(( $range != '*' )) {
-      var ends [@(split $range -)]
-      for e @ends { if ! match $e '[0-9]*' || match $e '*[!0-9]*' { put "$names[$i]: $e is not a number"; return 1 } }
+      var ends [@($range split -)]
+      for e @ends { if ! $e match '[0-9]*' || $e match '*[!0-9]*' { put "$names[$i]: $e is not a number"; return 1 } }
       set from $ends[0]
-      if $(( $(count $ends) == 2 )) { set to $ends[1] } elif has $part / { set to $hi } else { set to $from }
+      if $(( $($ends count) == 2 )) { set to $ends[1] } elif $part has / { set to $hi } else { set to $from }
     }
     if $(( $from < $lo || $to > $hi || $from > $to )) { put "$names[$i]: $range is outside $lo-$hi"; return 1 }
     var v $from
@@ -33,21 +33,21 @@ var field-set {|text i|
 }
 
 var parse {|line|
-  var fields [@(split $line ' ')]
-  if $(( $(count $fields) < 6 )) { put 'five fields and a command wanted'; return 1 }
+  var fields [@($line split ' ')]
+  if $(( $($fields count) < 6 )) { put 'five fields and a command wanted'; return 1 }
   var sets []
   for i @(range 5) {
     var s ''
     if ! set s @(field-set $fields[$i] $i) { put $s; return 1 }
     append sets $s
   }
-  put [sets: $sets  command: $(join ' ' @(slice $fields 5))]
+  put [sets: $sets  command: $([@($fields slice 5)] join ' ')]
 }
 
 # a calendar to walk: month lengths of a year that is not a leap year, its 1 January a Thursday (4)
 var month-days [31 28 31 30 31 30 31 31 30 31 30 31]
 var tick {|t|
-  var m @(merge $t [:])          # a copy: a map is held by reference, and var m $t would change the caller's
+  var m @($t merge [:])          # a copy: a map is held by reference, and var m $t would change the caller's
   set m[minute] $(( $t[minute] + 1 ))
   if $(( $m[minute] < 60 )) { put $m; return 0 }
   set m[minute] 0
@@ -63,7 +63,7 @@ var tick {|t|
 }
 var runs-at {|job t|
   var s $job[sets]
-  has $s[0] $t[minute] && has $s[1] $t[hour] && has $s[2] $t[day] && has $s[3] $t[month] && has $s[4] $t[weekday]
+  $s[0] has $t[minute] && $s[1] has $t[hour] && $s[2] has $t[day] && $s[3] has $t[month] && $s[4] has $t[weekday]
 }
 var two {|n| if $(( $n < 10 )) { put "0$n" } else { put $n } }
 var show {|t| put "$(two $t[month])-$(two $t[day]) $(two $t[hour]):$(two $t[minute]) ($t[weekday])" }
@@ -90,10 +90,10 @@ for j @jobs {
   var t $start
   var found []
   var steps 0
-  while $(( $(count $found) < 3 && $steps < 7 * 24 * 60 )) {
+  while $(( $($found count) < 3 && $steps < 7 * 24 * 60 )) {
     set t @(tick $t)
     set steps $(( $steps + 1 ))
     if runs-at $j $t { append found @(show $t) }
   }
-  echo "$j[command]: $(join ', ' @found)"
+  echo "$j[command]: $($found join ', ')"
 }

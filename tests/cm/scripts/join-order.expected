@@ -1,3 +1,4 @@
 a-b
-cm: join takes the separator first - join ' ' @list (line 4)
+x [] 1, 2, 3
+cm: a text has no join - its operations: count has slice split upper lower match (line 5)
 status 2

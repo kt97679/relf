@@ -10,10 +10,10 @@ echo $t[3]
 echo $t[-4]
 var e ""
 echo $e[0]
-echo $(slice $t 1 9) [$(slice $t 5 9)]
+echo $($t slice 1 9) [$($t slice 5 9)]
 var m [k: v]
 echo $m[j]
 del m[j]
-keys [a b]
+[a b] keys
 var f { return 1 2 }
 echo the session goes on

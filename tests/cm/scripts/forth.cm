@@ -12,5 +12,5 @@ echo
 echo $(forth 'DROP' 1 2 3)
 forth 'NOSUCHWORD' || echo "failed, status $status"
 echo $(forth 'BASE @')
-var n $(count [a b c])
+var n $([a b c] count)
 echo $(forth '1+' $n)

@@ -2,7 +2,7 @@
 # matrices as lists of rows: transpose and multiply
 var transpose {|m|
     var t []
-    for j @(range $(count $m[0])) {
+    for j @(range $($m[0] count)) {
         var row []
         for r @m { append row $r[$j] }
         append t $row
@@ -16,7 +16,7 @@ var mul {|a b|
         var row []
         for c @bt {
             var s 0
-            for k @(range $(count $r)) { set s $(( $s + $r[$k] * $c[$k] )) }
+            for k @(range $($r count)) { set s $(( $s + $r[$k] * $c[$k] )) }
             append row $s
         }
         append out $row

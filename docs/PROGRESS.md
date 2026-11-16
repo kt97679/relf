@@ -990,6 +990,7 @@ do not trust the absence of a line below.
 - 964 — rill3: $( ) of a function's number fast in (( )) - an operand's capture holds a number put before any byte and is that number, else prints it first; calls.cm 2.5 times as fast, fib 1.9, faster than `var x @(f)`; the same output as 963's for 28 changed scripts' code and 6,326 generated bodies
 - 965 — rill3: $(( )) gives a number or a boolean - one value alone read as the operators read theirs ($(( "7" )) is 7); a boolean in arithmetic an error (true + 1 had been 0); every refused kind named; the condition message points at $(( $n != 0 ))
 - 966 — rill3: an audit - fixed has of a list holding a number (it faulted), a negative index wrapping past the start, a text's index past its end ("" had come back), range of a negative (it ran for ever), return's status kept to 0-255 and a bare return the last status; five inconsistencies reported for the owner
+- 967 — rill3: the value is the command, the operation its subcommand - `$l count`, `$m has $k`, `$t split ,`; an operation a kind has not names the ones it has; `run` runs the program a text names; the ten moved builtins programs as a first word, with a hint; a function named like a builtin an error; `$b x` no longer faults; tools/cm-migrate-ops.py rewrote 514 calls in 118 files
 
 ### Not tied to an iteration
 

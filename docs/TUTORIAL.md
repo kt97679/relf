@@ -10,7 +10,7 @@ Run a script with `bin/cm script.cm`, or start the prompt with `bin/cm` alone.
 ## 1. Commands and words
 
 A line is a command: words separated by blanks. The first word says what runs - a builtin, a function
-of yours, or a program.
+of yours, a value, or a program.
 
     echo hello world
     ls /tmp > /dev/null
@@ -42,11 +42,15 @@ Numbers are whole; arithmetic and comparison live in `$(( ))`.
 
     var l [3 1 2]
     append l 5
-    echo $(count $l) $l[0] $l[-1] [@(slice $l 1 3)]
+    echo $($l count) $l[0] $l[-1] [@($l slice 1 3)]
     # 4 3 5 [1 2]
     var m [a: 1]
     set m[b] 2
-    for k @(keys $m) { echo $k is $m[$k] }
+    for k @($m keys) { echo $k is $m[$k] }
+
+A list, a map or a text is a command, its operations its subcommands - as `git commit` is git's: `$l
+count`, `$l slice 1 3`, `$m keys`, `$t split ,`, `$t upper`; `$m has a` and `$t match '*.txt'` give a
+status, for `if`.
 
 `@` spreads a list into words: `@l` is its items, one word each.
 
@@ -92,11 +96,12 @@ Programs and functions mix in one pipeline: between programs flow bytes, between
     # 4
     # 2
 
-`$(cmd)` is the text a command printed; `@(cmd)` its values, one by one.
+`$(cmd)` is the text a command printed; `@(cmd)` its values, one by one. A program whose name a value
+holds runs with `run`: `run $EDITOR notes.txt`.
 
     var today $(date +%Y)
     var lines [@(printf 'a\nb\n')]
-    echo $(count $lines) lines
+    echo $($lines count) lines
     # 2 lines
 
 ## 7. When things fail

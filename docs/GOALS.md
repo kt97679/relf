@@ -275,7 +275,11 @@ the account of what each gained and cost.
    the deferred items, offered again at 961, all done: heredocs at 963, at the owner's word (910's no
    reversed) - sh's `<< END` and `<< 'END'`, an indented END taking its indent off each line; $( ) of a
    def's number at 964 - an operand's $( ) in (( )) holds a number put before any byte, calls.cm 2.5
-   times as fast, faster than `var x @(f)`. Recursion's depth done at 961 - the 1 MB stack, 16 times as deep - and found by it: the collector
+   times as fast, faster than `var x @(f)`. At 967, the owner's choice: a value is the command and its
+   operation the subcommand - `$l count`, `$m has $k`, `$t split ,` - one way to call builtins and
+   programs alike; `run` runs the program a text names; tools/cm-migrate-ops.py rewrites a 966 script.
+   Open from 966's audit, for the owner: a pipeline's status and its function stages, a heredoc's `\n`,
+   `!`'s truthiness against conditions', `$env` as a map, `return` at the top level. Recursion's depth done at 961 - the 1 MB stack, 16 times as deep - and found by it: the collector
    recursed a call a level of a value's nesting (a list 42,000 deep left the heap half moved), `==` on
    lists faulted, and after an error in a redirected function stdout stayed the file. The front end smaller - begun at 959: cm/cmc.4 is 21,282 of the image's 79,045
    bytes, 27 %; its repeated runs merged (336 bytes, the code made of every test script the same,

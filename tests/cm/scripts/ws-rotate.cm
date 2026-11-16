@@ -8,6 +8,6 @@ var scratch "$dir/.lock"
 touch $scratch
 trap { rm -f $scratch } EXIT
 var all [@(glob "$dir/backup-*.tar")]
-var n $(count $all)
-for old @(slice $all 0 -3) { rm $old; echo "removed $(slice $old -21)" }
-echo kept: @(glob "$dir/backup-*.tar" | each {|p| put $(slice $p -21) })
+var n $($all count)
+for old @($all slice 0 -3) { rm $old; echo "removed $($old slice -21)" }
+echo kept: @(glob "$dir/backup-*.tar" | each {|p| put $($p slice -21) })

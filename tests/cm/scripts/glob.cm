@@ -6,7 +6,7 @@ touch /tmp/cm-872/b.txt /tmp/cm-872/a.txt /tmp/cm-872/c.log /tmp/cm-872/.hidden.
 echo /tmp/cm-872/*.txt
 echo "/tmp/cm-872/*.txt"
 var logs [/tmp/cm-872/*.log]
-echo $(count $logs) $logs
+echo $($logs count) $logs
 for f /tmp/cm-872/?.txt { echo file $f }
 var p /tmp/cm-872/*.txt
 echo $p

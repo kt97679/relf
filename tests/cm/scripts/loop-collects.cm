@@ -3,7 +3,7 @@
 var chunk $(printf '%2000s' x)
 var s ''
 for i @(range 400) { set s "$s$chunk" }
-echo $(count $s)
+echo $($s count)
 var parts []
 for i @(range 400) { append parts $chunk }
-echo $(count $(join '' @parts))
+echo $($($parts join '') count)

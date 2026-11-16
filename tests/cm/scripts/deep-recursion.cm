@@ -10,7 +10,7 @@ echo @(sum 4000)
 var plain {|n| if $(( $n > 0 )) { plain $(( $n - 1 )) } }
 plain 30000
 echo plain 30000
-var walk {|t| if $(( $(count $t) == 0 )) { put 0; return }; var d @(walk $t[1]); put $(( $d + 1 )) }
+var walk {|t| if $(( $($t count) == 0 )) { put 0; return }; var d @(walk $t[1]); put $(( $d + 1 )) }
 var l []
 for i @(range 4000) { set l [$i $l] }
 echo walked @(walk $l)

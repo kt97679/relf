@@ -9,4 +9,4 @@ for n @(range 100) {
     }
     if $prime { append primes $n }
 }
-echo $(count $primes) primes: $(join " " @primes)
+echo $($primes count) primes: $($primes join " ")

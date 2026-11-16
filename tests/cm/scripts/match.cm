@@ -1,7 +1,7 @@
 # match text pattern (877): status 0 when the whole text matches - * ? [...], as a glob's; quoted, or it is globbed
 for f report.txt notes.md data.csv {
-    if match $f '*.txt' { echo $f is text } elif match $f '*.[cm][sd]*' { echo $f is md or csv }
+    if $f match '*.txt' { echo $f is text } elif $f match '*.[cm][sd]*' { echo $f is md or csv }
 }
-match abc 'a?c' && echo "a?c matches abc"
-match abc 'b*' || echo "b* does not"
-match one two three
+'abc' match 'a?c' && echo "a?c matches abc"
+'abc' match 'b*' || echo "b* does not"
+'one' match two three

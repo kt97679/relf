@@ -7,17 +7,17 @@ var bfs {|start goal|
     var queue [$start]
     var from [:]
     var at 0
-    while $(( $at < $(count $queue) )) {
+    while $(( $at < $($queue count) )) {
         var node $queue[$at]
         set at $(( $at + 1 ))
         if $(( $node == $goal )) {
             var path [$node]
-            while has $from $node { set node $from[$node]; set path [$node @path] }
+            while $from has $node { set node $from[$node]; set path [$node @path] }
             put $path
             return 0
         }
         for next @g[$node] {
-            if ! has $seen $next { set seen[$next] true; set from[$next] $node; append queue $next }
+            if ! $seen has $next { set seen[$next] true; set from[$next] $node; append queue $next }
         }
     }
     return 1

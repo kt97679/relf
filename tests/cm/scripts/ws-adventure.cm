@@ -5,18 +5,18 @@ var rooms [hall: [desc: 'a cold hall'  north: library  east: kitchen]
            kitchen: [desc: 'a smell of bread'  west: hall  item: key]]
 var here hall
 var bag []
-var look { echo "You are in $rooms[$here][desc]."; if has $rooms[$here] item { echo "There is a $rooms[$here][item] here." } }
+var look { echo "You are in $rooms[$here][desc]."; if $rooms[$here] has item { echo "There is a $rooms[$here][item] here." } }
 var play {
     var cmd ''
     look
     while read cmd {
-        var w [@(split $cmd ' ')]
+        var w [@($cmd split ' ')]
         case $w[0] {
             go {
-                if has $rooms[$here] $w[1] { set here $rooms[$here][$w[1]]; look } else { echo 'You cannot go that way.' }
+                if $rooms[$here] has $w[1] { set here $rooms[$here][$w[1]]; look } else { echo 'You cannot go that way.' }
             }
             take {
-                if has $rooms[$here] item && match $rooms[$here][item] $w[1] {
+                if $rooms[$here] has item && $rooms[$here][item] match $w[1] {
                     append bag $w[1]; del rooms[$here][item]; echo "Taken: $w[1]."
                 } else { echo 'Nothing like that here.' }
             }

@@ -14,5 +14,5 @@ echo $(( $a == $e )) $(( $a == $one ))
 var m [k: v]
 var n [k: v]
 echo $(( $m == $n )) $(( $m == $m ))
-has [[1 2] [3]] [3] && echo has a list
-has [$a] $e && echo has as == takes it
+[[1 2] [3]] has [3] && echo has a list
+[$a] has $e && echo has as == takes it

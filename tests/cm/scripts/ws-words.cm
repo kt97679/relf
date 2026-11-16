@@ -1,8 +1,8 @@
 # a whole script (912), as one would write it
 # text utilities with slice: reverse, palindromes, capitalise
-var reverse {|t| var r ''; var n $(count $t); for i @(range $n) { set r "$r$(slice $t $(( $n - 1 - $i )) $(( $n - $i )))" }; put $r }
+var reverse {|t| var r ''; var n $($t count); for i @(range $n) { set r "$r$($t slice $(( $n - 1 - $i )) $(( $n - $i )))" }; put $r }
 var palindrome {|t| var r $(reverse $t); test $r = $t }
-var capitalise {|t| put "$(slice $t 0 1 | tr a-z A-Z)$(slice $t 1)" }
+var capitalise {|t| put "$($t slice 0 1 | tr a-z A-Z)$($t slice 1)" }
 echo $(reverse 'héllo wörld')
 for w level noon rotor shell { if palindrome $w { echo "$w is a palindrome" } else { echo "$w is not" } }
 echo $(capitalise forth) $(capitalise émile)

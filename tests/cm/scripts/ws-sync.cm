@@ -19,22 +19,22 @@ trap { rm -rf $base } EXIT
 var files-of {|root|
   var m [:]
   for f @(cd $root && find . -type f | sort) {
-    var rel $(slice $f 2)
+    var rel $($f slice 2)
     set m[$rel] @(wc -c < "$root/$rel")
   }
   put $m
 }
 var a @(files-of "$base/a")
 var b @(files-of "$base/b")
-echo "a: $(count $a) files, b: $(count $b) files"
+echo "a: $($a count) files, b: $($b count) files"
 
 var only-a []
 var only-b []
 var differ []
-for p @(keys $a) {
-  if ! has $b $p { append only-a $p } elif ! cmp -s "$base/a/$p" "$base/b/$p" { append differ $p }
+for p @($a keys) {
+  if ! $b has $p { append only-a $p } elif ! cmp -s "$base/a/$p" "$base/b/$p" { append differ $p }
 }
-for p @(keys $b) { if ! has $a $p { append only-b $p } }
+for p @($b keys) { if ! $a has $p { append only-b $p } }
 for p @only-a { echo "only in a: $p ($a[$p] bytes)" }
 for p @only-b { echo "only in b: $p" }
 for p @differ { echo "differ:    $p ($a[$p] and $b[$p] bytes)" }
@@ -54,5 +54,5 @@ echo "dry run: $planned files"
 var copied @(copy false)
 var b2 @(files-of "$base/b")
 var same 0
-for p @(keys $a) { if has $b2 $p && cmp -s "$base/a/$p" "$base/b/$p" { set same $(( $same + 1 )) } }
-echo "copied $copied; now $same of $(count $a) of a's files are in b alike, and b has $(count $b2)"
+for p @($a keys) { if $b2 has $p && cmp -s "$base/a/$p" "$base/b/$p" { set same $(( $same + 1 )) } }
+echo "copied $copied; now $same of $($a count) of a's files are in b alike, and b has $($b2 count)"

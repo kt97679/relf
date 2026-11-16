@@ -1,11 +1,11 @@
 # a whole script (919), as one would write it
 # records checked, every problem collected, a summary at the end however the script ends
 var problems []
-trap { echo "$(count $problems) problems"; for p @problems { echo " - $p" } } EXIT
+trap { echo "$($problems count) problems"; for p @problems { echo " - $p" } } EXIT
 var check {|rec|
     var ok true
-    if ! has $rec name { append problems "a record with no name"; set ok false }
-    if has $rec age && ! match $rec[age] '[0-9]*' { append problems "$rec[name]: age is not a number"; set ok false }
+    if ! $rec has name { append problems "a record with no name"; set ok false }
+    if $rec has age && ! "$rec[age]" match '[0-9]*' { append problems "$rec[name]: age is not a number"; set ok false }
     $ok
 }
 var good 0

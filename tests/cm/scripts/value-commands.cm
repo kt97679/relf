@@ -1,12 +1,13 @@
-# a value first in a command (907): a text names a program, as $EDITOR file - it had been "programs come
-# later"; and del env[NAME] unsets it for programs after; setenv holds more than 32 names now
+# run (967): the program a text names, as run $EDITOR file - a text first in a command had been that (907),
+# and is a value's operation now; and del env[NAME] unsets it for programs after; setenv holds more than 32 names
 var ed echo
-$ed hi from a text value
+run $ed hi from a text value
 var p printf
-$p '%s-%s\n' a b
+run $p '%s-%s\n' a b
 var cmd [tr a-z A-Z]
-echo shout | $cmd[0] $cmd[1] $cmd[2]
-echo "captured: $($ed x y)"
+echo shout | run @cmd
+echo "captured: $(run $ed x y)"
+run "/bin/echo" a path, quoted
 set env[CM907] here
 sh -c 'echo child sees ${CM907:-nothing}'
 del env[CM907]

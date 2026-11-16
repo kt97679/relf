@@ -1,6 +1,6 @@
 # a whole script (931), in the language as 928-930 left it: failures stop it, functions are blocks
 # small functions composed through pipes
-var words {|text| for w @(split $text ' ') { put $w } }
-var long-only {|min| each {|w| if $(( $(count $w) >= $min )) { put $w } } }
-var shout { each {|w| put $(upper $w) } }
+var words {|text| for w @($text split ' ') { put $w } }
+var long-only {|min| each {|w| if $(( $($w count) >= $min )) { put $w } } }
+var shout { each {|w| put $($w upper) } }
 words 'the quick brown fox jumps over a lazy dog' | long-only 5 | shout

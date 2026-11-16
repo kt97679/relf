@@ -2,6 +2,7 @@ hi from a text value
 a-b
 SHOUT
 captured: x y
+a path, quoted
 child sees here
 after del: nothing
 read back: []

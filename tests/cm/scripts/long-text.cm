@@ -1,10 +1,10 @@
 # a text literal of any length (891): S" holds at most 255 characters, so a longer one is made in
 # pieces - it had been cm: error -256 in a script, and a wrong count at the prompt
 var t '012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'
-echo $(count $t)
+echo $($t count)
 echo $t
 var q 'abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	abc"def	'
-echo $(count $q)
+echo $($q count)
 echo $q | md5sum
 var l 'line 0 of a long text
 line 1 of a long text
@@ -36,6 +36,6 @@ line 26 of a long text
 line 27 of a long text
 line 28 of a long text
 line 29 of a long text'
-echo $(count $l)
+echo $($l count)
 echo $l | tail -n 1
-echo "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy$(count $t)" | wc -c
+echo "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy$($t count)" | wc -c

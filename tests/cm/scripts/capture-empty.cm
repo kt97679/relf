@@ -1,8 +1,8 @@
 # a capture of no output (881): an empty text, an empty list - it had left a broken value, and the next use crashed
 var x $(printf "")
 var y $(printf "\n\n")
-echo "<$x><$y>" $(count $x) $(count $y)
+echo "<$x><$y>" $($x count) $($y count)
 var l [@(printf "")]
-echo $(count $l)
+echo $($l count)
 for w @(cat < /no/such/file) { echo never }
 echo after

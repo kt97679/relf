@@ -6,7 +6,7 @@ rm -rf $dir
 mkdir -p $dir
 trap {
     var logs [@(glob "$dir/*.log")]
-    echo "trap: $(count $logs) logs"
+    echo "trap: $($logs count) logs"
     for f @logs { echo "  $(basename $f): $(head -1 $f), $(wc -l < $f | tr -d ' ') in all" }
     rm -rf $dir
     echo "trap: $dir removed"

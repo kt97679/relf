@@ -1,0 +1,12 @@
+# run (967): the program a text names - a text first in a command is a value, its operation the next word
+var ed echo
+run $ed hello from run
+var cmd [printf '%s|%s\n' a b]
+run @cmd
+run '/bin/echo' 'a path, as a text'
+echo "captured: $(run $ed x y)"
+run $ed piped | tr a-z A-Z
+run sh -c 'exit 3' || echo run status $status
+var l [@(run printf 'one\ntwo\n')]
+echo $l
+run [not a program]

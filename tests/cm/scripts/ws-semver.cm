@@ -1,8 +1,8 @@
 # a whole script (914), as one would write it
 # compare and sort version numbers
 var newer {|a b|
-    var x [@(split $a .)]
-    var y [@(split $b .)]
+    var x [@($a split .)]
+    var y [@($b split .)]
     for i @(range 3) {
         if $(( $x[$i] > $y[$i] )) { return 0 }
         if $(( $x[$i] < $y[$i] )) { return 1 }
@@ -22,4 +22,4 @@ for v @versions {
     set sorted $out
 }
 echo oldest first: @sorted
-echo "newest: $sorted[-1], its major:" [@(split $sorted[-1] .)][0]
+echo "newest: $sorted[-1], its major:" [@($sorted[-1] split .)][0]

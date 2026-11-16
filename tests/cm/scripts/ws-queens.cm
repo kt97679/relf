@@ -4,7 +4,7 @@ var n 8
 var sols []
 var cols []
 var safe {|c|
-    var r $(count $cols)
+    var r $($cols count)
     for i @(range $r) {
         var d $(( $cols[$i] - $c ))
         if $(( $d == 0 || $d == $r - $i || $d == $i - $r )) { return 1 }
@@ -12,7 +12,7 @@ var safe {|c|
     return 0
 }
 var place {
-    if $(( $(count $cols) == $n )) { append sols [@cols]; return 0 }
+    if $(( $($cols count) == $n )) { append sols [@cols]; return 0 }
     for c @(range $n) {
         if safe $c {
             append cols $c
@@ -28,19 +28,19 @@ var canon {|q|
     var forms []
     var cur $q
     for i @(range 4) {
-        append forms $(join '' @cur)
+        append forms $($cur join '')
         var f @(flip $cur)
-        append forms $(join '' @f)
+        append forms $($f join '')
         set cur @(rot $cur)
     }
     put @forms | sort | head -1
 }
 var distinct [:]
 for q @sols { set distinct[$(canon $q)] true }
-echo "$(count $sols) solutions, $(count $distinct) distinct; the first:"
+echo "$($sols count) solutions, $($distinct count) distinct; the first:"
 for r @(range $n) {
     var cells []
     for c @(range $n) { if $(( $sols[0][$r] == $c )) { append cells Q } else { append cells . } }
-    echo $(join ' ' @cells)
+    echo $($cells join ' ')
 }
 echo last $sols[-1]

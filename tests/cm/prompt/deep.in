@@ -9,6 +9,6 @@ v 0
 var keep [x [y z] [k: v]]
 var l []
 for i @(range 100000) { set l [$i $l] }
-echo $(count $l) $keep
+echo $($l count) $keep
 var s "$l"
-echo $(count $l) $keep $l[0] $l[1][0]
+echo $($l count) $keep $l[0] $l[1][0]

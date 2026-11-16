@@ -1,6 +1,6 @@
 # a whole script (915), as one would write it
 # start workers, collect each status, print a padded table
-var pad {|text width| var s "$text"; while $(( $(count $s) < $width )) { set s "$s " }; put $s }
+var pad {|text width| var s "$text"; while $(( $($s count) < $width )) { set s "$s " }; put $s }
 var jobs [:]
 for name alpha beta gamma {
     case $name {
@@ -10,7 +10,7 @@ for name alpha beta gamma {
     set jobs[$name] $job
 }
 echo "$(pad NAME 8)STATUS"
-for name @(keys $jobs) {
+for name @($jobs keys) {
     var s 0
     wait $jobs[$name] || set s $status
     var word ok

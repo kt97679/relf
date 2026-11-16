@@ -5,15 +5,15 @@ var fields {|line|
     var cur ''
     var inq false
     var i 0
-    var n $(count $line)
+    var n $($line count)
     while $(( $i < $n )) {
         var c $line[$i]
         if $inq {
-            if match $c '"' {
-                if $(( $i + 1 < $n )) && match $line[$(( $i + 1 ))] '"' { set cur "$cur\""; set i $(( $i + 1 )) } else { set inq false }
+            if $c match '"' {
+                if $(( $i + 1 < $n )) && $line[$(( $i + 1 ))] match '"' { set cur "$cur\""; set i $(( $i + 1 )) } else { set inq false }
             } else { set cur "$cur$c" }
-        } elif match $c '"' { set inq true
-        } elif match $c ',' { append out $cur; set cur ''
+        } elif $c match '"' { set inq true
+        } elif $c match ',' { append out $cur; set cur ''
         } else { set cur "$cur$c" }
         set i $(( $i + 1 ))
     }

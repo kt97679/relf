@@ -4,7 +4,7 @@ printf '%s\n' one two | tr a-z A-Z
 var who $(printf world)
 echo hello $who
 var lines [@(printf 'x\ny\nz\n')]
-echo lines: $lines count: $(count $lines)
+echo lines: $lines count: $($lines count)
 var trail $(printf 'end\n\n\n')
 echo "[$trail]"
 printf 'to a file\n' > /tmp/cm-859.txt

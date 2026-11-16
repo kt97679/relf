@@ -1,0 +1,32 @@
+# a value's operations (967): the value the command, the operation its subcommand - $l count, as git commit
+var l [3 1 2]
+var m [a: 1  b: 2]
+var t 'héllo,wörld'
+echo $($l count) $($m count) $($t count) $([] count) $([:] count) $('' count)
+$l has 2 && $m has b && $t has 'o,w' && echo has all three
+$l has 9 || $m has 1 || $t has x || echo has none
+echo [@($l slice 1)] [@($l slice -2 -1)] $($t slice 0 5) "[$($t slice 9 2)]"
+echo $($l join ' + ') "[$([] join -)]" $([[x] [k: v] 7] join /)
+echo @($m keys) $($m merge [b: 3  c: 4]) $m
+echo @($t split ,) $($t upper) $('ÀB' lower)
+$t match 'h*d' && echo matches
+! $t match 'h?' && echo "not h?"
+# a literal, a capture, an index: any value written as one word
+echo $([a b c] count) $($(printf abc) count) $($t[0] count) $([k: [x y]][k] join -)
+# the operation's name a value: as a program's subcommand may be
+var op count
+echo $($l $op) @($m "keys")
+for o @[upper lower] { echo $($t $o) }
+# a block is given the word as its first argument; a bool's status; a function may be named count now
+var b {|x y| echo block got $x $y }
+$b count 5
+$b hi there
+var yes true
+$yes && echo a bool its status
+var count {|v| echo my count of $v }
+count 3
+# in a pipeline, a condition, $(( ))
+$l join "\n" | sort -r
+if $m has a && ! $m has z { echo a, no z }
+while $(( $($l count) < 5 )) { append l 0 }
+echo $l

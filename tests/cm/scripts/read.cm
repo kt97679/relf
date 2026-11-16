@@ -8,7 +8,7 @@ var asker {
     var sum 0
     var line ""
     while read line {
-        if match $line '' { break }
+        if $line match '' { break }
         set sum $(( $sum + $line ))
     }
     echo the sum is $sum

@@ -10,18 +10,18 @@
 var cr $(printf '\r')   # rill3 writes no carriage return in a text but by a program
 
 var json-str {|t|
-    var s $(join '\\' @(split $t '\'))
-    set s $(join '\"' @(split $s '"'))
-    set s $(join '\n' @(split $s "\n"))
-    set s $(join '\t' @(split $s "\t"))
-    set s $(join '\r' @(split $s $cr))
+    var s $([@($t split '\')] join '\\')
+    set s $([@($s split '"')] join '\"')
+    set s $([@($s split "\n")] join '\n')
+    set s $([@($s split "\t")] join '\t')
+    set s $([@($s split $cr)] join '\r')
     put "\"$s\""
 }
 
 var to-json {|v|
     case $(kind $v) {
-        map { var parts []; for k @(keys $v) { append parts "$(json-str $k):$(to-json $v[$k])" }; put "{$(join , @parts)}" }
-        list { var parts []; for x @v { append parts $(to-json $x) }; put "[$(join , @parts)]" }
+        map { var parts []; for k @($v keys) { append parts "$(json-str $k):$(to-json $v[$k])" }; put "{$($parts join ,)}" }
+        list { var parts []; for x @v { append parts $(to-json $x) }; put "[$($parts join ,)]" }
         text { put $(json-str $v) }
         * { put "$v" }
     }
@@ -38,11 +38,11 @@ var j-fail {|what| echo "from-json: $what at character $ji" >&2; exit 2 }
 var j-ws { while $(( $ji < $jn )) { case $jt[$ji] { ' ' "\n" "\t" "\r" { set ji $(( $ji + 1 )) } * { break } } } }
 var j-take {|c|
     j-ws
-    if $(( $ji >= $jn )) || ! match $jt[$ji] $c { j-fail "$c expected" }
+    if $(( $ji >= $jn )) || ! $jt[$ji] match $c { j-fail "$c expected" }
     set ji $(( $ji + 1 ))
 }
 var j-word {|w|
-    if match $(slice $jt $ji $(( $ji + $(count $w) ))) $w { set ji $(( $ji + $(count $w) )) } else { j-fail "$w expected" }
+    if $($jt slice $ji $(( $ji + $($w count) ))) match $w { set ji $(( $ji + $($w count) )) } else { j-fail "$w expected" }
 }
 var j-string {
     j-take '"'
@@ -61,7 +61,7 @@ var j-string {
                     t { set s "$s\t" }
                     r { set s "$s$cr" }
                     b f { }
-                    u { set s "$s$(forth 'JSON-U8' @(forth 'JSON-HEX' $(upper $(slice $jt $ji $(( $ji + 4 ))))))"; set ji $(( $ji + 4 )) }
+                    u { set s "$s$(forth 'JSON-U8' @(forth 'JSON-HEX' $($($jt slice $ji $(( $ji + 4 ))) upper)))"; set ji $(( $ji + 4 )) }
                     * { set s "$s$e" }
                 }
             }
@@ -72,9 +72,9 @@ var j-string {
 }
 var j-number {
     var start $ji
-    while $(( $ji < $jn )) && match $jt[$ji] '[-+0-9.eE]' { set ji $(( $ji + 1 )) }
-    var t $(slice $jt $start $ji)
-    if match $t '-[0-9]*' || match $t '[0-9]*' { if ! match $t '*[.eE+]*' { put $(( $t + 0 )); return 0 } }
+    while $(( $ji < $jn )) && $jt[$ji] match '[-+0-9.eE]' { set ji $(( $ji + 1 )) }
+    var t $($jt slice $start $ji)
+    if $t match '-[0-9]*' || $t match '[0-9]*' { if ! $t match '*[.eE+]*' { put $(( $t + 0 )); return 0 } }
     put $t
 }
 var j-value {
@@ -85,14 +85,14 @@ var j-value {
             set ji $(( $ji + 1 ))
             var m [:]
             j-ws
-            if match $jt[$ji] '}' { set ji $(( $ji + 1 )) } else {
+            if $jt[$ji] match '}' { set ji $(( $ji + 1 )) } else {
                 while true {
                     j-ws
                     var k @(j-string)
                     j-take ':'
                     set m[$k] @(j-value)
                     j-ws
-                    if match $jt[$ji] ',' { set ji $(( $ji + 1 )) } else { j-take '}'; break }
+                    if $jt[$ji] match ',' { set ji $(( $ji + 1 )) } else { j-take '}'; break }
                 }
             }
             put $m
@@ -101,11 +101,11 @@ var j-value {
             set ji $(( $ji + 1 ))
             var l []
             j-ws
-            if match $jt[$ji] ']' { set ji $(( $ji + 1 )) } else {
+            if $jt[$ji] match ']' { set ji $(( $ji + 1 )) } else {
                 while true {
                     append l @(j-value)
                     j-ws
-                    if match $jt[$ji] ',' { set ji $(( $ji + 1 )) } else { j-take ']'; break }
+                    if $jt[$ji] match ',' { set ji $(( $ji + 1 )) } else { j-take ']'; break }
                 }
             }
             put $l
@@ -120,7 +120,7 @@ var j-value {
 var from-json {|text|
     set jt $text
     set ji 0
-    set jn $(count $text)
+    set jn $($text count)
     var v @(j-value)
     j-ws
     if $(( $ji < $jn )) { j-fail 'more after the value' }

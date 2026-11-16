@@ -5,15 +5,15 @@ printf '%s\n' 'GET /index.html 200' 'GET /about 200' 'POST /login 302' 'GET /ind
 var by_status [:]
 var by_path [:]
 for line @(cat $log) {
-    var f [@(split $line ' ')]
+    var f [@($line split ' ')]
     var path $f[1]
     var code $f[2]
-    if has $by_status $code { set by_status[$code] $(( $by_status[$code] + 1 )) } else { set by_status[$code] 1 }
-    if has $by_path $path { set by_path[$path] $(( $by_path[$path] + 1 )) } else { set by_path[$path] 1 }
+    if $by_status has $code { set by_status[$code] $(( $by_status[$code] + 1 )) } else { set by_status[$code] 1 }
+    if $by_path has $path { set by_path[$path] $(( $by_path[$path] + 1 )) } else { set by_path[$path] 1 }
 }
-for c @(keys $by_status) { echo "status $c: $by_status[$c]" }
+for c @($by_status keys) { echo "status $c: $by_status[$c]" }
 var best ''
 var most 0
-for p @(keys $by_path) { if $(( $by_path[$p] > $most )) { set most $by_path[$p]; set best $p } }
+for p @($by_path keys) { if $(( $by_path[$p] > $most )) { set most $by_path[$p]; set best $p } }
 echo "busiest: $best ($most)"
 rm $log

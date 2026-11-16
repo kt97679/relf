@@ -7,5 +7,5 @@ var actions [
 ]
 for cmd [start web] [start db] [stop web] [restart db] [show x] {
     var name $cmd[0]
-    if has $actions $name { $actions[$name] $cmd[1] } else { echo unknown command: $name }
+    if $actions has $name { $actions[$name] $cmd[1] } else { echo unknown command: $name }
 }

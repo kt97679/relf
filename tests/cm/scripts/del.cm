@@ -4,15 +4,15 @@ var l [a b c d e]
 del l[0]
 del l[-1]
 del l[1]
-echo $l $(count $l)
+echo $l $($l count)
 var m [x: 1  y: 2  z: 3]
 del m[y]
-echo $m $(count $m)
+echo $m $($m count)
 var big [:]
 for i @(range 40) { set big["k$i"] $i }
 del big[k7]
-echo $(count $big) $big[k8] $big[k39]
-has $big k7 || echo k7 gone
+echo $($big count) $big[k8] $big[k39]
+$big has k7 || echo k7 gone
 var nest [inner: [1 2 3]]
 del nest[inner][0]
 echo $nest

@@ -5,5 +5,5 @@ mkdir -p $work
 trap { rm -rf $work; echo "cleaned up $work" } EXIT INT TERM
 for i @(range 3) { echo "part $i" > "$work/part-$i.txt" }
 var parts [@(glob "$work/part-*.txt")]
-echo $(count $parts) parts, the last: $(slice $parts[-1] -10)
+echo $($parts count) parts, the last: $($parts[-1] slice -10)
 cat @parts | wc -l

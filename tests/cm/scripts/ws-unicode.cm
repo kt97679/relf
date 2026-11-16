@@ -1,10 +1,10 @@
 # a whole script (916), as one would write it
 # texts beyond Latin: counted, sliced, reversed, cased
 var t 'naïve 日本語 😀👍 Ωmega'
-echo $(count $t) characters
-echo $(slice $t 6 9) $(slice $t 10 12) $(slice $t -5)
-var rev {|s| var r ''; for i @(range $(count $s)) { set r "$(slice $s $i $(( $i + 1 )))$r" }; put $r }
+echo $($t count) characters
+echo $($t slice 6 9) $($t slice 10 12) $($t slice -5)
+var rev {|s| var r ''; for i @(range $($s count)) { set r "$($s slice $i $(( $i + 1 )))$r" }; put $r }
 echo $(rev $t)
-echo $(upper $t) $(lower 'ΣΟΦΊΑ ΩMEGA')
-echo [@(split $t ' ')][2] $t[2]
-if match $t '*😀*' { echo has a smile }
+echo $($t upper) $('ΣΟΦΊΑ ΩMEGA' lower)
+echo [@($t split ' ')][2] $t[2]
+if $t match '*😀*' { echo has a smile }

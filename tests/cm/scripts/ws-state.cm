@@ -5,13 +5,13 @@ var machine [
     middle: {|c| case $c { b { put done } a { put middle } * { put start } } }
     done: {|c| put done }
 ]
-var run {|input|
+var feed {|input|
     var s start
     var i 0
-    while $(( $i < $(count $input) )) {
+    while $(( $i < $($input count) )) {
         set s @($machine[$s] $input[$i])
         set i $(( $i + 1 ))
     }
     put $s
 }
-for w @[aab xab ab bba] { echo "$w -> $(run $w)" }
+for w @[aab xab ab bba] { echo "$w -> $(feed $w)" }

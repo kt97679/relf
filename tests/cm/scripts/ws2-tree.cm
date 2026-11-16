@@ -2,7 +2,7 @@
 # walk nested maps and lists with a callback: count leaves, collect paths
 var walk {|v path f|
     case $(kind $v) {
-        map { for k @(keys $v) { walk $v[$k] "$path/$k" $f } }
+        map { for k @($v keys) { walk $v[$k] "$path/$k" $f } }
         list { var i 0; for x @v { walk $x "$path/$i" $f; set i $(( $i + 1 )) } }
         * { $f $path $v }
     }

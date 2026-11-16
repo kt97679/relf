@@ -6,5 +6,5 @@ var count-in {|pattern file|
     var n $(grep -c $pattern $file || true)
     put $n
 }
-for f @(glob '/tmp/cm-ws15-*.txt') { echo "$(slice $f -9): $(count-in an $f)" }
+for f @(glob '/tmp/cm-ws15-*.txt') { echo "$($f slice -9): $(count-in an $f)" }
 rm /tmp/cm-ws15-a.txt /tmp/cm-ws15-b.txt

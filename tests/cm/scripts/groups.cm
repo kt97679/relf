@@ -19,7 +19,7 @@ h
 var d /tmp/cm-groups-dir
 rm -rf $d; mkdir -p $d; touch "$d/b" "$d/a"
 var names [@(cd $d && ls)]
-echo $(count $names) names: $names
+echo $($names count) names: $names
 echo [@(false || printf 'p\nq\n' | sort -r)]
 echo [@(true && printf 'one\n')] [@(false && printf 'never\n')]
 rm -rf $d

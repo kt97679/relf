@@ -1,0 +1,9 @@
+hello from run
+a|b
+a path, as a text
+captured: x y
+PIPED
+run status 3
+[one two]
+cm: a list, map or block given to a program - @ spreads a list's items (line 12)
+status 2

@@ -5,14 +5,14 @@ printf '%s\n' 'size=12' 'name=ada' '' > /tmp/cm-ws3-user.conf
 var load {|file|
     var conf [:]
     for line @(cat $file) {
-        if match $line '#*' { continue }
-        if match $line '*=*' {
-            var kv [@(split $line =)]
+        if $line match '#*' { continue }
+        if $line match '*=*' {
+            var kv [@($line split =)]
             set conf[$kv[0]] $kv[1]
         }
     }
     put $conf
 }
-var merged @(merge @(load /tmp/cm-ws3-defaults.conf) @(load /tmp/cm-ws3-user.conf))
-for k @(keys $merged | sort) { echo "$k = $merged[$k]" }
+var merged @([@(load /tmp/cm-ws3-defaults.conf)][0] merge @(load /tmp/cm-ws3-user.conf))
+for k @($merged keys | sort) { echo "$k = $merged[$k]" }
 rm /tmp/cm-ws3-defaults.conf /tmp/cm-ws3-user.conf

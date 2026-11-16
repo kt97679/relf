@@ -2,13 +2,13 @@
 put 42 "hello world" [a "b c" [1 2]] [name: ada  tags: [x y]] [:] { }
 var three { put 1; put 2; put 3 }
 var all [@(three)]
-echo all: $all count: $(count $all)
+echo all: $all count: $($all count)
 var noisy { echo noise; put 7 }
 var seven $(noisy)
 echo seven: $seven
 var only @(noisy)
 echo only: $only $(kind $only)
-var m @(merge [a: 1  b: 2] [b: 3  c: 4])
+var m @([a: 1  b: 2] merge [b: 3  c: 4])
 put $m
 echo $m[c] $(kind $m)
 var big [1 2]

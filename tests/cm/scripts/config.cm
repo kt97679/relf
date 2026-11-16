@@ -5,9 +5,9 @@ printf '# settings\nname=relf\n\nport = 8080\n  debug=yes\n' > $file
 var conf [:]
 for line @(cat $file) {
     var t $(echo $line | sed 's/^ *//; s/ *$//')
-    if match $t '' { continue }
-    if match $t '#*' { continue }
-    var kv [@(split $t =)]
+    if $t match '' { continue }
+    if $t match '#*' { continue }
+    var kv [@($t split =)]
     var k $(echo $kv[0] | sed 's/ *$//')
     var v $(echo $kv[1] | sed 's/^ *//')
     set conf[$k] $v

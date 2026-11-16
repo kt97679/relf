@@ -1,0 +1,25 @@
+var l [1 2]; var m [a: 1]; var t abc; var n 5; var ok true
+$m split ,
+$n count
+$ok count
+$ok x
+$l foo
+$l
+$m
+$t
+$t -l
+$n
+$l count 3
+$l join
+$m merge $l
+$l slice
+$t has
+count $l
+has $m a
+var op split; $m $op x
+var b { echo hi }; $b x
+var c {|y| echo $y }; $c
+var run { }
+var echo {|x| }
+run
+"$n" count

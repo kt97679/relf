@@ -2,11 +2,11 @@
 # wrap a paragraph at a width
 var wrap {|text width|
     var line ''
-    for w @(split $text ' ') {
-        if $(( $(count $line) == 0 )) { set line $w }
-        elif $(( $(count $line) + 1 + $(count $w) <= $width )) { set line "$line $w" }
+    for w @($text split ' ') {
+        if $(( $($line count) == 0 )) { set line $w }
+        elif $(( $($line count) + 1 + $($w count) <= $width )) { set line "$line $w" }
         else { echo $line; set line $w }
     }
-    if $(( $(count $line) > 0 )) { echo $line }
+    if $(( $($line count) > 0 )) { echo $line }
 }
 wrap 'the quick brown fox jumps over the lazy dog and keeps on running far away' 20

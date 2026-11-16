@@ -1,8 +1,8 @@
 # a whole script (903), as one would write it
 # a table with aligned columns, from a list of maps
 var people [[name: ada  lang: forth  year: 1970] [name: grace  lang: cobol  year: 1959] [name: ken  lang: c  year: 1972]]
-var width {|key| var w $(count $key); for p @people { var n $(count "$p[$key]"); if $(( $n > $w )) { set w $n } }; put $w }
-var pad {|text w| var s "$text"; while $(( $(count $s) < $w )) { set s "$s " }; put $s }
+var width {|key| var w $($key count); for p @people { var n $("$p[$key]" count); if $(( $n > $w )) { set w $n } }; put $w }
+var pad {|text w| var s "$text"; while $(( $($s count) < $w )) { set s "$s " }; put $s }
 var cols [name lang year]
 var line ''
 for c @cols { set line "$line$(pad $c $(width $c)) " }

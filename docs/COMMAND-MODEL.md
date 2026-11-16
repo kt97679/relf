@@ -89,7 +89,9 @@ command is words, `if` and `while` are commands; its whole syntax is twelve rule
 11. A command's first word may be a value: a block runs, the other words its arguments; a boolean
     gives its status, as in `if $verbose`; text names a command, as `$EDITOR file` does in sh;
     anything else is an error - a list among them, whose error says `test`: `[` is never the test
-    command (852).
+    command (852). Since 967 a list, a map or a text does the operation the next word names - the
+    value the command, the operation its subcommand: `$l count`, `$m has k` - and a program a text
+    names runs with `run $EDITOR file`.
 12. Values have kinds: number, text, boolean, none, list, map, block. A bare word that reads as a
     number is a number, and `true` and `false` are booleans; quoted, they are text. A program's
     output is text. `(( ))` takes numbers, and text that reads exactly as a number; anything else

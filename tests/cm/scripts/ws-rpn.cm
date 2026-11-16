@@ -2,7 +2,7 @@
 # an RPN calculator: tokens from stdin, a list as the stack
 var stack []
 var pop {
-    var n $(count $stack)
+    var n $($stack count)
     if $(( $n == 0 )) { echo stack empty >&2; exit 1 }
     var top $stack[-1]
     var rest []
@@ -13,11 +13,11 @@ var pop {
 var calc {
   var line ''
   while read line {
-    for tok @(split $line ' ') {
-        if match $tok '[0-9]*' { append stack $tok } elif match $tok '[-+*/]' {
+    for tok @($line split ' ') {
+        if $tok match '[0-9]*' { append stack $tok } elif $tok match '[-+*/]' {
             var b @(pop)
             var a @(pop)
-            if match $tok '+' { append stack $(( $a + $b )) } elif match $tok '-' { append stack $(( $a - $b )) } elif match $tok '[*]' { append stack $(( $a * $b )) } else { append stack $(( $a / $b )) }
+            if $tok match '+' { append stack $(( $a + $b )) } elif $tok match '-' { append stack $(( $a - $b )) } elif $tok match '[*]' { append stack $(( $a * $b )) } else { append stack $(( $a / $b )) }
         } else { echo "unknown token: $tok" >&2 }
     }
     echo "= $stack[-1]"

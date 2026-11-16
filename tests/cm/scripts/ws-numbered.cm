@@ -4,7 +4,7 @@ var number {
     var n 0
     var line ''
     while read line {
-        if $(( $(count $line) == 0 )) { echo; continue }
+        if $(( $($line count) == 0 )) { echo; continue }
         set n $(( $n + 1 ))
         echo "$n  $line"
     }

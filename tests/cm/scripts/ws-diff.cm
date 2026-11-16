@@ -4,8 +4,8 @@
 var range-of {|from to| if $(( $from == $to )) { put $from } else { put "$from,$to" } }
 
 var diff-lines {|a b|
-  var n $(count $a)
-  var m $(count $b)
+  var n $($a count)
+  var m $($b count)
   # t[i][j]: how long the common part of a from i and b from j can be
   var t []
   for i @(range $(( $n + 1 ))) {
@@ -34,8 +34,8 @@ var diff-lines {|a b|
   var da 0
   var db 0
   var flush {||
-    var nd $(count $dels)
-    var na $(count $adds)
+    var nd $($dels count)
+    var na $($adds count)
     if $(( $nd == 0 && $na == 0 )) { return 0 }
     var left $(range-of $(( $da + 1 )) $(( $da + $nd )))
     var right $(range-of $(( $db + 1 )) $(( $db + $na )))
@@ -66,7 +66,7 @@ var diff-lines {|a b|
   echo "common: $t[0][0] of $n and $m lines"
 }
 
-var lines {|text| put [@(split $text '
+var lines {|text| put [@($text split '
 ')] }
 diff-lines @(lines 'one
 two

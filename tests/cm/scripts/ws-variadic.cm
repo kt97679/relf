@@ -1,6 +1,6 @@
 # a whole script (916), as one would write it
 # a log function taking any number of words, and a max over any number of values
-var log {|level msg| echo "[$(upper $level)] $msg" }
+var log {|level msg| echo "[$($level upper)] $msg" }
 log info 'started'
 log warn "disk at $(( 80 + 5 ))%"
 var max {|values| var m $values[0]; for v @values { if $(( $v > $m )) { set m $v } }; put $m }

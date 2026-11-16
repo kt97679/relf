@@ -8,7 +8,7 @@ echo total $total
 var square {|x| put $(( $x * $x * 1 )) }
 echo redefined $(square 3)
 var l [3 1 2]
-echo [@(slice $l 1)][0] $l[-1]
+echo [@($l slice 1)][0] $l[-1]
 echo $(nosuch)
 echo after an error the session goes on: $total
 case $total { 14 { echo fourteen } * { echo other } }

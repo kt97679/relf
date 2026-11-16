@@ -5,27 +5,27 @@
 #                          --name value or --name=value. --help not in spec prints the options and exits 0;
 #                          an option not in spec, or a value missing, prints them and exits 2.
 #   usage spec             the options and their defaults, to stderr
-var usage {|spec| echo 'options:' >&2; for k @(keys $spec) { echo "  --$k (default: $spec[$k])" >&2 } }
+var usage {|spec| echo 'options:' >&2; for k @($spec keys) { echo "  --$k (default: $spec[$k])" >&2 } }
 
 var parse-args {|spec argv|
     var out [:]
-    for k @(keys $spec) { set out[$k] $spec[$k] }
+    for k @($spec keys) { set out[$k] $spec[$k] }
     var rest []
     var i 0
-    var n $(count $argv)
+    var n $($argv count)
     while $(( $i < $n )) {
         var a $argv[$i]
         set i $(( $i + 1 ))
-        if ! match $a '--?*' { append rest $a; continue }
-        var name $(slice $a 2)
+        if ! $a match '--?*' { append rest $a; continue }
+        var name $($a slice 2)
         var value ''
         var given false
-        if match $name '*=*' { var kv [@(split $name =)]; set name $kv[0]; set value $(join = @(slice $kv 1)); set given true }
-        if ! has $spec $name {
-            if match $name help { usage $spec; exit 0 }
+        if $name match '*=*' { var kv [@($name split =)]; set name $kv[0]; set value $([@($kv slice 1)] join =); set given true }
+        if ! $spec has $name {
+            if $name match help { usage $spec; exit 0 }
             echo "unknown option --$name" >&2; usage $spec; exit 2
         }
-        if match $(kind $spec[$name]) bool { set out[$name] true; continue }
+        if $(kind $spec[$name]) match bool { set out[$name] true; continue }
         if ! $given {
             if $(( $i >= $n )) { echo "--$name wants a value" >&2; usage $spec; exit 2 }
             set value $argv[$i]

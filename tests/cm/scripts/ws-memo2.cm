@@ -1,6 +1,6 @@
 # a whole script (932), in the language as it stands
 # a memoizing wrapper: a function that takes a function and returns a new one, sharing a cache
-var memo {|f| var cache [:]; put {|x| if ! has $cache $x { set cache[$x] @($f $x) }; put $cache[$x] } }
+var memo {|f| var cache [:]; put {|x| if ! $cache has $x { set cache[$x] @($f $x) }; put $cache[$x] } }
 var slow-double {|x| echo "(computing $x)" >&2; put $(( $x * 2 )) }
 var fast @(memo $slow-double)
 echo $($fast 4) $($fast 4) $($fast 5)

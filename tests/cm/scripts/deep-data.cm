@@ -5,7 +5,7 @@ var l []
 for i @(range 100000) { set l [$i $l] }
 var n 0
 var p $l
-while $(( $(count $p) > 0 )) { set n $(( $n + 1 )); set p $p[1] }
+while $(( $($p count) > 0 )) { set n $(( $n + 1 )); set p $p[1] }
 echo $n levels, the outermost $l[0]
 var m [:]
 for i @(range 50000) { set m [k: $i  in: $m] }

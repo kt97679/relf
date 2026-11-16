@@ -15,18 +15,18 @@ docs release'
 var order {|text|
     var before [:]
     var need [:]
-    for line @(split $text "\n") {
-        var p @(split $line ' ')[0]
-        var q @(split $line ' ')[1]
-        for v $p $q { if ! has $need $v { set need[$v] 0; set before[$v] [] } }
+    for line @($text split "\n") {
+        var p @($line split ' ')[0]
+        var q @($line split ' ')[1]
+        for v $p $q { if ! $need has $v { set need[$v] 0; set before[$v] [] } }
         append before[$p] $q
         set need[$q] $(( $need[$q] + 1 ))
     }
     var out []
-    while $(( $(count $need) > 0 )) {
-        var ready [@(keys $need | each {|v| if $(( $need[$v] == 0 )) { put $v } })]
-        if $(( $(count $ready) == 0 )) {
-            echo "a loop among: $(join ' ' @(keys $need | sort))" >&2
+    while $(( $($need count) > 0 )) {
+        var ready [@($need keys | each {|v| if $(( $need[$v] == 0 )) { put $v } })]
+        if $(( $($ready count) == 0 )) {
+            echo "a loop among: $([@($need keys | sort)] join ' ')" >&2
             return 1
         }
         var v $(put @ready | sort | head -1)
@@ -38,10 +38,10 @@ var order {|text|
 }
 var valid {|text o|
     var at [:]
-    for i @(range $(count $o)) { set at[$o[$i]] $i }
-    for line @(split $text "\n") {
-        var p @(split $line ' ')[0]
-        var q @(split $line ' ')[1]
+    for i @(range $($o count)) { set at[$o[$i]] $i }
+    for line @($text split "\n") {
+        var p @($line split ' ')[0]
+        var q @($line split ' ')[1]
         if $(( $at[$p] > $at[$q] )) { echo "$p after $q"; return 1 }
     }
     return 0
@@ -50,7 +50,7 @@ var o @(order $deps)
 echo order: @o
 valid $deps $o && echo every pair kept
 var theirs [@(echo $deps | tsort)]
-valid $deps $theirs && echo "tsort's order kept too: $(count $theirs) names, the same set: $(( $(join ' ' @(put @o | sort)) == $(join ' ' @(put @theirs | sort)) ))"
+valid $deps $theirs && echo "tsort's order kept too: $($theirs count) names, the same set: $(( $([@(put @o | sort)] join ' ') == $([@(put @theirs | sort)] join ' ') ))"
 var looped "$deps
 release libc"
 order $looped || echo order: status $status

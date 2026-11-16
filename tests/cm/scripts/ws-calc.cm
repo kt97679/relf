@@ -4,18 +4,18 @@
 var tokenize {|text|
   var toks []
   var i 0
-  var n $(count $text)
+  var n $($text count)
   while $(( $i < $n )) {
     var c $text[$i]
-    if has ' 	' $c { set i $(( $i + 1 )); continue }
-    if match $c '[0-9]' {
+    if ' 	' has $c { set i $(( $i + 1 )); continue }
+    if $c match '[0-9]' {
       var j $i
-      while $(( $j < $n )) && match $text[$j] '[0-9]' { set j $(( $j + 1 )) }
-      append toks [num: $(slice $text $i $j)]
+      while $(( $j < $n )) && $text[$j] match '[0-9]' { set j $(( $j + 1 )) }
+      append toks [num: $($text slice $i $j)]
       set i $j
       continue
     }
-    if has '+-*/%()' $c { append toks [op: $c]; set i $(( $i + 1 )); continue }
+    if '+-*/%()' has $c { append toks [op: $c]; set i $(( $i + 1 )); continue }
     put "unexpected '$c' at $i"
     return 1
   }
@@ -26,14 +26,14 @@ var tokenize {|text|
 var toks []
 var pos 0
 var err ''
-var peek {|| if $(( $pos < $(count $toks) )) { put $toks[$pos] } else { put [op: end] } }
-var is-op {|tok o| has $tok op && $(( $tok[op] == $o )) }
+var peek {|| if $(( $pos < $($toks count) )) { put $toks[$pos] } else { put [op: end] } }
+var is-op {|tok o| $tok has op && $(( $tok[op] == $o )) }
 var fail {|msg| if $(( $err == '' )) { set err $msg }; put 0 }
 
 var expr {||}
 var atom {||
   var t @(peek)
-  if has $t num { set pos $(( $pos + 1 )); put $t[num]; return 0 }
+  if $t has num { set pos $(( $pos + 1 )); put $t[num]; return 0 }
   if is-op $t '(' {
     set pos $(( $pos + 1 ))
     var v @(expr)
@@ -73,7 +73,7 @@ var calc {|text|
   set pos 0
   set err ''
   var v @(expr)
-  if $(( $err == '' && $pos < $(count $toks) )) { set err "left over from token $pos" }
+  if $(( $err == '' && $pos < $($toks count) )) { set err "left over from token $pos" }
   if $(( $err == '' )) { echo "$text = $v" } else { echo "$text: $err" }
 }
 

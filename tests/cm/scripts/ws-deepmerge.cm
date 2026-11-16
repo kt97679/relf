@@ -2,9 +2,9 @@
 # merge nested maps: b's values over a's, maps merged all the way down
 var deep {|a b|
     var out [:]
-    for k @(keys $a) { set out[$k] $a[$k] }
-    for k @(keys $b) {
-        if has $out $k && match $(kind $out[$k]) map && match $(kind $b[$k]) map {
+    for k @($a keys) { set out[$k] $a[$k] }
+    for k @($b keys) {
+        if $out has $k && $(kind $out[$k]) match map && $(kind $b[$k]) match map {
             set out[$k] @(deep $out[$k] $b[$k])
         } else { set out[$k] $b[$k] }
     }

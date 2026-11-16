@@ -8,8 +8,8 @@ var groups [:]
 for f @(glob "$dir/*") {
     var name $(basename $f)
     var ext none
-    if match $name '*.*' { set ext $(echo $name | sed 's/.*\.//') }
-    if has $groups $ext { append groups[$ext] $name } else { set groups[$ext] [$name] }
+    if $name match '*.*' { set ext $(echo $name | sed 's/.*\.//') }
+    if $groups has $ext { append groups[$ext] $name } else { set groups[$ext] [$name] }
 }
-for k @(keys $groups) { echo "$k:" $(join ", " @groups[$k]) }
+for k @($groups keys) { echo "$k:" $($groups[$k] join ", ") }
 rm -rf $dir

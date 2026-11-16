@@ -82,4 +82,4 @@ cat /tmp/cm-heredoc.txt
 rm /tmp/cm-heredoc.txt
 # its file taken away once open - none left of this script's
 var pid $(sh -c 'echo $PPID')
-echo "left: $(count [@(glob "/tmp/cm$pid.*")])"
+echo "left: $([@(glob "/tmp/cm$pid.*")] count)"

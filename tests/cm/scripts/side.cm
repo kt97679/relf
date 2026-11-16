@@ -5,9 +5,9 @@ echo $y
 var name ada
 echo "hello $name, twice $(( $x * 2 ))"
 var l [3 1 2]
-echo $l[0] $(count $l) $l[-1]
+echo $l[0] $($l count) $l[-1]
 var p [name: ada  born: 1815]
-echo $p[born]; has $p born && echo has born          # has a status since 896
+echo $p[born]; $p has born && echo has born          # has a status since 896
 for i @(range 3) { if $(( $i != 1 )) { echo "i $i" } }
 var sq {|n| put $(( $n * $n )) }
 echo $(sq 9)

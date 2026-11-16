@@ -283,9 +283,11 @@ VARIABLE SE-P  VARIABLE SE-CAP   VARIABLE SE-N   VARIABLE SE-B   VARIABLE SE-U  
 VARIABLE RV-N   VARIABLE RV-V
 
 DEFER R-WHICH-D ( t --- t2 | 0 )   \ R-WHICH, defined once R-ENV and R-SPLIT are
+DEFER R-NO-PROG ( c-addr u --- )   \ a program not found, said: its name - and, the command model's, a hint (967)
+: R-NO-PROG' ( c-addr u --- )   TYPE ." : no such program" ;   ' R-NO-PROG' IS R-NO-PROG
 : R-EXECV ( argv --- )   \ (834) with no setenv names, the command itself, found on PATH: one exec, not env's two;
   DUP SE-N @ 1+ CELLS + @ ?DUP IF  DUP CSTRLEN R-TEXT R-WHICH-D ?DUP 0= IF     \ none there, said as cm's (916): env had said
-      R-ERR> ." cm: " DUP SE-N @ 1+ CELLS + @ DUP CSTRLEN TYPE ." : no such program" R-ERR-NL  127 SYS-EXIT  THEN   \ it - or, for x=5, printed
+      R-ERR> ." cm: " DUP SE-N @ 1+ CELLS + @ DUP CSTRLEN R-NO-PROG R-ERR-NL  127 SYS-EXIT  THEN   \ it - or, for x=5, printed
     SE-N @ IF DROP ELSE R-CSTR OVER CELL+ SWAP EXECVE DROP THEN  THEN                   \ the environment
   S" /usr/bin/env" R-TEXT R-CSTR EXECVE DROP  127 SYS-EXIT ;   \ else env: it sets the names, and says what it cannot find
 VARIABLE SIG-SEEN   VARIABLE SIG-CNT   \ a signal taken while waiting; safe points till the next look (786)

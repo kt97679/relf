@@ -3,7 +3,7 @@
 printf 'hello world\nthe quick brown fox\n' > /tmp/cm-ws2-ts1.txt
 printf 'one\n' > /tmp/cm-ws2-ts2.txt
 var files [@args]
-if $(( $(count $files) == 0 )) { set files [/tmp/cm-ws2-ts1.txt /tmp/cm-ws2-ts2.txt] }
+if $(( $($files count) == 0 )) { set files [/tmp/cm-ws2-ts1.txt /tmp/cm-ws2-ts2.txt] }
 var total [lines: 0  words: 0  chars: 0]
 for f @files {
     var lines 0
@@ -11,8 +11,8 @@ for f @files {
     var chars 0
     for line @(cat $f) {
         set lines $(( $lines + 1 ))
-        set words $(( $words + $(count [@(split $line ' ')]) ))
-        set chars $(( $chars + $(count $line) + 1 ))
+        set words $(( $words + $([@($line split ' ')] count) ))
+        set chars $(( $chars + $($line count) + 1 ))
     }
     echo "$f: $lines $words $chars"
     set total[lines] $(( $total[lines] + $lines ))

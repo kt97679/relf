@@ -10,7 +10,7 @@ cm: index 0 past a text of 0 characters (line 1)
 bc [""]
 cm: no key j (line 1)
 cm: no key j (line 1)
-cm: a map was wanted (line 1)
+cm: a list has no keys - its operations: count has slice join (line 1)
 cm: return takes one status (line 1)
 the session goes on
 status 0

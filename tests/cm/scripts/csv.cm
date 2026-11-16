@@ -3,9 +3,9 @@ var file /tmp/cm-882.csv
 printf 'category,amount\nfood,12\nrent,800\nfood,30\nfun,15\n' > $file
 var totals [:]
 for line @(tail -n +2 $file) {
-    var f [@(split $line ,)]
+    var f [@($line split ,)]
     var cat $f[0]
-    if has $totals $cat { set totals[$cat] $(( $totals[$cat] + $f[1] )) } else { set totals[$cat] $f[1] }
+    if $totals has $cat { set totals[$cat] $(( $totals[$cat] + $f[1] )) } else { set totals[$cat] $f[1] }
 }
-for k @(keys $totals) { echo $totals[$k] $k } | sort -rn
+for k @($totals keys) { echo $totals[$k] $k } | sort -rn
 rm $file

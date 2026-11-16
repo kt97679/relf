@@ -12,8 +12,8 @@ var m [name: ada  born: 1815]
 set name grace
 set m[born] 1906
 append l 4 5
-echo $name $l $l[0] $l[-1] $m[born] $(count $l) $(count $m) $(count $name)
-echo [a b c][-1] [k: v  j: w][j] $(printf hello)[0] @(split 'a,b,c' ,)[2]
+echo $name $l $l[0] $l[-1] $m[born] $($l count) $($m count) $($name count)
+echo [a b c][-1] [k: v  j: w][j] $(printf hello)[0] @('a,b,c' split ,)[2]
 # -- texts
 var k 3
 echo "name: $name, first: $l[0], sum: $(( $l[0] + $l[1] )), line ${k}d" 'no $subst here'
@@ -32,7 +32,7 @@ var greet {|who| echo hello $who }
 var sq {|x| put $(( $x * $x )) }
 var pair { put a b }
 greet world
-echo $(sq 7) [@(pair)] $(count [@(pair)])
+echo $(sq 7) [@(pair)] $([@(pair)] count)
 var both [@(pair)]
 var one @(sq 3)
 echo $both $one $(kind $one)
@@ -49,13 +49,17 @@ var ctr @(counter 10)
 $ctr[inc]; $ctr[inc]
 echo counter at $($ctr[inc])
 # -- library
-echo $(join - @(split a,b,,c ,)) $(join ", " x y z)
-for key @(keys [b: 2  a: 1]) { echo key $key }
-echo $(merge [a: 1  b: 2] [b: 3])
-if has [a: 1] a { echo has a }
-if match file.txt '*.txt' { echo matches }
+echo $([@('a,b,,c' split ,)] join -) $([x y z] join ", ")
+for key @([b: 2  a: 1] keys) { echo key $key }
+echo $([a: 1  b: 2] merge [b: 3])
+if [a: 1] has a { echo has a }
+if 'file.txt' match '*.txt' { echo matches }
 put x y | each {|v| echo each $v }
 echo $(range 3) @(range 3)
+# -- a value's operations (967)
+echo $($m count) $($name upper) [@($l slice 1 3)] $($l join -) @('a,b' split ,) @([b: 1  a: 2] keys)
+if $m has born { echo has born }
+'notes.txt' match '*.txt' && echo a text file
 # -- programs, pipes and redirections
 printf 'b\na\n' | sort
 echo $(printf 'x\ny\n' | wc -l) @(printf 'p\nq\n')
@@ -71,7 +75,7 @@ echo waited, status $status
 var out $(grep x /no/such 2>&1) || echo var status $status
 var greet-all {
     cat << END
-        hello $name, $(count $l) numbers
+        hello $name, $($l count) numbers
           last $l[-1]
         END
 }
@@ -82,6 +86,6 @@ END
 # -- the environment and arguments
 set env[CM_REF] hello
 sh -c 'echo program sees $CM_REF'
-echo args $args $(count $args)
+echo args $args $($args count)
 echo $(glob "/tmp/cm-ref.*")
 rm /tmp/cm-ref.txt

@@ -1,7 +1,7 @@
 # $(split ...) is the fields as printed, one text, whatever their number (896): 893 had made it an error,
 # since a one-value capture had worked on a line of one field and failed on two
-var one $(split alice ,)
-var two $(split carol,37 ,)
+var one $('alice' split ,)
+var two $('carol,37' split ,)
 echo "[$one]" "[$two]"
-var fields [@(split carol,37 ,)]
+var fields [@('carol,37' split ,)]
 echo $fields $fields[1]

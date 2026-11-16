@@ -5,13 +5,13 @@ north,apples,12
 south,pears,7
 north,plums,5
 south,apples,3'
-var lines [@(split $csv "\n")]
-var header [@(split $lines[0] ,)]
+var lines [@($csv split "\n")]
+var header [@($lines[0] split ,)]
 var totals [:]
-for line @(slice $lines 1) {
-    var f [@(split $line ,)]
-    if has $totals $f[0] { set totals[$f[0]] $(( $totals[$f[0]] + $f[2] )) } else { set totals[$f[0]] $f[2] }
+for line @($lines slice 1) {
+    var f [@($line split ,)]
+    if $totals has $f[0] { set totals[$f[0]] $(( $totals[$f[0]] + $f[2] )) } else { set totals[$f[0]] $f[2] }
 }
-echo "$(upper $header[0]) $(upper $header[2])"
-for r @(keys $totals) { echo "$r $totals[$r]" }
-echo "first item: $(slice $lines[1] 6 12), $(count [@(slice $lines 1)]) rows"
+echo "$($header[0] upper) $($header[2] upper)"
+for r @($totals keys) { echo "$r $totals[$r]" }
+echo "first item: $($lines[1] slice 6 12), $([@($lines slice 1)] count) rows"

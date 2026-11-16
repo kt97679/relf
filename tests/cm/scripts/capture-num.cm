@@ -15,7 +15,7 @@ var fib {|n| if $(( $n < 2 )) { put $n } else { put $(( $(fib $(( $n - 1 ))) + $
 var sum { var t 0; each {|x| set t $(( $t + $x )) }; put $t }
 echo $(( $(five) + 1 )) $(( $(neg) * 2 )) $(( $(echo5) + 1 )) $(( $(text5) + 1 )) $(( $(big) - 1 ))
 echo $(( $(redirected) + 1 )) $(cat /tmp/cm-capnum.txt) $(( $(inner) + 1 )) $(( $(branch) + 1 )) $(( $(returns) + 1 ))
-echo $(( $(twice) + 1 )) $(( $(fib 15) + 0 )) $(( $(count [a b c]) * 10 )) $(( $(printf '1\n2\n3\n' | sum) + 0 ))
+echo $(( $(twice) + 1 )) $(( $(fib 15) + 0 )) $(( $([a b c] count) * 10 )) $(( $(printf '1\n2\n3\n' | sum) + 0 ))
 echo $(( $(five) == 5 )) $(( $(five) == "5" )) $(( $(five) < $(neg) ))
 # alone in (( )), the number too (965: it had been the capture's text - a lone value passed through)
 var alone $(( $(five) ))

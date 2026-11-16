@@ -2,7 +2,7 @@
 # sell items: take out what sells out
 var stock [apples: 3  pears: 1  plums: 2]
 var sell {|item n|
-    if ! has $stock $item { echo "no $item"; return 1 }
+    if ! $stock has $item { echo "no $item"; return 1 }
     var left $(( $stock[$item] - $n ))
     if $(( $left < 0 )) { echo "only $stock[$item] $item"; return 1 }
     if $(( $left == 0 )) { del stock[$item]; echo "$item sold out" } else { set stock[$item] $left }

@@ -2,9 +2,9 @@
 # words counted case-blind, punctuation stripped, the top three
 var text 'The cat and THE dog. The end, the END!'
 var counts [:]
-for w @(split $text ' ') {
-    var word $(lower $w)
-    case $word { *. *, *! { set word $(slice $word 0 -1) } }
-    if has $counts $word { set counts[$word] $(( $counts[$word] + 1 )) } else { set counts[$word] 1 }
+for w @($text split ' ') {
+    var word $($w lower)
+    case $word { *. *, *! { set word $($word slice 0 -1) } }
+    if $counts has $word { set counts[$word] $(( $counts[$word] + 1 )) } else { set counts[$word] 1 }
 }
-for k @(keys $counts) { echo "$counts[$k] $k" } | sort -rn | head -3
+for k @($counts keys) { echo "$counts[$k] $k" } | sort -rn | head -3

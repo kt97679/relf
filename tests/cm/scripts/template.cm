@@ -1,7 +1,7 @@
 # a whole script (886): a template filled in, each {{key}} replaced by its value, by sed
 var values [name: Ada  lang: "the command model"  year: 2026]
 var text "Dear {{name}},\nthanks for trying {{lang}} in {{year}}.\n"
-for k @(keys $values) {
+for k @($values keys) {
     set text $(printf '%s' $text | sed "s/{{$k}}/$values[$k]/g")
 }
 printf '%s\n' $text

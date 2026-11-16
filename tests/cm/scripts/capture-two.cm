@@ -2,7 +2,7 @@
 # @( ) takes its values; var takes one value - @( ) of two is an error there (896)
 var two { put 1; echo between; put 2; echo after }
 var x $(two)
-echo "[$x]" $(count $x)
+echo "[$x]" $($x count)
 var l [@(two)]
 echo $l
 var y @(two)

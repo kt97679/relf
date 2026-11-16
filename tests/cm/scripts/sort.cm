@@ -1,6 +1,6 @@
 # a whole script (884): a list of records sorted by a field, by insertion sort in the language itself
 var people [[name: Ada age: 36] [name: Bob age: 25] [name: Cy age: 41] [name: Di age: 30]]
-var n $(count $people)
+var n $($people count)
 var i 1
 while $(( $i < $n )) {
     var cur $people[$i]

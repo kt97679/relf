@@ -7,7 +7,7 @@ var menu {
         case $choice {
             a { set items[apples] true; echo added apples }
             p { set items[pears] true; echo added pears }
-            l { echo list: @(keys $items) }
+            l { echo list: @($items keys) }
             q { echo bye; break }
             * { echo "unknown choice: $choice" }
         }

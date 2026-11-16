@@ -24,8 +24,9 @@ an eleventh.
    number if written as one, `true` and `false`, a glob with `*` or `?`.
 3. A word ends where its form does; only index keys may follow a value. Operators - `|` `&&` `||` `&`
    and the redirections - are words of their own.
-4. A command's first word says what runs: a builtin, a function, a value (a block runs, a boolean is a
-   status, a text names a program), or else the program of that name.
+4. A command's first word says what runs: a builtin, a function, a value, or else the program of that
+   name. A block runs, a boolean is a status; a list, a map or a text does the operation the next word
+   names - the value is the command, the operation its subcommand: `$l count`, `$m has k`.
 5. Values are texts, whole 64-bit numbers, booleans, lists, maps and blocks; a value is one word,
    never split or globbed - `@` spreads a list into words.
 6. `$(cmd)` is the text cmd printed, `@(cmd)` its values one by one, `$(( ))` arithmetic and
@@ -37,8 +38,8 @@ an eleventh.
 9. `|` carries bytes between programs and values between functions; `>` `>>` `<` `2>` `&>` `2>&1`
    redirect as sh's, and `<< END` makes the lines after its line, up to `END`, the command's stdin.
 10. The rest are builtins (the table below): control (`if` `for` `while` `case` `return`
-   `break` `continue`), values (`put` `count` `split` `slice` ...), the script (`source` `trap`
-   `exit` `forth`).
+   `break` `continue`), values (`put` `range` `glob` `kind` ...), programs (`run`), the script
+   (`source` `trap` `exit` `forth`) - and values' operations (`count` `has` `slice` `split` ...).
 
 ## Words
 
@@ -87,9 +88,9 @@ text that reads as one does, as `$(f)` gives a function's number back. Lists and
 where a slice stops at the ends. An index may follow any value written in one word - a list or map, a
 text, a capture - as it follows a variable; `@(cmd)[k]` is the k-th of cmd's values, spread if a list:
 
-    echo [a b c][-1] [k: v  j: w][j] $(printf hello)[0] @(split 'a,b,c' ,)[2]
+    echo [a b c][-1] [k: v  j: w][j] $(printf hello)[0] @('a,b,c' split ,)[2]
 
-`echo`, a value nobody takes, and a value inside `"..."` or given to `join` all
+`echo`, a value nobody takes, and a value inside `"..."` or joined by `join` all
 use one printed form - a list as `[a b]`, a map as `[k: v]`, a block as `<block>`.
 
 ## Variables
@@ -100,7 +101,7 @@ use one printed form - a list as `[a b]`, a map as `[k: v]`, a block as `<block>
     set name grace                  # one that exists
     set m[born] 1906                # an element; set m[k][j] too
     append l 4 5                    # items onto a list
-    echo $name $l $l[0] $l[-1] $m[born] $(count $l) $(count $m) $(count $name)
+    echo $name $l $l[0] $l[-1] $m[born] $($l count) $($m count) $($name count)
     # grace [3 1 2 4 5] 3 5 1906 5 2 5
 
 Scope is lexical. A function - a block - sees its parameters, its own variables, the variables around
@@ -141,7 +142,7 @@ condition's status in `$status`. A condition that tests `$status` replaces it, a
 `var s $status`, to use it in the branch.
 `&&`, `||` and `!` join commands by their status, as in sh - in a condition too: `if a && ! b { }`.
 
-`case` tests a value's text against patterns - `*`, `?`, `[...]`, as `match` does - an arm a line, or
+`case` tests a value's text against patterns - `*`, `?`, `[...]`, as a text's `match` does - an arm a line, or
 several on one; the first arm one of whose patterns matches runs; none, status 0. A plain word is the
 pattern as written, not globbed; a quoted one is a pattern too, as `match`'s - a `*` itself is `[*]`:
 
@@ -158,7 +159,7 @@ leaves the `date` program alone. A name may hold a `-` between letters: `run-tas
     var sq {|x| put $(( $x * $x )) }
     var pair { put a b }
     greet world                         # hello world
-    echo $(sq 7) [@(pair)] $(count [@(pair)])
+    echo $(sq 7) [@(pair)] $([@(pair)] count)
     # 49 [a b] 2
 
 A function is a command: its arguments are its words, given in the number its parameters name.
@@ -177,12 +178,40 @@ run in place, and `return`, `break` and `continue` in it are the function's and 
     need /no/such || echo need: $status
 
 A value can stand first in a command: a block runs, its parameters the words after; a boolean gives its
-status; a text names a program to run, as `$EDITOR file` does: `var ed vi; $ed notes.txt`.
+status; a list, a map or a text does an operation (below). The program a text names runs with `run`:
+`run $EDITOR notes.txt`, `run @cmd` - a list's first item the program - and `run "/opt/my tools/x"`.
 
     var twice {|f x| $f $($f $x) }
     echo $($twice { |v| put $(( $v * 2 )) } 5)          # 20
     var counter {|start| var c $start; put [inc: { set c $(( $c + 1 )); put $c }] }
     var ctr @(counter 10)
+
+## A value's operations
+
+A list, a map or a text is a command whose subcommands are its operations, as a program's are: the
+value first, the operation's name next, its words after - `$l count`, `$m has $k`, `$t split ,`. Each
+puts what it makes, as a function does, taken with `$( )` or `@( )`; `has` and `match` give a status.
+
+| operation | list | map | text |
+|---|---|---|---|
+| `count` | its items | its entries | its characters (UTF-8) |
+| `has x` | status 0 if an item `==` x | if x is a key | if x is part of it |
+| `slice start [end]` | its items from start up to end, put one by one | | its characters, one text |
+| `join sep` | one text, sep between the items' printed forms | | |
+| `keys`, `merge m2` | | its keys, put; a new map, m2's entries over its | |
+| `split sep` | | | its parts between the seps, put |
+| `upper`, `lower` | | | in capitals, in small letters - Unicode's simple case mapping: é to É, ж to Ж |
+| `match pattern` | | | status 0 if all of it matches - `*`, `?`, `[...]` by character |
+
+`slice`'s start and end may be negative, from the end, and are held to the length. A word as the
+operation's name may be a value too, `$l $op`. A kind that has not the operation is an error that names
+the ones it has: `cm: a map has no split - its operations: count has keys merge`. A number has none -
+`$(( ))` does its arithmetic, and `"$n" count` counts its digits.
+
+    echo $($m count) $($name upper) [@($l slice 1 3)] $($l join -) @('a,b' split ,) @([b: 1  a: 2] keys)
+    # 2 GRACE [1 2] 3-1-2-4-5 a b b a
+    if $m has born { echo has born }
+    'notes.txt' match '*.txt' && echo a text file
 
 ## Output, and taking it
 
@@ -226,7 +255,7 @@ may be indented: that much is taken off each line, so a here-document can sit in
 
     var greet-all {
         cat << END
-            hello $name, $(count $l) numbers
+            hello $name, $($l count) numbers
               last $l[-1]
             END
     }
@@ -249,17 +278,11 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 | `echo words...` | write the words' printed forms, a blank between, a newline after |
 | `if c {..} elif c {..} else {..}`, `while c {..}`, `for x values... {..}` | control |
 | `var name {|params| ..}`, `return [n]`, `break`, `continue` | functions and loops |
-| `count v` | a list's or map's items, a text's characters (UTF-8) |
 | `range n` | 0 to n-1, put one by one; none when n is 0 or less |
-| `split text sep`, `join sep values...` | a text's parts put; values joined into one text |
-| `slice v start [end]` | a list's items from start up to end, put one by one, or a text's characters as one text; negative from the end, held to the length |
-| `keys map`, `merge a b` | a map's keys put; a new map, b's entries over a's |
-| `has container v` | status 0 if a map has the key, a list the value, a text the text |
-| `match text pattern` | status 0 if the whole text matches a glob pattern - `*`, `?` and `[...]` by character |
 | `each {|x| ..}` | the block, run with each value of the function's input |
 | `kind v` | text, number, bool, list, map or block |
-| `upper text`, `lower text` | the text in capitals or small letters, by Unicode's simple case mapping: é to É, ж to Ж |
 | `glob patterns...` | the paths each matches, sorted, put - none, none put |
+| `run program words...` | the program a text names, given the words: `run $EDITOR file`, `run @cmd` |
 | `read name` | a line of stdin into name; status 1 at the end |
 | `source file` | another script read in where the line stands, once - its path from this file's directory; a name with no `/` not there, from the directories of `$env[RILL3_PATH]`; at the prompt, a later line's source reloads |
 | `forth words values...` | Forth run in rill3's own image: the values onto its stack (a number a cell, a text its address and length), the words run, what they leave put as numbers |
@@ -289,7 +312,8 @@ as deep as memory allows, though printing or comparing one nested past about 20,
 - `${x}` only inside `"..."`; `$x` everywhere else. No `$1`: `$args[0]`.
 - Operators need blanks round them: `2> /dev/null`, `a | b`; so does a line's closing `\`.
 - `[` is a list, not `test`: `test -f x`, or `$(( ))` for numbers.
-- `if has $m $k`, `if match $t '*.txt'`: statuses, as `test` gives.
+- `if $m has $k`, `if $t match '*.txt'`: statuses, as `test` gives.
+- `$EDITOR file` is `run $EDITOR file`: a text first in a command is a value, the next word its operation.
 - `$(cmd)` is text - the same as sh's; `@(cmd)` takes a function's values.
 - `{ ... }` alone is a group, as sh's `{ ...; }`: `cmd || { echo failed; return 1 }` returns from the function.
 - Here-documents as sh's, `<< END` with blanks round it; an indented `END` takes its indent off each

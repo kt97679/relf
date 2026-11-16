@@ -6,4 +6,4 @@ var t "7"
 var ok $(( 1 < 2 ))
 for v @[$(( "7" )) $(( $t )) $(( ($t) )) $(( ((-3)) )) $(( $(f) )) $(( $(echo 8) )) $(( $ok )) $(( 5 ))] { echo $v @(kind $v) }
 var n $(( $t ))
-echo $(( $n == 7 )) $(count [@(range $(( $t )))])
+echo $(( $n == 7 )) $([@(range $(( $t )))] count)

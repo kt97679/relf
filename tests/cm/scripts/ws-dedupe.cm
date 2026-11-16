@@ -10,10 +10,10 @@ echo alpha > "$dir/d"
 var groups [:]
 for f @(glob "$dir/*") {
     var sum @(md5sum $f | cut -d ' ' -f 1)
-    if has $groups $sum { append groups[$sum] $f } else { set groups[$sum] [$f] }
+    if $groups has $sum { append groups[$sum] $f } else { set groups[$sum] [$f] }
 }
-for s @(keys $groups) {
+for s @($groups keys) {
     var files $groups[$s]
-    if $(( $(count $files) > 1 )) { echo duplicates: @files }
+    if $(( $($files count) > 1 )) { echo duplicates: @files }
 }
 rm -rf $dir

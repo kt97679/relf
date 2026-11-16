@@ -11,8 +11,8 @@ var cmd-remove {|name|
     printf '%s\n' @kept > $db
     echo "removed $name"
 }
-var run {|argv|
-    if $(( $(count $argv) == 0 )) { usage }
+var dispatch {|argv|
+    if $(( $($argv count) == 0 )) { usage }
     var sub $argv[0]
     case $sub {
         add { cmd-add $argv[1] }
@@ -21,9 +21,9 @@ var run {|argv|
         * { usage }
     }
 }
-run [add ada]
-run [add grace]
-run [add ken]
-run [remove grace]
-run [list]
+dispatch [add ada]
+dispatch [add grace]
+dispatch [add ken]
+dispatch [remove grace]
+dispatch [list]
 rm $db

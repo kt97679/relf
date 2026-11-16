@@ -239,7 +239,7 @@ VARIABLE CMP-XLCP                \ ... and how much of the first they share
     DUP C@ BL = IF 2DUP OVER - ?DUP IF CMP-ADD ELSE DROP THEN 1+ NIP DUP ELSE 1+ THEN
   REPEAT  OVER - ?DUP IF CMP-ADD ELSE DROP THEN DROP ;
 : CMP-COLLECT-BUILTINS ( --- )   \ the language's builtins
-  S" var set put echo append del if elif else for while case break continue return count range merge each has split join keys kind glob slice upper lower forth match read cd exit wait trap source true false" CMP-WORDS-ADD ;
+  S" var set put echo append del if elif else for while case break continue return range each kind glob forth run read cd exit wait trap source true false" CMP-WORDS-ADD ;
 : CMP-COLLECT-FUNCS ( --- )   \ the defs made so far - at the prompt, the session's
   MAIN-SC @ ?DUP 0= IF EXIT THEN  CELL+ @ BEGIN ?DUP WHILE  DUP 7 CELLS + @ IF DUP CELL+ @ OVER 2 CELLS + @ CMP-ADD THEN  @ REPEAT ;   \ the functions (930)
 

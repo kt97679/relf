@@ -3,10 +3,10 @@
 var settings 'APP_MODE=test
 APP_LEVEL=3
 # APP_OFF=1'
-for line @(split $settings "\n") {
+for line @($settings split "\n") {
     case $line {
         '#*' { continue }
-        *=* { var kv [@(split $line =)]; set env[$kv[0]] $kv[1] }
+        *=* { var kv [@($line split =)]; set env[$kv[0]] $kv[1] }
     }
 }
 sh -c 'echo "mode=$APP_MODE level=$APP_LEVEL off=${APP_OFF:-unset}"'
