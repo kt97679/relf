@@ -1,0 +1,8 @@
+return
+return 3
+if true { return 1 }
+for x @[1] { return }
+{ return 2 }
+var f { return 2 }; f || echo f gave $status
+var g {|x| if $(( $x > 1 )) { return 7 }; put small }; g 1; g 5 || echo g gave $status
+echo still here

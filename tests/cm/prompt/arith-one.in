@@ -16,4 +16,5 @@ echo $(( 1 * $m ))
 var n 3
 if $n { echo never }
 if $(( $n != 0 )) { echo as the message says }
-echo $(( $b )) $(( "abc" < "abd" )) $(( "abc" == "abc" )) $(( !$n ))
+echo $(( $b )) $(( "abc" < "abd" )) $(( "abc" == "abc" ))
+echo $(( !$n ))

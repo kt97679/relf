@@ -1,0 +1,11 @@
+var n 5; var l [1]; var e []; var t abc; var b true; var no false
+echo $(( $b && !$no )) $(( $no || $n > 4 )) $(( !($n > 9) && $b ))
+echo $(( !$n ))
+echo $(( $l || $b ))
+echo $(( $e && $b ))
+echo $(( $t || $b ))
+echo $(( $b && $n ))
+echo $(( $b || $n ))
+var f { put true }; echo $(( $(f) && $n > 1 ))
+var g { put false }; echo $(( $(g) || $n < 1 ))
+if $(( $n > 1 && !$no )) { echo a condition of bools }

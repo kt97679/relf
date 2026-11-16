@@ -37,11 +37,14 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
 : D>N ( item --- n )   DUP 1 AND IF 2/ EXIT THEN  D-NUMERIC D>N0 ;   \ a whole number - or a text that reads as one,
   \ as $( ) gives a def's number back (912): range $(count $l), $l[$i], exit $n, as $(( )) took them already
 : D-NUM? ( item --- f )   D-KIND K-NUM = ;
-: D-NOT-NUM ( item --- )   \ what (( )) took that is no number, named (887: "a text that reads as none" said not
-  R-ERR> ." cm: $(( )) takes numbers, not "  DUP D-KIND                 \ which; 965: every kind, as a text's)
-  DUP K-TEXT = IF DROP D-TEXT R-T@ ?DUP IF ." the text " TYPE ELSE DROP ." an empty text" THEN ELSE  DUP K-BOOL = IF DROP ." the boolean " D-TEXT R-T@ TYPE ELSE
-  DUP K-LIST = IF 2DROP ." a list" ELSE  DUP K-REC = IF 2DROP ." a map" ELSE
-  IF ." a block" ELSE ." none" THEN DROP THEN THEN THEN THEN  R-ERR-NL -4004 THROW ;   \ kinds left: a block's, none's 0
+: D-WHAT. ( item --- )   \ a value, named for an error: the text abc, a list... (887; 965: every kind, as a text's)
+  DUP D-KIND  DUP K-NUM = IF DROP ." the number " D-TEXT R-T@ TYPE EXIT THEN
+  DUP K-TEXT = IF DROP D-TEXT R-T@ ?DUP IF ." the text " TYPE ELSE DROP ." an empty text" THEN EXIT THEN
+  DUP K-BOOL = IF DROP ." the boolean " D-TEXT R-T@ TYPE EXIT THEN
+  DUP K-LIST = IF 2DROP ." a list" EXIT THEN  DUP K-REC = IF 2DROP ." a map" EXIT THEN
+  IF ." a block" ELSE ." none" THEN DROP ;   \ kinds left: a block's, none's 0
+: D-NOT-NUM ( item --- )   \ what (( )) took that is no number, named (887: "a text that reads as none" said not which)
+  R-ERR> ." cm: $(( )) takes numbers, not " D-WHAT. R-ERR-NL -4004 THROW ;
 : D-ARITH ( a b op --- c )   >R D-NUMERIC SWAP D-NUMERIC SWAP     \ numbers alone (965: a boolean had been -1 or 0 -
   OVER D-NUM? 0= IF DROP D-NOT-NUM THEN  DUP D-NUM? 0= IF D-NOT-NUM THEN    \ true + 1 was 0 - and a list "a value of
   D-BOXED SWAP D-BOXED SWAP R> R-ARITH-AA D-ITEM ;                        \ the wrong kind")
@@ -61,6 +64,13 @@ CREATE TRUE-BOX K-BOOL , -1 ,   CREATE FALSE-BOX K-BOOL , 0 ,      \ outside the
   ?DUP 0= IF 0 EXIT THEN  DUP 1 AND IF 1 <> EXIT THEN  R-UNBOX
   DUP K-TEXT = IF DROP R-T@ NIP 0<> EXIT THEN  DUP K-LIST = IF DROP R-LEN 0<> EXIT THEN
   K-REC = IF R-KEYS R-LEN 0<> EXIT THEN  0<> ;
+: D-LOGIC? ( item --- f )   \ an operand of !, && or || in (( )) (968): a boolean - or a text that reads as one, as
+  DUP TRUE-BOX = IF DROP -1 EXIT THEN  DUP FALSE-BOX = IF DROP 0 EXIT THEN    \ a number's does: $(f) of a put true.
+  DUP D-KIND K-BOOL = IF D-TRUE? EXIT THEN                                     \ They had taken any value, 0, "" and
+  DUP D-KIND K-TEXT = IF  DUP D-TEXT R-T@ S" true" COMPARE 0= IF DROP -1 EXIT THEN   \ [] false, where a condition
+    DUP D-TEXT R-T@ S" false" COMPARE 0= IF DROP 0 EXIT THEN  THEN                    \ takes true or false only
+  R-ERR> ." cm: !, && and || take true or false, not " D-WHAT. ."  - $(( $n != 0 )) makes one of a number"
+  R-ERR-NL -4004 THROW ;
 : D-ORDER? ( item --- f )   D-KIND DUP K-NUM = SWAP K-TEXT = OR ;
 : D-CMP ( a b --- n )   BOTH# IF 2DUP > >R < R> - EXIT THEN          \ no subtraction: no overflow
   D-NUMERIC SWAP D-NUMERIC SWAP  BOTH# IF 2DUP > >R < R> - EXIT THEN

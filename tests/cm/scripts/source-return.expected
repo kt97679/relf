@@ -1,0 +1,2 @@
+cm: return outside a function - exit ends the script (tests/cm/scripts/lib/ret.cm line 3)
+status 2

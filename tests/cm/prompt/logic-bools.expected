@@ -1,0 +1,11 @@
+true true true
+cm: !, && and || take true or false, not the number 5 - $(( $n != 0 )) makes one of a number (line 1)
+cm: !, && and || take true or false, not a list - $(( $n != 0 )) makes one of a number (line 1)
+cm: !, && and || take true or false, not a list - $(( $n != 0 )) makes one of a number (line 1)
+cm: !, && and || take true or false, not the text abc - $(( $n != 0 )) makes one of a number (line 1)
+cm: !, && and || take true or false, not the number 5 - $(( $n != 0 )) makes one of a number (line 1)
+true
+true
+false
+a condition of bools
+status 0

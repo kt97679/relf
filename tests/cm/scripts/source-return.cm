@@ -1,0 +1,4 @@
+# return in a sourced file's top level (968): an error, as the script's own - it had ended the script, as exit
+echo before
+source lib/ret.cm
+echo after

@@ -1,0 +1,19 @@
+a builtin before cat: 1
+a function before cat: 1
+a
+a function returning 3: 3
+a builtin in the middle: 1
+the last stage: 1
+the rightmost of two: 4
+the rightmost again: 1
+y
+two functions failing, the rightmost: 1
+y
+all well: 0
+turned by !
+[a] 3
+inner
+done
+the inner pipeline its own: 0
+cm: status 1 - the script stops (line 21)
+status 1

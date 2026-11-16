@@ -118,9 +118,10 @@ that does not exist is an error.
 `$(( ))` is the one place with infix operators: `+ - * / %`, `== != < <= > >=`, `&& || !`, and
 parentheses. Its operators take numbers and texts that read as whole numbers - a boolean, a list, a map
 or a block is an error; `<` and the rest put texts in order too, by their bytes; `==` and `!=` compare any
-two values, lists item by item - a map or a block equals only itself; `!`, `&&` and `||` take any value as
-true or false (none, 0, false, "", [] and [:] false). It gives a number or a boolean: one value alone in
-it is read as the operators read theirs - `$(( "7" ))` is the number 7 - a boolean is itself.
+two values, lists item by item - a map or a block equals only itself; `!`, `&&` and `||` take true or
+false - a comparison's, a boolean's, a text that reads as one - as a condition does: `$(( !$n ))` is an
+error, `$(( $n == 0 ))` the test. It gives a number or a boolean: one value alone in it is read as the
+operators read theirs - `$(( "7" ))` is the number 7 - a boolean is itself.
 
     echo $(( 7 / 2 )) $(( -7 % 2 )) $(( 2 * (3 + 4) )) $(( 3 > 2 )) $(( "abc" == "abc" && !(1 > 2) ))
     # 3 1 14 true true
@@ -165,7 +166,9 @@ leaves the `date` program alone. A name may hold a `-` between letters: `run-tas
 A function is a command: its arguments are its words, given in the number its parameters name.
 `echo` writes bytes; `put` writes values, one by one. `return n` ends the function with status n -
 0 to 255, as `exit`'s; a bare `return`, the last command's status, as `exit` - from inside its `if` and loop bodies; inside a block called as a function - a callback - it ends that
-block. `break` and `continue` end or skip a loop's turn.
+block. `return` outside a function is an error - `exit` ends the script; so are `break` and `continue`
+outside a loop. A sourced file's top level is the script's. `break` and `continue` end or skip a loop's
+turn.
 
     var find {|x| for v @l { if $(( $v == $x )) { return 0 } }; return 1 }
     if find 4 { echo 4 is in l }
@@ -264,7 +267,8 @@ may be indented: that much is taken off each line, so a here-document can sit in
     as $written
     END
 
-A pipeline's status is its rightmost failing stage's. `&` starts a pipeline of programs without waiting
+A pipeline's status is its rightmost failing stage's - a program's, a function's or a builtin's: `false |
+cat` fails, and `f | cat || echo failed` sees f fail. `&` starts a pipeline of programs without waiting
 and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the script's end any left get TERM.
 
 ## Builtins

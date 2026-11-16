@@ -1,0 +1,22 @@
+# a pipeline's status (968): its rightmost failing stage's, a function's or a builtin's stage counted as a
+# program's is - false | cat had been 0, as any function's stage before the last
+false | cat || echo a builtin before cat: $status
+var f { false }
+f | cat || echo a function before cat: $status
+var g { put a; return 3 }
+g | cat || echo a function returning 3: $status
+echo x | false | cat || echo a builtin in the middle: $status
+var h { put y }
+h | false || echo the last stage: $status
+false | sh -c 'exit 4' || echo the rightmost of two: $status
+sh -c 'exit 4' | false | cat || echo the rightmost again: $status
+g | f | h || echo two functions failing, the rightmost: $status
+h | cat && echo all well: $status
+! false | cat && echo turned by !
+# a capture's pipeline, and one inside a stage: each its own
+echo "[$(g | cat)]" $status
+var inner { false | cat; put inner done }
+inner | cat && echo the inner pipeline its own: $status
+# untested, it stops the script, as a program's does
+false | cat
+echo not reached

@@ -1,0 +1,3 @@
+# a sourced file: its top level the script's - return there is outside a function (968)
+var loaded true
+return

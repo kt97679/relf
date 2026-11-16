@@ -549,16 +549,16 @@ DEFER A-OR ( --- c-addr u )
   DUP @ N-OP <> IF PIECE EXIT THEN
   DUP @A OVER @B S" (" COMPARE 0= IF DROP A-OR S" )" AOP? 0= IF S" ) missing in (( ))" G-ERR THEN  AP @ N+ AP ! EXIT THEN
   DUP @A OVER @B S" -" COMPARE 0= IF DROP RECURSE T" D-NEG" ++ EXIT THEN
-  DUP @A OVER @B S" !" COMPARE 0= IF DROP RECURSE T" D-TRUE? 0= D-BOOL" ++ EXIT THEN
+  DUP @A OVER @B S" !" COMPARE 0= IF DROP RECURSE T" D-LOGIC? 0= D-BOOL" ++ EXIT THEN
   S" in (( )):" S| ROT DUP @A SWAP @B ++ S" where a value goes" ++ G-ERR ;
 : A-MUL ( --- c-addr u )   A-PRIM  BEGIN S" *" AOP? S" /" AOP? OR S" %" AOP? OR WHILE A-TAKE A-PRIM 2SWAP ++ ++ REPEAT ;
 : A-ADD ( --- c-addr u )   A-MUL  BEGIN S" +" AOP? S" -" AOP? OR WHILE A-TAKE A-MUL 2SWAP ++ ++ REPEAT ;
 : A-CMP ( --- c-addr u )   A-ADD
   S" ==" AOP? S" !=" AOP? OR S" <" AOP? OR S" <=" AOP? OR S" >" AOP? OR S" >=" AOP? OR IF A-TAKE A-ADD 2SWAP ++ ++ THEN ;
 : A-AND ( --- c-addr u )   A-CMP
-  BEGIN S" &&" AOP? WHILE AP @ N+ AP !  T" D-TRUE? IF" ++ A-CMP ++ T" D-TRUE? D-BOOL ELSE FALSE-BOX THEN" ++ REPEAT ;
+  BEGIN S" &&" AOP? WHILE AP @ N+ AP !  T" D-LOGIC? IF" ++ A-CMP ++ T" D-LOGIC? D-BOOL ELSE FALSE-BOX THEN" ++ REPEAT ;
 : A-OR' ( --- c-addr u )   A-AND
-  BEGIN S" ||" AOP? WHILE AP @ N+ AP !  T" D-TRUE? IF TRUE-BOX ELSE" ++ A-AND ++ T" D-TRUE? D-BOOL THEN" ++ REPEAT ;
+  BEGIN S" ||" AOP? WHILE AP @ N+ AP !  T" D-LOGIC? IF TRUE-BOX ELSE" ++ A-AND ++ T" D-LOGIC? D-BOOL THEN" ++ REPEAT ;
 ' A-OR' IS A-OR
 : A-PAREN? ( p --- f )   DUP @ N-OP = IF DUP @A SWAP @B 1 = SWAP C@ DUP [CHAR] ( = SWAP [CHAR] ) = OR AND ELSE DROP 0 THEN ;
 : A-ONE ( ar --- p | 0 )   \ (( )) of one value, in parentheses or not: its node
@@ -790,7 +790,8 @@ VARIABLE FN-NEXT   \ the var being made has a block written as its value: a func
   S" return" NAMED? IF 2DROP 2DUP = IF 2DROP T" STATUS @" ELSE  OVER NSKIP <> IF S" return takes one status" G-ERR THEN
     WORD-CODE T" D>N" ++ THEN               \ (966: return 1 2 had been return 1; a bare return 0, where exit's is the last
                                             \ status, as sh's both)
-    S" %def" FIND-VAR REF ++ T" RETURN" ++ EXIT THEN
+    S" %def" FIND-VAR ?DUP 0= IF S" return outside a function - exit ends the script" G-ERR THEN   \ (968: it had
+    REF ++ T" RETURN" ++ EXIT THEN                \ ended it at the top level - a sourced file's too - as exit)
   S" if" NAMED? IF 2DROP IF-CMD EXIT THEN
   S" case" NAMED? IF 2DROP CASE-CMD EXIT THEN                   \ its arm's status, or 0 (910)
   2DUP S" for while" IN-LIST? IF
@@ -805,6 +806,7 @@ VARIABLE FN-NEXT   \ the var being made has a block written as its value: a func
 
 \ ---- pipelines (859, 862): programs side by side an OS pipeline, a function's stage run to its end
 VARIABLE PL          \ the pipeline being made: [to][end][end's length][state: 0, 1 list, 2 path][code][its length][a segment's end][last?]
+                     \ [a function's stage in it: PST's status (968)][its last segment programs']
 : PL@ ( i --- x )   CELLS PL @ + @ ;
 : PL! ( x i --- )   CELLS PL @ + ! ;
 : PL+ ( c-addr u --- )   \ to the pipeline's code, joined in place as SEQ+ (891: a program given 5,000 words was too big)
@@ -841,30 +843,34 @@ DEFER RD-SINGLE ( from to --- c-addr u )   \ one command, redirected or not: bel
 : SEG-END ( s --- e last? )   \ programs' segment's end: the | before a function's stage, or the pipeline's end
   BEGIN DUP 0 PL@ TO-PIPE DUP 0 PL@ = IF NIP -1 EXIT THEN  DUP NSKIP PROGRAM? 0= IF NIP 0 EXIT THEN  NSKIP NIP AGAIN ;
 : PL-BG? ( --- f )   1 PL@ 2 PL@ S" &" COMPARE 0= ;     \ the pipeline ends in &: started, not waited for
+: PST-FIRST ( --- )   \ the first segment, a function's stage after it - or one: PST's status, begun (968)
+  5 PL@ 0= IF -1 8 PL!  T" PST(" PL+ THEN ;
 : PROG-SEG ( cur --- cur' )
-  DUP SEG-END 7 PL! 6 PL!
+  DUP SEG-END 7 PL! 6 PL!  7 PL@ 0= IF PST-FIRST THEN
   PL-BG? IF T" 0 PL-BEGIN PL-NULL-IN" ELSE 7 PL@ 0= 2 PL@ OR IF T" 1 PL-BEGIN" ELSE T" 2 PL-BEGIN" THEN THEN PL+
   3 PL@ 2 = IF T" DUP R/O 0 RD-FILE" PL+ THEN
   BEGIN DUP 0 PL@ TO-PIPE TUCK DUP 6 PL@ = STAGE-CODE  DUP 6 PL@ <> WHILE NSKIP REPEAT DROP
   7 PL@ IF PL-BG? IF T" PL-SPAWN JOB !" ELSE 2 PL@ IF 1 PL@ 2 PL@ ELSE T" PIPE-END" THEN THEN ELSE T" PIPE-LINES" THEN
   2DUP PL+  T" PIPE-END" COMPARE  3 PL@ 2 = IF IF T" SWAP DEL-PATH" ELSE T" DEL-PATH" THEN PL+ ELSE DROP THEN
+  8 PL@ IF T" PST+" PL+ THEN  7 PL@ 9 PL!
   7 PL@ 0= 1 AND 3 PL!  6 PL@ 7 PL@ 0= IF NSKIP THEN ;
 : FN-SEG ( cur --- cur' )   \ a function's stage - its redirections run round it, as a lone command's (903)
-  DUP 0 PL@ TO-PIPE DUP 6 PL!  S" S" FRESH 2SWAP SCOPE( RD-SINGLE )SCOPE 2OVER 2SWAP DEF-WORD
+  PST-FIRST  DUP 0 PL@ TO-PIPE DUP 6 PL!  S" S" FRESH 2SWAP SCOPE( RD-SINGLE )SCOPE 2OVER 2SWAP DEF-WORD
   3 PL@ IF 0 0 ELSE T" 0" THEN 2SWAP T-TICK$ ++          \ the first stage: no input, stdin as it is (882)
   6 PL@ 0 PL@ = IF T" FN-RUN" 0 ELSE 6 PL@ NSKIP PROGRAM? IF T" FN>FILE" 2 ELSE T" FN-LIST" 1 THEN THEN
-  3 PL! ++ PL+  6 PL@ DUP 0 PL@ <> IF NSKIP THEN ;
+  3 PL! ++ PL+  8 PL@ IF T" PST+" PL+ THEN  0 9 PL!  6 PL@ DUP 0 PL@ <> IF NSKIP THEN ;
 : STAGES-OK ( from to --- )
   SWAP BEGIN 2DUP SWAP TO-PIPE TUCK = IF S" an empty stage in a pipeline" G-ERR THEN  2DUP <> WHILE NSKIP REPEAT 2DROP ;
 : PIPELINE' ( from to c-addr u --- c-addr2 u2 )   \ c-addr u how it ends: 0 0 a run, its status; PIPE-TEXT, PIPE-LINES a capture
   2OVER STAGES-OK
-  PL @ >R  8 RC PL !  2 PL! 1 PL! 0 PL!
+  PL @ >R  10 RC PL !  2 PL! 1 PL! 0 PL!
   BEGIN DUP 0 PL@ <> WHILE DUP PROGRAM? IF PROG-SEG ELSE FN-SEG THEN REPEAT DROP
+  8 PL@ IF  9 PL@ 2 PL@ 0<> AND IF T" )PST-V" ELSE T" )PST" THEN PL+  THEN
   4 PL@ 5 PL@  R> PL ! ;
 ' PIPELINE' IS PIPELINE
-: BG? ( from to --- from to' f )   2DUP = IF 0 EXIT THEN  2DUP LAST-W DUP S" &" BARE= IF NIP -1 ELSE DROP 0 THEN ;
 : ALL-PROGRAMS? ( from to --- f )   \ each stage's first word a program's
   SWAP BEGIN DUP PROGRAM? 0= IF 2DROP 0 EXIT THEN  2DUP SWAP TO-PIPE DUP 3 PICK = IF 2DROP DROP -1 EXIT THEN NIP NSKIP AGAIN ;
+: BG? ( from to --- from to' f )   2DUP = IF 0 EXIT THEN  2DUP LAST-W DUP S" &" BARE= IF NIP -1 ELSE DROP 0 THEN ;
 : RD-WORD? ( w --- f )   RD-OP NIP NIP 0< 0= ;
 : TO-RD ( from to --- w )   SWAP BEGIN 2DUP <> WHILE DUP RD-WORD? IF NIP EXIT THEN NSKIP REPEAT DROP ;
 VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth being made
@@ -907,7 +913,7 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
 255 CONSTANT SESSION-SLOTS
 : NAMES-NEW ( --- )   \ no names yet: a script's, or a session's start
   0 CAPS !  0 CAPS-CAP !
-  0 NEW-FRAME FR !  0 SC !  SCOPE(  S" %def" 0 0 VAR+ DROP  FR @ MAIN-FR !  SC @ MAIN-SC ! ;
+  0 NEW-FRAME FR !  0 SC !  SCOPE(  S" %main" 0 0 VAR+ DROP  FR @ MAIN-FR !  SC @ MAIN-SC ! ;   \ slot 0: no %def, no return
 : SCRIPT$ ( --- c-addr u )   SESSION @ SYS-ARGC 1 < OR IF S" " ELSE 0 SYS-ARG DUP CSTRLEN THEN ;
 : SF-START ( c-addr u --- )   \ the script's, or a prompt line's: texts freed - their words are made; a script's files
   \ forgotten, names too; at the prompt those of earlier lines kept, their line ranges past 2^20, never a line's own

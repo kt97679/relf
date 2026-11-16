@@ -11,5 +11,6 @@ cm: $(( )) takes numbers, not a list (line 1)
 cm: $(( )) takes numbers, not a map (line 1)
 cm: a condition is a command, true or false - $(( $n != 0 )) makes one of a number (line 1)
 as the message says
-false true true false
+false true true
+cm: !, && and || take true or false, not the number 3 - $(( $n != 0 )) makes one of a number (line 1)
 status 0
