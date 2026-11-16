@@ -196,7 +196,7 @@ PRIMITIVE SETPGID       ( pid pgid --- ior )     \ Iteration 320: job control
 PRIMITIVE TCSETPGRP     ( fd pgid --- ior )
 PRIMITIVE TCGETPGRP     ( fd --- pgid | -1 )
 PRIMITIVE WAIT-JOB      ( pid --- pid' status )  \ reports a stop as well
-PRIMITIVE FILE-MODE     ( c-addr follow? --- mode )  \ Iteration 378: st_mode, 0 if none
+PRIMITIVE FILE-MODE     ( c-addr follow? --- mode )  \ Iteration 378: st_mode, 0 if none; follow? 1 2 3 4 st_ino st_dev st_uid st_gid (573, 958)
 \ follow? 0 lstat's mode, -1 stat's; 1 and 2 the inode and device (573)
 PRIMITIVE LOCAL-TIME    ( --- sec min hour mday mon year wday )  \ Iteration 417
 PRIMITIVE DUP-FROM      ( fd floor --- fd' | -1 )  \ Iteration 486: F_DUPFD_CLOEXEC
@@ -699,10 +699,10 @@ VARIABLE DPL ( --- a-addr)
 \ PART 6: FILE ACCESS WORDS.
 
 00 CONSTANT W/O ( --- mode)
-\ Read only file access mode.
+\ Write only file access mode.
 
 02 CONSTANT R/O ( --- mode)
-\ Write only file access mode.
+\ Read only file access mode.
 
 04 CONSTANT R/W ( --- mode)
 \ Read write file access mode.

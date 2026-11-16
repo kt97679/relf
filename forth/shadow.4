@@ -129,25 +129,12 @@ BASE @  DECIMAL
   2 = ABORT" shadow: save stack underflow" ;
 
 
-\ LZERO and L! take the slot as an OFFSET from START, not as an
-\ absolute address, and adds START itself. That is what makes a
-\ locals-using word survive being saved into an image and reloaded at
-\ a different address (see save-system.4): the only thing compiled
-\ into the word's body is the offset, which is position-independent,
-\ exactly like kernel.4's BOOT hook and shell.4's deferred xts.
-\
-\ Doing the arithmetic HERE rather than in the generated code is not
-\ just tidier, it is what keeps this free. The first attempt compiled
-\ "LIT off | START | @ | + | call" inline instead, quadrupling the
-\ code emitted per local - which overflowed the engine's dictionary
-\ and corrupted compilation of shell.4. This version emits exactly
-\ the same two cells the original absolute-address version did.
-
-: LZERO ( off --- )   \ initial value of a post-| scratch local
-  0 SWAP START @ + ! ;
-
-: L! ( x off --- )    \ store a data-stack argument into a slot
-  START @ + ! ;
+\ A slot is an OFFSET from START, not an absolute address, so that a
+\ locals-using word survives being saved into an image and reloaded at a
+\ different address (see save-system.4) - like kernel.4's BOOT hook and
+\ shell.4's deferred xts. The engine's L! and LZERO opcodes add START;
+\ the Forth words of those names, which did it until Iteration 517, were
+\ left behind, called by nothing, and removed at 958.
 
 \ ------------------------------------------------------------------
 \ Compile time: the declaration currently being processed

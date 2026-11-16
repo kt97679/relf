@@ -68,8 +68,12 @@ the targets that run each alone.
    `make verify`: run them after changes to the parser, the expander or
    the job code (GOALS.md, "Tools for finding the next bug").
 
-`tools/coverage.py` measures layers 2-6 against `shell.4`: which words
-never run and which run only in part.
+`tools/coverage.py` measures layers 1-7 against every source of the shell
+image: which words never run, and why (called, reached by an execution
+token, inlined into callers, unused), and which run only in part.
+`--probe SCRIPT WORD...` shows what one script adds; `--show WORD...` marks
+each of a word's instructions run or not (958: 95 % of instructions run;
+GOALS.md says what the rest is).
 
 ## When something fails
 
@@ -258,6 +262,14 @@ the reference passes and this shell does not. That list is the worklist.
 `kernel64.img` is both what `cross.4` produces and what `cross.4` runs on,
 so rebuilding it is a fixpoint step rather than a compile. `make` never
 does it by itself.
+
+    make selfhost         # relf builds itself with no compiler, assembler,
+                          # linker, make or Python: from relfasm64 and the
+                          # kernels, with POSIX utilities alone on the PATH,
+                          # the engine twice, both kernels, the shell's and
+                          # rill3's images and the shell, each make's bytes;
+                          # run by /bin/sh, then by relfshasm64 (958; verify's
+                          # selfhost:sh and selfhost:relfsh rows)
 
 ## Measuring
 

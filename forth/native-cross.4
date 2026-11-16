@@ -61,12 +61,12 @@ CREATE N-EHDR 4096 ALLOT                     \ the header page
 VARIABLE N-MEMSZ   4194304 N-MEMSZ !         \ the image and what follows it: stacks
 \ - 4 MB, the asm engine's MEMSIZE, its layout at the top (639): the return
 \ stack, the image's own (1 MB since 956, as the engines'), the guard page between the stacks
-\ (RGUARD), the data stack (256 KB) over its floor's guard (DGUARD); a
+\ (RGUARD), the data stack (512 KB since 958) over its floor's guard (DGUARD); a
 \ return stack overflow or a data stack underflow traps at RGUARD (-5), a
 \ data stack overflow at DGUARD (-3). Below them the signal stack - the
 \ trap handler runs there, as it must when the return stack is spent -
 \ and below that the runtime's data, where the dictionary ends.
-1048576 CONSTANT N-RSTACK-BYTES   262144 CONSTANT N-DSTACK-BYTES   4096 CONSTANT N-PAGE
+1048576 CONSTANT N-RSTACK-BYTES   524288 CONSTANT N-DSTACK-BYTES   4096 CONSTANT N-PAGE
 N-BASE N-MEMSZ @ + CONSTANT N-RTOP
 N-RTOP N-RSTACK-BYTES - CONSTANT N-RFLOOR
 N-RFLOOR N-PAGE - CONSTANT N-RGUARD          \ the engine's MEMSIZE - RS - PAGE

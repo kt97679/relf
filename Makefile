@@ -53,7 +53,7 @@ PYTHON  ?= python3
 SHELL_SOURCES = forth/extend.4 forth/safety.4 forth/pool.4 forth/shadow.4 forth/save-system.4 shell/shell.4 shell/edit.4 shell/tree.4
 KERNEL_SOURCES = forth/kernel.4 forth/cross.4 forth/cross-core.4 forth/extend.4
 
-.PHONY: all help engines shell-images shells images check-images \
+.PHONY: all help selfhost engines shell-images shells images check-images \
         test verify verify-update diff matrix posix mrsh shell interactive \
         busybox yash absg portability lint dead-words sizes profile bench bundle cm-image \
         clean distclean
@@ -68,6 +68,15 @@ help:
 	@echo '  shells         relfsh64, relfsh32 (engine and image, one file), relfsh'
 	@echo '  images         re-cross-compile the base images (see the header)'
 	@echo '  check-images   ... and only check they still reproduce'
+	@echo '  cm-image       kernel64-cm.img, rill3 (bin/cm runs it)'
+	@echo ''
+	@echo 'x86-64 only:'
+	@echo '  relfasm64      the assembly engine, assembled by relf from engine/relfasm64.4'
+	@echo '  relfshasm64    the shell on it, one file'
+	@echo '  relfsh-native  the shell compiled to x86-64 code (docs/NATIVE.md)'
+	@echo '  rill3-native   rill3 compiled to x86-64 code'
+	@echo '  selfhost       relf builds itself with no compiler, assembler or linker,'
+	@echo '                 run by /bin/sh and by relfshasm64 (tools/selfhost-check.sh)'
 	@echo ''
 	@echo '  test           tests/run_tests.sh: the core, both cell widths'
 	@echo '  diff           the differential cases against bash'
@@ -451,6 +460,11 @@ yash: all
 ABSG ?= /tmp/absg
 absg: all
 	@ABSG=$(ABSG) $(PYTHON) tools/absg-suite.py
+
+# (958) relf builds itself from relfasm64 and the committed kernels, with
+# POSIX utilities alone on the PATH: run by /bin/sh, then by relfsh
+selfhost: all relfasm64 relfshasm64
+	@sh tools/selfhost-check.sh && sh tools/selfhost-check.sh ./relfshasm64
 
 portability: all
 	@sh tests/portability

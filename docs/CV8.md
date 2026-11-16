@@ -390,7 +390,7 @@ LX_plus: tos += NOS; dsp += CELL_BYTES; EXITNEXT();
 ### 5.3 Memory and stacks
 
 One static block of `MEMSIZE` (4 MB since Iteration 545; 16 MB before): the image at the bottom, the
-dictionary growing up from it, and the stacks at the top - 256 KB of
+dictionary growing up from it, and the stacks at the top - 512 KB of
 data stack below 1 MB of return stack (64 KB until Iteration 956, when
 relfsh's functions were given dash's 1,000 levels: a level is 352-792
 bytes of it). Since Iteration 253 **each

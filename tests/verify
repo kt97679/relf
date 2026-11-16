@@ -291,7 +291,7 @@ emit parse:verdicts-differ  "$(echo "$PR" | cut -d' ' -f5)"
 # Unreachable definitions in the shell's sources (tools/dead-words.py):
 # Iteration 265 removed 343 of them with the line-based shell; none should
 # come back unnoticed.
-emit shell:dead-words "$(python3 tools/dead-words.py shell/shell.4 shell/tree.4 2>/dev/null | grep -c .)"
+emit shell:dead-words "$(python3 tools/dead-words.py shell/shell.4 shell/edit.4 shell/tree.4 2>/dev/null | grep -c .)"   # edit.4 since 958
 # Tests that run the host's `sh` where they mean the shell under test
 # (tools/lint-tests.py, Iteration 477): 465's assertion passed here and
 # failed on a machine whose sh is bash. 0 is the only right answer.
@@ -338,7 +338,7 @@ native:shell-forth-errors:failed native:shell-bytes native:shell
 native:interactive:failed native:mrsh:failed native:posix:failed
 native:forthfuzz:failures native:intrfuzz:failures size:asm-engine
 size:asm-shell native:str native:locals native:cmpbr native:memop native:slit native:peep native:data native:ctab native:inl native:short native:data-bytes native:self-built native:fold native:inline
-native:rill3 native:rill3-bytes
+native:rill3 native:rill3-bytes selfhost:sh selfhost:relfsh
 verify:skip-rows"
 SKIP_FROM=$(wc -l < "$OUT")
 # The native kernel's comparison rows (Iteration 656, prompts/15): a
@@ -440,6 +440,13 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
         emit asm:fixpoint DIFFERS
     fi
     rm -f relfasm64.forth
+    # (958) relf builds itself with no compiler, assembler, linker, make or
+    # Python: from relfasm64 and the committed kernels, with POSIX utilities
+    # alone on the PATH, the engine twice, both kernels, the shell's and
+    # rill3's images and the single-file shell - each make's bytes. Run by
+    # /bin/sh, then by relfshasm64: relfsh builds relf.
+    emit selfhost:sh "$(sh tools/selfhost-check.sh 2>&1 | sed -n 's/^selfhost: \([0-9]* of [0-9]*\) reproduce.*/\1/p' | tr ' ' _)"
+    emit selfhost:relfsh "$(sh tools/selfhost-check.sh ./relfshasm64 2>&1 | sed -n 's/^selfhost: \([0-9]* of [0-9]*\) reproduce.*/\1/p' | tr ' ' _)"
     # The native back end's pipeline (Iteration 610, docs/NATIVE.md N1a):
     # forth/native.4 compiles a small program to x86-64 code; it prints 169
     if make -s native-n1a >/dev/null 2>&1; then emit native:n1a "$(./native-n1a 2>&1)"
@@ -565,7 +572,8 @@ if [ "$(uname -m)" = x86_64 ] && make -s relfasm64 relfshasm64 >/dev/null 2>&1; 
     dsc=$(commas "$ds"); dec=$(commas "$de")
     if grep -q "one static file of $dsc bytes" README.md && grep -q "$dec bytes of x86-64" README.md &&
        grep -q "one static file of $dsc bytes" docs/ARTICLE-forthhub.md && grep -q "$dec bytes of x86-64" docs/ARTICLE-forthhub.md &&
-       grep -q "размером $ds байт" docs/ARTICLE-habr.md && grep -q "движок: $de байт" docs/ARTICLE-habr.md; then
+       grep -q "размером $ds байт" docs/ARTICLE-habr.md && grep -q "движок: $de байт" docs/ARTICLE-habr.md &&
+       { [ ! -f relfsh-native ] || grep -q "one static file of $(commas "$(wc -c < relfsh-native | tr -d ' ')") bytes compiled to x86-64" README.md; }; then   # (958) the native shell's too
         emit docs:sizes current
     else emit docs:sizes stale; fi
     missing=$(tail -n +$((SKIP_FROM + 1)) "$OUT" | awk '{print $1}' | while read -r k; do

@@ -2881,9 +2881,8 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
   \ operator, target and any fd number - so counting the assignment
   \ prefix before removing them stopped at a LEADING redirection, and
   \ `</dev/null foo=bar echo hi` ran `foo=bar` as the command
-  \ (Iteration 385). RUN-EXPANDED did this, and is told not to repeat it.
+  \ (Iteration 385). RUN-EXPANDED did this until 958.
   NO-REDIRS? @ IF 0 REDIR-N ! ELSE PARSE-REDIRECTIONS THEN
-  -1 REDIRS-PARSED? !
   \ XCU 2.9.1, step 3 before step 4 (Iteration 482, EXPANSION-ORDER.md
   \ stage 2): where the shell performs a command's redirections itself -
   \ a regular builtin - they are performed BEFORE its assignments are
@@ -2905,7 +2904,7 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
   TRY-ASSIGNMENT-CALL IF
     R> DROP
     CMDSUB-RAN? @ IF CMDSUB-STATUS @ LAST-STATUS ! THEN
-    APPLY-BARE-REDIRS  0 REDIRS-PARSED? !
+    APPLY-BARE-REDIRS
     IF END-REDIRECT THEN
     EXIT
   THEN
@@ -2916,22 +2915,19 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
   ARGC @ 0= IF
     R> DROP
     CMDSUB-RAN? @ IF CMDSUB-STATUS @ LAST-STATUS ! ELSE 0 LAST-STATUS ! THEN
-    APPLY-BARE-REDIRS  0 REDIRS-PARSED? !
+    APPLY-BARE-REDIRS
     IF END-REDIRECT THEN
     EXIT
   THEN
   R> EXEC-LAST? !                           \ set after expansion: see RUN-EXTERNAL
+  XTRACE-ARGV                               \ set -x: the assignments with it, as dash's (958)
   PREFIX-COUNT ?DUP IF
-    0 ASSIGNED-HERE? !
-    \ Remembered here because TEMP-ASSIGN takes the prefixes out of the
-    \ argument list: after it, a command like `var=ok > f` has no words
-    \ left to count (Iteration 350).
-    DUP RE-PREFIX !
     \ Whether this is a special builtin has to be decided BEFORE the
     \ command runs, since `eval` replaces ARGV with what it evaluates -
     \ and read at PREFIX-COUNT, because the assignments are still in
-    \ front of the command name at this point.
-    ARGC @ PREFIX-COUNT > IF PREFIX-COUNT ARGV@ SPECIAL-BUILTIN? ELSE 0 THEN >R
+    \ front of the command name at this point. A command name there is
+    \ (958): one that was assignments only returned above.
+    PREFIX-COUNT ARGV@ SPECIAL-BUILTIN? >R
     0 VALUE-FAILED? !
     TEMP-ASSIGN >R
     \ An assignment that failed - a readonly variable - means the
@@ -2940,9 +2936,6 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
     \ carried on into the command, which `a=2 set` then made obvious by
     \ listing every variable (Iteration 383).
     VALUE-FAILED? @ 0= IF RUN-EXPANDED THEN
-    \ ... unless the command turned out to be assignments and
-    \ redirections only, in which case they are the shell's own
-    \ (Iteration 349).
     \ Assignments before a SPECIAL builtin persist (XCU 2.9.1), so
     \ `X=1 : ; echo $X` prints 1. This shell undid them like any other
     \ command's, which is bash's behaviour outside POSIX mode; the
@@ -2951,10 +2944,8 @@ DEFER EXPAND-DQ-TEXT-INNER   ( c-addr u --- c-addr' u' )
     \ The return stack holds the record, and below it whether the
     \ command was a special builtin.
     R> R>                                 ( record special? )
-    ASSIGNED-HERE? @ OR                   ( record keep? )
     IF DROP ELSE TEMP-RESTORE THEN
   ELSE
-    0 RE-PREFIX !
     RUN-EXPANDED
   THEN
   IF END-REDIRECT THEN                       \ the early redirections, undone

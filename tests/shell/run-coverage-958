@@ -1,0 +1,370 @@
+#!/bin/sh
+# tests/shell/run-coverage-958 - paths no test reached (Iteration 958).
+# tools/coverage.py, run over every suite, found words called but never run
+# and words run only in part; each case here reaches one of them, and is
+# checked for its value against what dash or bash does, not only that it ran.
+# Three defects came out of it, fixed in 958: a SIGSEGV, SIGBUS or SIGFPE sent
+# with kill was taken for a fault ("invalid memory address", status 1, where
+# the references die of it); signals 16 and 26-31 were "Signal 26" where the
+# references name them; and the prompt's day and month names, AM and PM, the
+# 12-hour clock and \$ were chains of compares that no test could reach but on
+# the right date or as the right user - tables and arithmetic now, so every
+# path runs on any day.
+. "$(dirname "$0")/lib.sh"
+D=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd) || exit 1
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+bytes() { od -An -c | tr '\n' ' ' | tr -s ' ' | sed 's/ $//'; }   # every byte, on one line
+
+# ---- the prompt: \D{format}'s every specifier, against date -u (A16: UTC) ----
+# taken before and after, so a second ticking over between them is not a failure
+pr() { printf 'exit\n' | PS1="$1" "$THIS_SH" -i 2>&1 | head -1; }
+dated() {   # dated NAME PS1 DATE-FORMAT - three tries, for a machine under load
+    for try in 1 2 3; do
+        d1=$(date -u +"$3"); o=$(pr "$2"); d2=$(date -u +"$3")
+        if [ "$o" = "$d1" ] || [ "$o" = "$d2" ]; then o=same; break; fi
+    done
+    assert_output_equals "$1" same "$o"
+}
+dated "prompt: \\D{} gives the time, each field as date -u" \
+    '[\D{%H|%M|%S|%I|%p|%d|%e|%m|%y|%Y|%a|%b|%h|%A|%B|%R|%T|%D|%F|%%}]' \
+    '[%H|%M|%S|%I|%p|%d|%e|%m|%y|%Y|%a|%b|%h|%A|%B|%R|%T|%D|%F|%%]'
+dated "prompt: the time escapes t T @ A d" '[\t|\T|\@|\A|\d]' '[%H:%M:%S|%I:%M:%S|%I:%M %p|%H:%M|%a %b %d]'
+dated "prompt: \\D{} empty is the time" '[\D{}]' '[%H:%M:%S]'
+assert_output_equals "prompt: %n %t in \\D{}, and a specifier it lacks kept" "$(printf '[\n\t%%q|%%]')" \
+    "$(printf 'exit\n' | PS1='[\D{%n%t%q}|\D{%]' "$THIS_SH" -i 2>&1 | head -3 | tr -d '\r')"
+assert_output_equals "prompt: \\D without a brace stays as written" '[\D|\Dx]' "$(pr '[\D|\Dx]')"
+# the 12-hour clock and AM/PM for every hour, by the words themselves
+out=$("$THIS_SH" -c "forth '0 PD-12 . 1 PD-12 . 11 PD-12 . 12 PD-12 . 13 PD-12 . 23 PD-12 . CR'" 2>&1)
+assert_output_equals "the 12-hour clock: 0 and 12 are 12, 13 is 1" "12 1 11 12 1 11" "$(echo $out)"
+# every day's and month's name, through the words PD-SPEC calls
+out=$("$THIS_SH" -c "forth ': D 0 PD-N !  7 0 DO I PD-FULLDAY 44 PD-C LOOP 12 0 DO I PD-FULLMON 44 PD-C LOOP 0 PD-AMPM 11 PD-AMPM 12 PD-AMPM 23 PD-AMPM ;  D PD-BUF PD-N @ TYPE CR'" 2>&1)
+assert_output_equals "every day's and month's name, and AM or PM by the hour" \
+    "Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,January,February,March,April,May,June,July,August,September,October,November,December,AMAMPMPM" "$out"
+# \$ is # for the superuser - whichever this runs as
+if [ "$(id -u)" = 0 ]; then want='[#]'; else want='[$]'; fi
+assert_output_equals "prompt: \\\$ by the effective uid" "$want" "$(pr '[\$]')"
+out=$(printf 'exit\n' | USER=tester PS1='[\u|\s|\j|\101|\v|\z|\\|\a|\e|\[x\]]' "$THIS_SH" -i 2>&1 | head -1 | bytes)
+assert_output_equals "prompt: the other escapes, and those it lacks kept" \
+    " [ t e s t e r | r e l f s h | 0 | A | \\ v | \\ z | \\ | \\a | 033 | x ]" "$out"
+(cd / && assert_output_equals "prompt: \\w and \\W at the root" "[/|/]" "$(pr '[\w|\W]')")
+(cd "$t" && mkdir -p a/b && cd a/b && assert_output_equals "prompt: \\W is the last part" "[b]" "$(pr '[\W]')")
+(cd "$t" && HOME=$t && export HOME && assert_output_equals "prompt: \\w and \\W at HOME are ~" "[~|~]" "$(pr '[\w|\W]')")
+
+# ---- kill ----
+out=$("$THIS_SH" -c 'kill -l' 2>&1)
+assert_output_equals "kill -l lists the signals" "HUP INT QUIT ILL TRAP ABRT BUS FPE KILL USR1 SEGV USR2 PIPE ALRM TERM STKFLT CHLD CONT STOP TSTP TTIN TTOU URG XCPU XFSZ VTALRM PROF WINCH IO PWR SYS" "$out"
+out=$("$THIS_SH" -c 'kill -l 137; kill -l 200; echo "st=$?"' 2>&1)
+assert_output_equals "kill -l a status names its signal; one with none is 1" "KILL
+st=1" "$out"
+out=$("$THIS_SH" -c 'kill -s; echo "a=$?"; kill -s BOGUS 1; echo "b=$?"; kill -BOGUS 1; echo "c=$?"' 2>&1)
+assert_output_equals "kill: a missing or unknown signal" "shell: kill: bad signal
+a=1
+shell: kill: bad signal
+b=1
+shell: kill: bad signal
+c=1" "$out"
+out=$("$THIS_SH" -c 'kill -9; echo "a=$?"; kill -s TERM; echo "b=$?"' 2>&1)
+assert_output_equals "kill: a signal and no process" "shell: kill: no process given
+a=2
+shell: kill: no process given
+b=2" "$out"
+out=$("$THIS_SH" -c 'sleep 5 & kill -- $!; wait $!; echo "st=$?"' 2>&1)
+assert_output_equals "kill -- ends the options" "st=143" "$out"
+
+# ---- a signal that ends a command, named as the references name it ----
+out=$("$THIS_SH" -c 'for s in 4 5 6 7 8 10 12 14 16 24 25 26 27 29 30 31 34; do "$0" -c "kill -$s \$\$"; done' "$THIS_SH" 2>&1)
+assert_output_equals "every signal that ends a command is named" "Illegal instruction
+Trace/breakpoint trap
+Aborted
+Bus error
+Floating point exception
+User defined signal 1
+User defined signal 2
+Alarm clock
+Stack fault
+CPU time limit exceeded
+File size limit exceeded
+Virtual timer expired
+Profiling timer expired
+I/O possible
+Power failure
+Bad system call
+Signal 34" "$out"
+# A SIGSEGV, SIGBUS or SIGFPE sent is not a fault: the shell dies of it, as
+# dash does - it said "invalid memory address" and exited 1 until 958. A
+# fault is still a trap: the command fails, the shell goes on.
+for s in SEGV:139 BUS:135 FPE:136; do
+    "$THIS_SH" -c "kill -${s%:*} \$\$" 2>/dev/null; st=$?
+    assert_output_equals "kill -${s%:*} \$\$ ends the shell by the signal" "${s#*:}" "$st"
+done
+out=$("$THIS_SH" -c "forth '0 @'; echo \"a=\$?\"; forth '1 0 /'; echo \"b=\$?\"" 2>&1)
+assert_output_equals "a fault is still a trap: the command fails, the shell goes on" "relf: invalid memory address (segmentation fault)
+a=1
+relf: division by zero
+b=1" "$out"
+
+# ---- printf's escapes, and the character classes ----
+out=$("$THIS_SH" -c "printf 'a\\ab\\bc\\ed\\fe\\rf\\vg\\x41\\xZ\\\"\\q|'; printf 'end\\'" | bytes)
+assert_output_equals "printf: every escape, \\x without digits and an unknown one kept (bash's bytes)" \
+    " a \\a b \\b c 033 d \\f e \\r f \\v g A \\ x Z \" \\ q | e n d \\" "$out"
+out=$("$THIS_SH" -c "printf '%b|' 'a\\ab\\bc\\ed\\fe\\rf\\vg\\0101\\x41\\xZ\\q' 'x\\'" | bytes)
+assert_output_equals "printf %b: the same escapes and \\0nnn" \
+    " a \\a b \\b c 033 d \\f e \\r f \\v g A A \\ x Z \\ q | x \\ |" "$out"
+cat > "$t/cc.sh" <<'EOF'
+for c in a Z 5 ' ' '	' '!' '~' "$(printf '\001')" "$(printf '\177')"; do
+  for k in alnum alpha blank cntrl digit graph lower print punct space upper xdigit; do
+    case $c in [[:$k:]]) printf 1 ;; *) printf 0 ;; esac
+  done; echo
+done
+case a in [[:bogus:]]) echo y ;; *) echo n ;; esac
+EOF
+assert_output_equals "every character class, as dash has them" "$(dash "$t/cc.sh" 2>&1)" "$("$THIS_SH" "$t/cc.sh" 2>&1)"
+
+# ---- the locals' save stack: both of the engine's messages ----
+out=$("$THIS_SH" -c "forth '1 LOCALS-FAILED'; forth '2 LOCALS-FAILED'" 2>&1)
+assert_output_contains "the save stack's overflow message" "save stack overflow" "$out"
+assert_output_contains "and its underflow message" "save stack underflow" "$out"
+
+# ---- the bare kernel's KEY on a stdin that is not blocking: it waits ----
+# FD-WAIT: the read finds nothing yet (EAGAIN), so KEY polls until the text
+# arrives - and does not take the empty read for the end of input.
+if command -v python3 >/dev/null 2>&1; then
+    BIN=${RELF_BIN:-"$D/relf64"}; IMG=${RELF_IMG:-"$D/forth/kernel64.img"}
+    out=$(python3 - "$BIN" "$IMG" <<'EOF'
+import os, subprocess, sys, time
+r, w = os.pipe()
+os.set_blocking(r, False)
+p = subprocess.Popen(sys.argv[1:3], stdin=r, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+os.close(r); time.sleep(0.3)
+os.write(w, b'1 2 + . BYE\n'); os.close(w)
+out = p.communicate(timeout=20)[0].decode('latin-1').replace('\r', '')
+print(out.split('\n')[-1].strip(), p.returncode)
+EOF
+)
+    assert_output_equals "KEY waits on a stdin that is not blocking" "3 0" "$out"
+fi
+
+# ---- printf: a number past the cell is its limit, said, and 1 (dash's) ----
+# Until 958 it wrapped silently: 99999999999999999999 printed 7766279631452241919.
+if [ "$("$THIS_SH" -c 'printf %d 2147483648')" = 2147483648 ]; then     # 8-byte cells
+out=$("$THIS_SH" -c 'printf "%d|" 99999999999999999999; echo "st=$?"; printf "%d|" -99999999999999999999; echo "st=$?"' 2>&1)
+assert_output_equals "printf %d past the cell: its limit, the error, 1" "printf: 99999999999999999999: Numerical result out of range
+9223372036854775807|st=1
+printf: -99999999999999999999: Numerical result out of range
+-9223372036854775808|st=1" "$out"
+out=$("$THIS_SH" -c 'printf "%d %d %u %x|" 9223372036854775807 -9223372036854775808 -1 0xFFFFFFFFFFFFFFFF; echo "st=$?"' 2>&1)
+assert_output_equals "printf: the limits themselves are numbers" "9223372036854775807 -9223372036854775808 18446744073709551615 ffffffffffffffff|st=0" "$out"
+out=$("$THIS_SH" -c 'printf "%u|" 18446744073709551616; printf "%d|" 0x8000000000000000; echo "st=$?"' 2>&1)
+assert_output_equals "printf: unsigned past its limit, and a signed one in hex" "printf: 18446744073709551616: Numerical result out of range
+18446744073709551615|printf: 0x8000000000000000: Numerical result out of range
+9223372036854775807|st=1" "$out"
+else                                                                     # 4-byte cells: their own limits
+out=$("$THIS_SH" -c 'printf "%d|" 2147483648; echo "st=$?"; printf "%d %d %u|" 2147483647 -2147483648 -1; printf "%u|" 4294967296; echo "st=$?"' 2>&1)
+assert_output_equals "printf past a 4-byte cell: its limits" "printf: 2147483648: Numerical result out of range
+2147483647|st=1
+2147483647 -2147483648 4294967295|printf: 4294967296: Numerical result out of range
+4294967295|st=1" "$out"
+fi
+
+# ---- test: -t, -O, -G, and an operator it does not know ----
+out=$("$THIS_SH" -c 'test -t 9; echo "a=$?"; test -t 0 </dev/null; echo "b=$?"; test -t abc; echo "c=$?"' 2>&1)
+assert_output_equals "test -t: false off a terminal, a bad number 2" "a=1
+b=1
+test: abc: bad number
+c=2" "$out"
+if command -v script >/dev/null 2>&1; then
+    out=$(script -qc "\"$THIS_SH\" -c 'test -t 1; echo \"tty=\$?\"'" /dev/null 2>&1 | tr -d '\r')
+    assert_output_equals "test -t 1 at a terminal is true (958: it was always false)" "tty=0" "$out"
+fi
+touch "$t/mine"
+out=$("$THIS_SH" -c "test -O '$t/mine'; echo \"a=\$?\"; test -G '$t/mine'; echo \"b=\$?\"; test -O '$t/none'; echo \"c=\$?\"")
+assert_output_equals "test -O and -G of the shell's own file, and of none" "a=0
+b=0
+c=1" "$out"
+if [ "$(id -u)" = 0 ]; then want=0; else want=1; fi
+assert_output_equals "test -O / by the effective uid" "$want" "$("$THIS_SH" -c 'test -O /; echo $?')"
+out=$("$THIS_SH" -c 'test -Q x; echo "a=$?"; [ -N x ]; echo "b=$?"; test -O; echo "c=$?"' 2>&1)
+assert_output_equals "an operator test does not know is an error, 2; alone it is a string" "test: -Q: unknown operator
+a=2
+test: -N: unknown operator
+b=2
+c=0" "$out"
+
+# ---- getopts ----
+printf '%s\n' 'g() { spec=$1; shift; OPTIND=1; while getopts "$spec" o "$@"; do printf "%s:%s " "$o" "${OPTARG-unset}"; done; echo "| $OPTIND"; }' \
+    'g ab:c -a -b x -c rest; g ab: -ab x; g :ab: -b; g :ab: -z; g ab -- -a; g ab - -a; g a: -a --; g ab' > "$t/go.sh"
+assert_output_equals "getopts: OPTARG unset for a flag (POSIX), silent errors, -- and -" "a:unset b:x c:unset | 5
+a:unset b:x | 3
+::b | 2
+?:z | 2
+| 2
+| 1
+a:-- | 3
+| 1" "$("$THIS_SH" "$t/go.sh" 2>&1)"
+out=$("$THIS_SH" -c 'getopts; echo "a=$?"; getopts ab; echo "b=$?"' 2>&1)
+assert_output_equals "getopts with too few arguments says how it is used" "shell: getopts: usage: getopts optstring name [arg...]
+a=2
+shell: getopts: usage: getopts optstring name [arg...]
+b=2" "$out"
+
+# ---- set -x: a command's assignments are traced with it, as dash's ----
+out=$("$THIS_SH" -c 'set -x; x=1 >/dev/null; y=2 z=3 echo a >/dev/null; f() { :; }; v=1 f; e=; $e' 2>&1)
+assert_output_equals "set -x traces the assignments before a command (958: dropped)" "+ x=1
++ y=2 z=3 echo a
++ v=1 f
++ :
++ e=
++ " "$out"
+
+# ---- . ----
+out=$("$THIS_SH" -c '. ; echo after' 2>&1); st=$?
+assert_output_equals ". without a file: said, and the shell leaves (a special builtin)" "shell: .: filename argument required" "$out"
+assert_output_equals "... with 2" 2 "$st"
+out=$(cd "$t" && PATH=$t "$THIS_SH" -c '. no-such-file-958; echo after' 2>&1)
+assert_output_equals ". of a file not on PATH" "shell: .: no-such-file-958: not found" "$out"
+
+# ---- cd, local, type, command, alias and unalias ----
+mkdir -p "$t/cdp/sub" "$t/d1"
+out=$(cd "$t" && "$THIS_SH" -c 'cd d1; cd - >/dev/null; pwd; CDPATH=$PWD/cdp cd sub; cd "$OLDPWD"; cd /no/such; echo "a=$?"; touch f; cd f; echo "b=$?"; (unset HOME; cd; echo "c=$?"); (unset OLDPWD; cd -; echo "d=$?")' 2>&1)
+assert_output_equals "cd: -, CDPATH (which says where), and what it cannot do" "$t
+$t/cdp/sub
+shell: cd: /no/such: no such directory
+a=1
+shell: cd: f: no such directory
+b=1
+shell: cd: HOME not set
+c=1
+shell: cd: OLDPWD not set
+d=1" "$out"
+out=$("$THIS_SH" -c 'local x; echo "a=$?"; f() { local 1bad; echo "b=$?"; local y z=2; echo "[$y][$z]"; }; f' 2>&1)
+assert_output_equals "local: outside a function, a bad name, no value and a value" "shell: local: not in a function
+a=1
+shell: local: 1bad: bad variable name
+b=1
+[][2]" "$out"
+out=$("$THIS_SH" -c 'f() { :; }; alias ll="ls -l"; type if cd f ll /bin/sh /no/such nosuchcmd-958; echo "st=$?"' 2>&1)
+assert_output_equals "type names each kind, as dash words it" "if is a shell keyword
+cd is a shell builtin
+f is a shell function
+ll is an alias for ls -l
+/bin/sh is /bin/sh
+/no/such: not found
+nosuchcmd-958: not found
+st=127" "$out"
+out=$("$THIS_SH" -c 'f() { :; }; alias ll="ls -l"; command -v if; command -v ll; command -v f; command -v cd; command -v /bin/sh; command -v /no/such; echo "a=$?"; command -v nosuch-958; echo "b=$?"; command -V nosuch-958; echo "c=$?"; command -v; echo "d=$?"' 2>&1)
+assert_output_equals "command -v and -V for each kind" "if
+alias ll='ls -l'
+f
+cd
+/bin/sh
+a=1
+b=127
+nosuch-958: not found
+c=127
+d=0" "$out"
+out=$("$THIS_SH" -c 'alias a1=x a2=y a3=z; unalias a1; alias; unalias -- a2; unalias nosuch-958; echo "st=$?"; alias; unalias -a; alias; echo end' 2>&1)
+assert_output_equals "unalias: one, after --, one there is not, and -a" "a3='z'
+a2='y'
+shell: unalias: nosuch-958: not found
+st=1
+a3='z'
+end" "$out"
+
+# ---- set -o: every option on and off, and one it does not know ----
+out=$("$THIS_SH" -c 'for o in errexit nounset xtrace noglob allexport verbose monitor notify noclobber pipefail; do (set -o $o; set +o $o; echo "$o $?") 2>&1 | tail -1; done; (set -o bogus); echo "b=$?"' 2>&1)
+assert_output_equals "set -o and +o take every option's name" "errexit 0
+nounset 0
+xtrace 0
+noglob 0
+allexport 0
+verbose 0
+monitor 0
+notify 0
+noclobber 0
+pipefail 0
+shell: set: bogus: invalid option
+b=2" "$out"
+assert_output_equals "set -o noexec runs nothing after it" "" "$("$THIS_SH" -c 'set -o noexec; echo ran' 2>&1)"
+
+# ---- trap -: an interactive shell gets its own handling back ----
+# It catches INT (a ^C stops the line it is on) and ignores QUIT and TERM;
+# with job control it ignores the stop signals too (Iteration 598).
+out=$(printf 'trap "echo x" INT; trap - INT; kill -INT $$\necho alive-int\ntrap "echo y" QUIT; trap - QUIT; kill -QUIT $$; echo alive-quit\ntrap "echo z" TERM; trap - TERM; kill -TERM $$; echo alive-term\n' | "$THIS_SH" -i 2>/dev/null)
+assert_output_equals "trap - in an interactive shell: INT, QUIT and TERM are the shell's again" "alive-int
+alive-quit
+alive-term" "$out"
+if command -v script >/dev/null 2>&1; then
+    printf 'trap "echo w" TSTP; trap - TSTP; kill -TSTP $$; echo alive-tstp; trap "" TTIN; trap - TTIN; kill -TTIN $$; echo alive-ttin\nexit\n' > "$t/stop.in"
+    out=$(script -qc "\"$THIS_SH\" -im < '$t/stop.in'" /dev/null 2>/dev/null | tr -d '\r' | grep -o 'alive-[a-z]*')
+    assert_output_equals "... and with job control, TSTP and TTIN" "alive-tstp
+alive-ttin" "$out"
+fi
+
+# ---- \$ where /proc says nothing: $USER decides, as before 417 ----
+out=$(printf 'forth "-1 EUID-V !"\nexit\n' | USER=someone PS1='[\$]' "$THIS_SH" -i 2>&1 | cut -c4-6)
+assert_output_equals "prompt \\\$ with no /proc: \$USER someone is \$" '[$]' "$out"
+out=$(printf 'forth "-1 EUID-V !"\nexit\n' | USER=root PS1='[\$]' "$THIS_SH" -i 2>&1 | cut -c4-6)
+assert_output_equals "... and root is #" '[#]' "$out"
+out=$(printf 'forth "-1 EUID-V !"\nunset USER\nexit\n' | PS1='[\$]' "$THIS_SH" -i 2>&1 | cut -c7-9)
+assert_output_equals "... and none is \$" '[$]' "$out"
+
+# ---- a backslash from an unquoted $(...) is live in a pattern, as bash's ----
+mkdir -p "$t/g/testdir.TMP" && touch "$t/g/testdir.TMP/name"
+out=$(cd "$t/g" && "$THIS_SH" -c "echo \$(printf '%s' 'test*.TMP/\\name'); echo \"\$(printf '%s' 'test*.TMP/\\name')\"; set -- 'test*.TMP/\\name'; echo \$@" 2>&1)
+assert_output_equals "a backslash from \$(...) or \$@ escapes in a pattern; quoted, it stays" "testdir.TMP/name
+test*.TMP/\\name
+testdir.TMP/name" "$out"
+
+# ---- $'...': every escape POSIX.1-2024 gives it (\c before the quote is
+# unspecified - mksh refuses it, bash keeps it - and is not tested) ----
+printf '%s\n' "printf '%s|' \$'a\\nb' \$'\\t' \$'\\r' \$'\\a\\b\\e\\f\\v' \$'\\\\\\'\\\"' \$'\\cA\\c\\\\' \$'\\x41\\x4' \$'\\xZ' \$'\\101\\7' \$'\\q'" > "$t/dsq.sh"
+assert_output_equals "\$'...': each escape, as bash makes it" \
+    " a \\n b | \\t | \\r | \\a \\b 033 \\f \\v | \\ ' \" | 001 034 | A 004 | \\ x Z | A \\a | \\ q |" "$("$THIS_SH" "$t/dsq.sh" | bytes)"
+
+# ---- export -p: values quoted to be read back, and a name with none ----
+out=$("$THIS_SH" -c 'x="a'"'"'b"; y='"'"'$h"i'"'"'; export x y; export z; export -p | grep -E " (x|y|z)(=|$)"')
+assert_output_equals "export -p quotes each value, and lists a name exported with none" "export x='a'\"'\"'b'
+export y='\$h\"i'
+export z" "$out"
+
+# ---- alias: a quote in a value, many of them, a name too long ----
+printf '%s\n' 'alias "q=it'"'"'s"; alias q; i=0; while [ $i -lt 40 ]; do alias "al$i=echo $i"; i=$((i+1)); done' \
+    'al39; alias al5; alias nosuch-958; echo "st=$?"' > "$t/al.sh"
+out=$("$THIS_SH" "$t/al.sh" 2>&1)   # an alias is used from the line after it, as in dash
+assert_output_equals "alias: quoted for reuse, the table grows past its first size, one not there" "q='it'\"'\"'s'
+39
+al5='echo 5'
+shell: alias: nosuch-958: not found
+st=1" "$out"
+long=$(head -c 300 /dev/zero | tr '\0' a)
+out=$("$THIS_SH" -c "alias $long=x; echo \"st=\$?\"" 2>&1)
+assert_output_equals "alias: a name too long is refused, 2" "alias: name too long
+st=2" "$out"
+
+# ---- umask and ulimit ----
+out=$("$THIS_SH" -c 'umask 0022; umask; umask -S; umask 027; umask; umask u=rwx,g=rx,o=; umask; umask a+w; umask; umask 999; echo "st=$?"; umask -S 022; umask' 2>&1)
+assert_output_equals "umask: octal, symbolic, -S, and a bad mask (dash's but for its wording)" "0022
+u=rwx,g=rx,o=rx
+0027
+0027
+0005
+shell: umask: bad mask
+st=1
+0022" "$out"
+out=$("$THIS_SH" -c 'n=$(ulimit -n); ulimit -Q; echo "a=$?"; ulimit -n abc; echo "b=$?"; ulimit -n 12x; echo "c=$?"; [ "$(ulimit -n)" = "$n" ] && echo unchanged; (ulimit -n 64; ulimit -n); (ulimit -f unlimited; ulimit -f)' 2>&1)
+assert_output_equals "ulimit: an option it lacks, a value that is not a number (958: taken as one), and one set" "ulimit: bad option
+a=2
+ulimit: abc: bad number
+b=2
+ulimit: 12x: bad number
+c=2
+unchanged
+64
+unlimited" "$out"
+
+# ---- the forth builtin's numbers, and U. ----
+if [ "$("$THIS_SH" -c 'printf %d 2147483648')" = 2147483648 ]; then max=18446744073709551615; else max=4294967295; fi
+out=$("$THIS_SH" -c "forth '-1 U. \$FF . #255 . -\$10 . CHAR A .'; forth '12xyz'" 2>&1)
+assert_output_equals "forth: U., \$ hex, # decimal, a sign, CHAR; and a word that is no number" "$max 255 255 -16 65 Undefined word 12xyz" "$out"
+
+report

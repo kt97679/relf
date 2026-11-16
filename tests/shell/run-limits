@@ -22,6 +22,12 @@ assert_output_contains "and the shell survives it"   "survived"           "$out"
   i=0; while [ $i -lt 1000 ]; do echo done; i=$((i+1)); done; } > "$t/nest.sh"
 out=$(timeout 60 "$THIS_SH" "$t/nest.sh" 2>&1)
 assert_output_equals "loops nest 1,000 deep" "deep" "$out"
+# . with arguments shares the functions' 1,000 levels (958: the data stack,
+# 256 KB then, ended it at 793 with "data stack overflow" first)
+printf 'n=$((n + 1)); . "$0" x\n' > "$t/dot.sh"
+out=$(timeout 60 "$THIS_SH" -c 'n=0; . "$0" x; echo "st=$? n=$n"' "$t/dot.sh" 2>&1)
+assert_output_equals ". nests 1,000 levels, and the next is diagnosed" "shell: .: nested too deep
+st=1 n=1000" "$out"
 
 # the shell-variable table held 32 and reported the 33rd (Iteration 90);
 # since Iteration 252 it grows, so 40 variables are simply 40 variables

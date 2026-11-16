@@ -223,12 +223,14 @@ the account of what each gained and cost.
    cd16sim, lexex, fcp, siev, bubble, matrix, fib) as Forth workloads
    beside bench.4.
 
-13. **Deep nesting and recursion stop early** - *done in 956*: a function
-   (or `.` with arguments) nests 1,000 levels, as dash allows, and the
-   1,001st fails with "function recursion too deep", status 1, the script
-   going on; loops nest past 3,000 (the data stack ends them, cleanly).
-   The engines' return stack is 1 MB, the native kernel's too; untouched,
-   it is resident in nothing. rill3's R-DEEP? left at its 60,000 bytes.
+13. **Deep nesting and recursion stop early** - *done in 956 and 958*: a
+   function nests 1,000 levels, as dash allows, and the 1,001st fails with
+   "function recursion too deep", status 1, the script going on; `.` with
+   arguments the same 1,000 ("nested too deep" - 958: it reached only 793,
+   when the data stack ran out first); loops nest past 6,000. The engines'
+   return stack is 1 MB and their data stack 512 KB, the native kernel's
+   too; untouched, they are resident in nothing. rill3's R-DEEP? left at
+   its 60,000 bytes.
    What 721 found:
    tests/shell/run-nesting goes 8 deep (256 iterations) and 60 wide; no
    test goes deeper. Probed: `for` loops nested N deep, one iteration
@@ -302,6 +304,28 @@ the account of what each gained and cost.
    across native frames, the model checked by the hybrid's own A/B. A48:
    portable by design (NATIVE.md 18.8) - a hybrid image stays a CV8 image,
    its native code per architecture beside the bodies.
+
+18. **Test coverage** (958, tools/coverage.py over every suite): 95 % of
+   the shell image's instructions run - 31,089 of 32,609, from 92 % - and
+   of its 1,167 colon words 60 are never entered: 58 inlined into callers
+   that run, CMP-ESCAPED? (completion of a word with a backslash in it,
+   through the pty) and INT-NOW (a ^C landing between the check and a
+   loaded builtin's start: a race, intrfuzz's). 1,354 instructions inside
+   words that run are not reached, by kind: the line editor and completion
+   (edit.4, the pty suite's to extend); job control at a terminal (fg,
+   job reports, stopped jobs); interrupt races (RUN-CAUGHT, WAIT-SIGNAL-
+   CASE, INT-PENDING-TAKE); failures of the system (a write or read that
+   fails, ALLOCATE refused, an exec that fails, no /proc/self/cmdline);
+   and expansion and parser internals (COPY-LITERAL, EW-ENTRY, EMIT-RUN,
+   SCAN-WORD) - reachable, each needing a script found by reading its
+   branch. `tools/coverage.py --show WORD` marks what is missing,
+   `--probe SCRIPT WORD` what a candidate adds. Known differences kept:
+   `cd //` is `/` (dash and bash keep `//`; POSIX leaves it to the
+   system); `$'\c'` before the closing quote is refused, as mksh does
+   (bash keeps `\c`; unspecified); with no trap word registered - the
+   bare kernel - relfasm64 exits 70 without cv8.c's message (the message
+   is TRAPPED's, by design), and the native kernel's ?STACK says "Stack
+   error" first.
 
 ## The second end state, reached (Iteration 548)
 

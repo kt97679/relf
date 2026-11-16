@@ -7,9 +7,13 @@ self-hosting (docs/GOALS.md). What it is today:
 - **Two engines** that run the same byte-coded Forth image: `cv8.c`, a
   small virtual machine in portable C (33 KB on x86-64, static, with no
   C library: `engine/rt-linux.c`), and
-  `relfasm64`, 18,400 bytes of x86-64 on raw system calls, no libc -
+  `relfasm64`, 18,512 bytes of x86-64 on raw system calls, no libc -
   **assembled by relf itself**, from `engine/relfasm64.4`, with an
-  assembler written in Forth (`forth/asm64.4`). It reproduces itself.
+  assembler written in Forth (`forth/asm64.4`). It reproduces itself,
+  and from it alone - no compiler, assembler or linker, POSIX utilities
+  on the PATH - relf rebuilds the engine, both kernels, the shell's and
+  rill3's images and the shell, each byte for byte; relfsh can run that
+  build itself (`make selfhost`).
 - **A Forth system that compiles itself**: `cross.4`, running on
   `kernel64.img`, compiles `kernel.4` into a new `kernel64.img`, byte for
   byte. gforth builds the same bytes from the same source.
@@ -17,9 +21,14 @@ self-hosting (docs/GOALS.md). What it is today:
   `edit.4` - with job control, a line editor with history, and `$'...'`
   and `set -o pipefail` from POSIX.1-2024. On yash's and busybox's test
   suites it passes more cases than dash does (docs/DASH.md). The whole
-  shell is one static file of 137,299 bytes on the assembly engine, and
+  shell is one static file of 137,643 bytes on the assembly engine, and
   `forth` drops from it into the live system it is written in: every
   word, compiler included, is there to extend it.
+- **A native back end** (docs/NATIVE.md): the same Forth compiled to
+  x86-64 code rather than bytecode. `make relfsh-native` builds the
+  shell that way, one static file of 409,184 bytes compiled to x86-64,
+  which does the shell's own work about nine times as fast as on the
+  bytecode engines.
 - **A shell language of its own, rill3** (the command model; docs/TUTORIAL.md, then docs/REFERENCE.md) - `bin/cm script.cm`,
   or its prompt (`make rill3-native` builds it as one native x86-64 file): commands whose arguments and pipes carry values (texts,
   numbers, lists, maps, blocks) as well as bytes, words read as Forth reads
@@ -84,8 +93,8 @@ assembly engine is x86-64 only.
 
 **No C library.** On Linux on x86-64, i386, AArch64 and RISC-V 64 the
 engine is linked with `engine/rt-linux.c`, what it needs of a C library
-over raw system calls: static, 288 KB resident at start rather than the
-library's 1.9 MB, at the same speed. `make ENGINE_RT=libc` links the
+over raw system calls: static, about 280 KB resident at start rather than
+the library's 1.9 MB, at the same speed. `make ENGINE_RT=libc` links the
 library instead, and is what any other system gets. The one difference:
 `~name` comes from `/etc/passwd` alone, not through NSS.
 
@@ -97,6 +106,7 @@ expansion are byte-based, as in the C locale.
 
     engine/     the engines
       cv8.c             the C engine
+      rt-linux.c        what it needs of a C library, on raw system calls
       relfasm64.4       the x86-64 engine, as Forth source relf assembles
       engine-macros.4   its macros
       opcodes.tab       the opcode map's one source: the engines' tables
@@ -110,6 +120,8 @@ expansion are byte-based, as in the C locale.
       pool.4, shadow.4  heap buffers; locals
       save-system.4     saving an image
       asm64.4           an x86-64 assembler, in Forth
+      safety.4          the shell's guards: stack traps, include depth
+      native*.4         the native back end: Forth to x86-64 code
     shell/      the shell
       shell.4           commands, expansion, builtins
       tree.4            the parser and the executor
@@ -120,6 +132,11 @@ expansion are byte-based, as in the C locale.
     examples/   the shell extended from inside, with `forth`: builtins,
                 a prompt hook, network servers; fib.4
     cm/         the command model: its front end (cmc.4), runtime and prompt (docs/REFERENCE.md)
+    rill/       rt.4, the runtime the command model is built on
+    lib/        rill3's script library (args.cm, json.cm)
+    bin/        cm, which runs a rill3 script or its prompt
+    port/       relfsh on Forths that are not relf (gforth, the lab's
+                designs), and the measurements made with them
     docs/       every document but this one
     prompts/    reusable prompts for this kind of work (INDEX.md)
 
@@ -139,6 +156,8 @@ this README are in `docs/`.
 | `CHECKING.md` | what to run after pulling, what each suite is for, and what its failures mean |
 | `CV8.md` | the engine and its image format: the reference, and the reasons |
 | `ASM-ENGINE.md` | the x86-64 engine on raw syscalls |
+| `CV8-LEDGER.md` | what each change to CV8 gained and what it cost, measured |
+| `NATIVE.md` | the native back end: Forth compiled to x86-64, the native shell, and the hybrid tried and stopped (18) |
 | `SELF-HOSTING.md` | how relf came to assemble its own engine: the plan, milestones M0-M5 |
 | `DASH.md` | this shell against dash, how dash runs a script, and what was taken from it |
 | `PERFORMANCE.md` | where the shell's time goes, and the standing questions about the machine |
@@ -150,6 +169,13 @@ this README are in `docs/`.
 | `SHELL-LANGUAGE.md` | a shell language of our own: where the POSIX one's cost lives, and the design |
 | `TESTING-IDEAS.md` | kinds of tests beyond the present suites |
 | `ANNOUNCEMENT.md` | the facts for an announcement, and research on its audience |
+| `ARTICLE-forthhub.md`, `ARTICLE-habr.md` | the two published articles, in English and Russian |
+| `RELFSH-MEMORY.md` | whether relfsh gives back the memory it no longer needs, measured |
+| `TUTORIAL.md` | rill3 in an hour, for a first script |
+| `BYTECODE.md` | rill3 compiled to bytecode directly (923-926) |
+| `SIMILAR-PROJECTS.md` | projects like kbool, and what rill3 may take from them |
+| `SYNTAX-STUDY.md`, `SYNTAX-GENES.md` | how rill3's syntax was chosen: a study, and syntax as genes searched |
+| `FORTH-SCRIPTING.md`, `PILOT-NATIVE-BY-SOURCE.md` | records of the languages before rill3 (Rill, Rill 2, retired at 871); the files they name are in git's history |
 
 `tests/from-others/CATALOGUE.md` lists behaviours learned from other
 shells' test suites.

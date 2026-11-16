@@ -26,7 +26,7 @@ int_throw L:                             \ edi: the signal; rdx: the ucontext
   rax [ rdx 168 ] mov,                   \ rip, where the signal landed
   rcx alloc_block ORG @ - N-START @ + # mov,  rax rcx cmp,  2 F jb,
   rcx alloc_end ORG @ - N-START @ + # mov,  rax rcx cmp,  1 F jb,
-  2 L:  r9 -28 # mov,  n_trap_code jmp,   \ the traps' route, as the engine's (571)
+  2 L:  r9 -28 # mov,  NEAR n_trap_code jmp,   \ the traps' route, as the engine's (571); NEAR since 958's sent signals
   1 L:  [ sig_flag 2 + ] byte-ptr 1 # mov,  ret,
 \ The traps (639): the asm engine's trap_handler - SIGFPE -10; SIGSEGV or
 \ SIGBUS -3 at the data stack's floor guard, -5 at the guard between the
@@ -37,7 +37,15 @@ int_throw L:                             \ edi: the signal; rdx: the ucontext
 \ The ucontext's saved registers: r15 96 (rbp 120 until 697), rax 144, rsp 160, rip 168.
 N-MARK trap_handler
 trap_handler L:                          \ edi: the signal; rsi: the siginfo; rdx: the ucontext
-  r9 -9 # mov,
+  \ (958) a signal sent, not a fault - si_code 0 or less: as the engines',
+  \ its default action back and the signal again, which ends the process
+  rax [ rsi 8 ] dword-ptr movsxd,  rax rax test,  6 F jg,
+  rsp 32 # sub,  [ rsp ] qword-ptr 0 # mov,  [ rsp 8 ] qword-ptr 0 # mov,
+  [ rsp 16 ] qword-ptr 0 # mov,  [ rsp 24 ] qword-ptr 0 # mov,
+  rsi rsp mov,  edx edx xor,  r10d 8 # mov,  eax 13 # mov,  syscall,   \ rt_sigaction: SIG_DFL
+  rsp 32 # add,  eax 39 # mov,  syscall,                                \ getpid
+  rsi rdi mov,  rdi rax mov,  eax 62 # mov,  syscall,  ret,             \ kill
+  6 L:  r9 -9 # mov,
   edi 8 # cmp,  3 F jne,  r9 -10 # mov,  1 F jmp,
   3 L:  rax [ rsi 16 ] mov,  rcx N-DGUARD # mov,  rax rcx sub,  rax N-PAGE # cmp,  4 F jae,
   r9 -3 # mov,  1 F jmp,

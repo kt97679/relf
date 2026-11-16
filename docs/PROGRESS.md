@@ -981,6 +981,7 @@ do not trust the absence of a line below.
 - 955 — relfsh at 932 (before the lab's mechanisms) against 954: the bytecode shell 20 % faster at its own work, 5-8 % on command-heavy scripts, the C engine 13 % smaller and an eighth as resident, the native shell unchanged; relfsh's read already a block and a seek back (dash reads a byte at a time); recursion still stops at 32 levels (GOALS.md 13)
 - 956 — functions nest 1,000 levels, as dash's (32 until now): MAX-POS-PARAM-DEPTH 1,000, the return stack 1 MB in both engines and the native kernel (64 KB; a level is 352-792 bytes); no file larger, no memory more; loops nest 3,000 deep; run-limits 900 run and 1,100 diagnosed; rill3's R-DEEP? left as it was
 - 957 — the hybrid's engine code removed (952's NATIVE, NRET, CODE-MAP, CODE-SEAL, hybrid.4): relfasm64 18,400 bytes again, relfshasm64 137,299, the kernels as at 951 byte for byte; NATIVE.md 18, the tools and reports kept as the record
+- 958 — the project checked before rill3: relf builds itself with no compiler, assembler, linker, make or Python, 10 of 10, run by relfsh too (tools/selfhost-check.sh, make selfhost); README, make help and the docs brought up to date; coverage 92 % to 95 % (tools/coverage.py rewritten; tests/kernel-words.fth, run-coverage-958); ten defects fixed - kill -SEGV $$ taken for a fault, signals 16 and 26-31 unnamed, printf overflow wrapping, test -t missing, -O and -G false, unknown test operators silent, ulimit taking any word, set -x dropping prefix assignments, `.` stopping at 793, getopts silent
 
 ### Not tied to an iteration
 

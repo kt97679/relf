@@ -189,15 +189,16 @@ static inline UNS64 LD32(UNS64 a) {
  *  which is why the symptom recorded above - "Undefined word" against
  *  an empty name - points nowhere near the cause.
  *
- *  256KB is 32768 cells at 8-byte width. The floor it puts under the
- *  data stack sits at MEMSIZE-RSTACK_BYTES-DSTACK_BYTES = 720,896
- *  bytes from base, and the largest image this project builds (the
- *  x86-64 prebuilt shell) ends at 206,024 - so the check fires with
- *  half a megabyte still between the stack and the dictionary, i.e.
- *  strictly BEFORE any corruption rather than after it. This reserves
- *  nothing and moves nothing: dsp and rp start exactly where they
- *  always did, so S0/R0 and every saved image are unaffected.  */
-#define DSTACK_BYTES 262144
+ *  512 KB since Iteration 958, 256 KB before: a `.` with arguments
+ *  takes about 330 bytes of it a level, and stopped at 793 with "data
+ *  stack overflow" before its 1,000-level guard (shared with functions,
+ *  956) could fire. The floor it puts under the data stack sits at
+ *  MEMSIZE-RSTACK_BYTES-DSTACK_BYTES = 2.5 MB from base, and the largest
+ *  image this project builds ends near 140 KB - so the check fires with
+ *  megabytes still between the stack and the dictionary, i.e. strictly
+ *  BEFORE any corruption rather than after it. Untouched, it costs no
+ *  memory: its pages are made resident only as it is used.  */
+#define DSTACK_BYTES 524288
 
 /*
  *  Macroses for memory access. Plain native access, both cell- and
@@ -427,16 +428,33 @@ static void trap_restart(INT64 code) {
     g_trap_code = code;
     siglongjmp(g_trap_env, 1);
 }
-static void fpe_trap(int sig) {
-    (void)sig;
+/*  A SIGFPE, SIGSEGV or SIGBUS that was sent - kill(2), sigqueue: a
+ *  si_code of 0 or less - is not a fault (Iteration 958): its default
+ *  action back and the signal again, which waits, blocked, until the
+ *  handler returns, and then ends the process as it would any other
+ *  shell's. `kill -SEGV $$` said "invalid memory address", status 1,
+ *  where dash dies of the signal (139). A fault's si_code is above 0 -
+ *  SI_KERNEL's too. The handlers are cold: compiled for size, not with
+ *  the dispatch's aligned labels, which made them 370 bytes larger.  */
+static struct sigaction g_sig_dfl;   /* all zero: SIG_DFL, no flags, no mask */
+static __attribute__((noinline, cold)) int sent_signal(int sig, const siginfo_t *si) {
+    if (si->si_code > 0) return 0;
+    sigaction(sig, &g_sig_dfl, (struct sigaction *)0);
+    kill(getpid(), sig);
+    return 1;
+}
+#if !GUARD
+static __attribute__((cold)) void fpe_trap(int sig, siginfo_t *si, void *uc) {
+    (void)uc;
+    if (sent_signal(sig, si)) return;
     if (g_trap_xt) trap_restart(-10);
     write_str(2, "relf: division by zero\n");
     term_restore();
     _exit(70);
 }
-#if !GUARD
-static void segv_trap(int sig) {
-    (void)sig;
+static __attribute__((cold)) void segv_trap(int sig, siginfo_t *si, void *uc) {
+    (void)uc;
+    if (sent_signal(sig, si)) return;
     if (g_trap_xt) trap_restart(-9);
     write_str(2, "relf: segmentation fault\n");
     term_restore();
@@ -467,19 +485,23 @@ static UNS64 g_dguard, g_rguard, g_page;
  *  data stack's top lies just under the return stack's guard, so that
  *  page also catches a data stack UNDERFLOW past its top: the VM keeps
  *  its pointers in locals, so this cannot tell which, and says both.  */
-static void guard_trap(int sig, siginfo_t *si, void *uc) {
+/*  SIGFPE comes here too since 958 - one handler for the three traps, as
+ *  relfasm64 has: a zero divisor is -10, Forth 2012's code.  */
+static __attribute__((cold)) void guard_trap(int sig, siginfo_t *si, void *uc) {
     UNS64 a = (UNS64)(uintptr_t)si->si_addr;
-    (void)sig; (void)uc;
-    if (a >= g_dguard && a < g_dguard + g_page) {
-        if (g_trap_xt) trap_restart(-3);
-        write_str(2, "relf: data stack overflow\n");
+    INT64 code = -9;                              /* 556: a THROW, if it can */
+    const char *msg = "relf: segmentation fault (not a stack guard)\n";
+    (void)uc;
+    if (sent_signal(sig, si)) return;
+    if (sig == SIGFPE) {
+        code = -10;  msg = "relf: division by zero\n";
+    } else if (a >= g_dguard && a < g_dguard + g_page) {
+        code = -3;   msg = "relf: data stack overflow\n";
     } else if (a >= g_rguard && a < g_rguard + g_page) {
-        if (g_trap_xt) trap_restart(-5);
-        write_str(2, "relf: return stack overflow or data stack underflow\n");
-    } else {
-        if (g_trap_xt) trap_restart(-9);     /* 556: a THROW, if it can */
-        write_str(2, "relf: segmentation fault (not a stack guard)\n");
+        code = -5;   msg = "relf: return stack overflow or data stack underflow\n";
     }
+    if (g_trap_xt) trap_restart(code);
+    write_str(2, msg);
     term_restore();
     _exit(70);
 }
@@ -501,6 +523,7 @@ static void install_guards(UNS8 *b) {
     sa.sa_flags = SA_SIGINFO;
     sigaction(SIGSEGV, &sa, (struct sigaction *)0);
     sigaction(SIGBUS, &sa, (struct sigaction *)0);
+    sigaction(SIGFPE, &sa, (struct sigaction *)0);
 }
 #endif
 
@@ -1577,8 +1600,14 @@ L_filemode: SPILL(); { /* c-addr follow? --- mode : the file's st_mode, or
     int r = DS0 ? stat(path, &st) : lstat(path, &st);
     /* follow? 1 and 2 (Iteration 573): the inode and the device, for
      * "the same file" - PWD at startup names the current directory */
-    DS1 = r ? 0 : DS0 == 1 ? (UNS64)st.st_ino
-                : DS0 == 2 ? (UNS64)st.st_dev : (UNS64)st.st_mode;
+    /* follow? 3 and 4 (Iteration 958): the owner and the group, for
+     * test -O and -G - read only once the file is known to exist, since
+     * 0, the failure, is root's too */
+    {   UNS64 v[5];
+        v[0] = (UNS64)st.st_mode;  v[1] = (UNS64)st.st_ino;  v[2] = (UNS64)st.st_dev;
+        v[3] = (UNS64)st.st_uid;   v[4] = (UNS64)st.st_gid;
+        DS1 = r ? 0 : v[DS0 < 5 ? DS0 : 0];   /* lstat's 0 and stat's -1: the mode */
+    }
     dsp += CELL_BYTES;
     FILLNEXT();
 }
@@ -1914,17 +1943,18 @@ int main(int argc, char **argv) {
     g_rp_limit  = g_ip + MEMSIZE - RSTACK_BYTES;
     g_dsp_limit = g_ip + MEMSIZE - RSTACK_BYTES - DSTACK_BYTES;
     CELL(g_dsp) = g_ip;
-    {   struct sigaction sa;
+#if !GUARD
+    {   struct sigaction sa;               /* with GUARD, install_guards' one handler (958) */
         memset(&sa, 0, sizeof sa);
         sigemptyset(&sa.sa_mask);
-        sa.sa_handler = fpe_trap;
+        sa.sa_sigaction = fpe_trap;
+        sa.sa_flags = SA_SIGINFO;                  /* si_code: sent or not (958) */
         sigaction(SIGFPE, &sa, (struct sigaction *)0);
-#if !GUARD
-        sa.sa_handler = segv_trap;
+        sa.sa_sigaction = segv_trap;
         sigaction(SIGSEGV, &sa, (struct sigaction *)0);
         sigaction(SIGBUS, &sa, (struct sigaction *)0);
-#endif
     }
+#endif
     /*  A trap comes back here (556): the VM again, at the trap word, with
      *  the code on top - and both stack pointers 1 KB above their floors,
      *  not at their tops as at the start. The stacks grow down from the

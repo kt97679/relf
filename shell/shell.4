@@ -2417,23 +2417,18 @@ VARIABLE CMDSUB-RAN?     \ ... and whether one ran in this command
 VARIABLE CMDSUB-NODE   \ the parsed subtree the child is to run, or 0
 DEFER RUN-CMDSUB-JOB-CALL
 
-: SIGNAL-TEXT ( n --- c-addr u | 0 0 )   \ how the references name a signal
-  DUP  1 = IF DROP S" Hangup" EXIT THEN
-  DUP  3 = IF DROP S" Quit" EXIT THEN
-  DUP  4 = IF DROP S" Illegal instruction" EXIT THEN
-  DUP  5 = IF DROP S" Trace/breakpoint trap" EXIT THEN
-  DUP  6 = IF DROP S" Aborted" EXIT THEN
-  DUP  7 = IF DROP S" Bus error" EXIT THEN
-  DUP  8 = IF DROP S" Floating point exception" EXIT THEN
-  DUP  9 = IF DROP S" Killed" EXIT THEN
-  DUP 10 = IF DROP S" User defined signal 1" EXIT THEN
-  DUP 11 = IF DROP S" Segmentation fault" EXIT THEN
-  DUP 12 = IF DROP S" User defined signal 2" EXIT THEN
-  DUP 14 = IF DROP S" Alarm clock" EXIT THEN
-  DUP 15 = IF DROP S" Terminated" EXIT THEN
-  DUP 24 = IF DROP S" CPU time limit exceeded" EXIT THEN
-  DUP 25 = IF DROP S" File size limit exceeded" EXIT THEN
-  DROP 0 0 ;
+: NTH-FIELD ( c-addr u n --- c-addr' u' )   \ the n-th |-separated field, 0 the first
+  0 ?DO 124 SCAN 1- SWAP 1+ SWAP LOOP  2DUP 124 SCAN NIP - ;   \ past each |
+
+\ How the references name a signal that ends a process - the C library's
+\ names, as dash, bash, mksh and busybox print them - one field each; an
+\ empty field, one with no name. A table since 958: a chain of compares
+\ until then, and 16 and 26-31 said "Signal 26" where they name them.
+: SIGNAL-TEXT ( n --- c-addr u | 0 0 )
+  DUP 0 32 WITHIN 0= IF DROP 0 0 EXIT THEN
+  DUP 16 < IF S" |Hangup||Quit|Illegal instruction|Trace/breakpoint trap|Aborted|Bus error|Floating point exception|Killed|User defined signal 1|Segmentation fault|User defined signal 2||Alarm clock|Terminated"
+  ELSE 16 - S" Stack fault||||||||CPU time limit exceeded|File size limit exceeded|Virtual timer expired|Profiling timer expired||I/O possible|Power failure|Bad system call" THEN
+  ROT NTH-FIELD  DUP 0= IF 2DROP 0 0 THEN ;
 
 VARIABLE RSD-SIG
 : REPORT-SIGNAL-DEATH ( raw --- raw )
@@ -4134,6 +4129,40 @@ VARIABLE TEST-U-OPERAND
 : LINK-KIND-IS ( c-addr --- kind-bits )   \ ... without following a link
   0 FILE-MODE 61440 AND ;
 
+\ The shell's effective uid and gid (Iteration 417 for the prompt's \$,
+\ 958 for test -O and -G). No engine primitive gives them, and $USER is
+\ only what someone set: `sudo -E` keeps it, `su` may not change it.
+\ Linux says what is true in /proc/self/status - "Uid:" and "Gid:", each
+\ the real, EFFECTIVE, saved and filesystem ids - and the shell cannot
+\ change its own, so each is read once: -2 until then, -1 with no /proc.
+2048 BUFFER: PROC-STATUS          \ /proc/self/status, while it is read
+VARIABLE PROC-SN
+
+: PROC-NUMBER ( i --- i' n )   \ the decimal number at PROC-STATUS + i, after blanks
+  BEGIN DUP PROC-SN @ < IF DUP PROC-STATUS + C@ DUP 32 = SWAP 9 = OR ELSE 0 THEN WHILE 1+ REPEAT
+  0 SWAP
+  BEGIN DUP PROC-SN @ < IF DUP PROC-STATUS + C@ 48 58 WITHIN ELSE 0 THEN WHILE
+    DUP PROC-STATUS + C@ 48 -  ROT 10 * +  SWAP 1+
+  REPEAT
+  SWAP ;
+
+: PROC-ID ( name --- id )   \ name: "Uid:" or "Gid:"; the line's second field, or -1
+  S" /proc/self/status" R/O OPEN-FILE IF 2DROP -1 EXIT THEN
+  >R  PROC-STATUS 2047 R@ READ-FILE DROP  PROC-SN !  R> CLOSE-FILE DROP
+  PROC-SN @ 4 - 0 MAX 0 ?DO
+    PROC-STATUS I + 4  2 PICK 4 COMPARE 0= IF
+      DROP I 4 + PROC-NUMBER DROP  PROC-NUMBER NIP  UNLOOP EXIT
+    THEN
+  LOOP
+  DROP -1 ;
+
+VARIABLE EUID-V   -2 EUID-V !
+VARIABLE EGID-V   -2 EGID-V !
+: EUID ( --- uid | -1 )   EUID-V @ -2 = IF S" Uid:" DROP PROC-ID EUID-V ! THEN  EUID-V @ ;
+: EGID ( --- gid | -1 )   EGID-V @ -2 = IF S" Gid:" DROP PROC-ID EGID-V ! THEN  EGID-V @ ;
+: TEST-FILE-ID ( c-addr which --- id | -2 )   \ which: 3 the owner, 4 the group
+  OVER TEST-FILE-EXISTS? IF FILE-MODE ELSE 2DROP -2 THEN ;
+
 : TEST-UNARY? ( op-addr operand-addr --- f )
   \ -f/-d are approximated as "does this path exist at all" (same as
   \ -e) - this kernel has no real stat/access primitive to actually
@@ -4166,6 +4195,16 @@ VARIABLE TEST-U-OPERAND
   S" -u" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ -1 FILE-MODE 2048 AND 0<> EXIT THEN
   S" -g" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ -1 FILE-MODE 1024 AND 0<> EXIT THEN
   S" -k" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ -1 FILE-MODE 512  AND 0<> EXIT THEN
+  \ -t fd: open on a terminal (XCU test). Missing until 958: `[ -t 1 ]`
+  \ was false even at a terminal. Its operand is read as -eq's are.
+  S" -t" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ TEST-PARSE-INT ISATTY 0<> EXIT THEN
+  S" -O" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ 3 TEST-FILE-ID EUID = EXIT THEN   \ 958, as dash's
+  S" -G" TEST-U-OP @ STR0= IF TEST-U-OPERAND @ 4 TEST-FILE-ID EGID = EXIT THEN
+  \ An operator it does not know is an error, 2, as in dash and bash; it
+  \ was false, silently, until 958 - `test -O f` said 1 of a file the
+  \ shell's own user owns.
+  S" test: " ERR-TYPE TEST-U-OP @ ERR-CSTR S" : unknown operator" ERR-TYPE ERR-NL
+  -1 TEST-NUM-BAD? !
   0 ;
 
 VARIABLE TP-I          \ the cursor, an index from TEST-START
@@ -5428,7 +5467,10 @@ CREATE GO-CHARBUF 2 ALLOT
   \ script can reset it; GO-CPOS tracks the position *within* a
   \ clustered argument like "-abc" and is reset whenever OPTIND
   \ changes underneath us, which is how "OPTIND=1" restarts parsing.
-  ARGC @ 3 < IF 2 LAST-STATUS ! EXIT THEN
+  ARGC @ 3 < IF   \ said since 958, as kill and printf say theirs, and dash and bash
+    S" shell: getopts: usage: getopts optstring name [arg...]" ERR-TYPE ERR-NL
+    2 LAST-STATUS ! EXIT
+  THEN
   1 ARGV@ GO-OPTS !
   2 ARGV@ GO-NAME !
   \ `getopts optstring name [arg...]`: the operands stand in for the
@@ -5649,10 +5691,20 @@ VARIABLE UL-HARD-CUR
     S" ulimit: cannot set limit" ERR-TYPE ERR-NL 1 LAST-STATUS !
   THEN ;
 
-: UL-PARSE-VALUE ( c-addr --- v )
+: UL-DIGITS? ( c-addr --- f )   \ decimal digits, and at least one
+  DUP C@ 0= IF DROP 0 EXIT THEN
+  BEGIN DUP C@ ?DUP WHILE 48 58 WITHIN 0= IF DROP 0 EXIT THEN 1+ REPEAT
+  DROP -1 ;
+: UL-PARSE-VALUE ( c-addr --- v -1 | 0 )   \ "unlimited" or digits; else said, 2
   \ STR= takes all four: keep a copy of the address for the number path
-  DUP  DUP CSTRLEN S" unlimited" STR= IF DROP -1 EXIT THEN
-  DUP CSTRLEN PARSE-DECIMAL UL-SCALE @ * ;
+  DUP  DUP CSTRLEN S" unlimited" STR= IF DROP -1 -1 EXIT THEN
+  \ Anything else was taken as far as it went (958: `ulimit -n abc` set
+  \ the limit to whatever PARSE-DECIMAL made of it, and said 0); dash
+  \ says "bad number", 2.
+  DUP UL-DIGITS? 0= IF
+    S" ulimit: " ERR-TYPE ERR-CSTR S" : bad number" ERR-TYPE ERR-NL  2 LAST-STATUS !  0 EXIT
+  THEN
+  DUP CSTRLEN PARSE-DECIMAL UL-SCALE @ * -1 ;
 
 : DO-ULIMIT ( --- )
   0 LAST-STATUS !
@@ -5672,7 +5724,7 @@ VARIABLE UL-HARD-CUR
     UL-I @ 1+ UL-I !
   REPEAT
   UL-I @ ARGC @ < IF
-    UL-I @ ARGV@ UL-PARSE-VALUE UL-APPLY
+    UL-I @ ARGV@ UL-PARSE-VALUE IF UL-APPLY THEN
   ELSE
     UL-REPORT
   THEN ;
@@ -5830,6 +5882,28 @@ VARIABLE PF#
 
 VARIABLE PN-A
 VARIABLE PN-U
+VARIABLE PN-SIGNED?   -1 PN-SIGNED? !   \ %d %i and widths; 0 for %u %o %x %X
+VARIABLE PN-OVER?                         \ the digits went past the cell
+: PN-FITS? ( v d base --- f )   \ does v*base+d stay inside the cell, unsigned
+  >R  -1 SWAP -  0 R> UM/MOD SWAP DROP  U> 0= ;
+: PN-RANGE ( c-addr u --- )   \ dash's words for it, and its status
+  S" printf: " ERR-TYPE ERR-TYPE S" : Numerical result out of range" ERR-TYPE ERR-NL
+  1 PF-STATUS ! ;
+: PN-RESULT ( magnitude sign --- n )
+  \ A number past the cell is the cell's limit, said, and status 1, as
+  \ dash's strtoimax and strtoumax have it (958: it wrapped silently -
+  \ 99999999999999999999 printed 7766279631452241919). Signed: the
+  \ largest positive, or the most negative; unsigned: the largest, and a
+  \ minus sign wraps it as strtoumax's does (%u -1 is the largest).
+  PN-SIGNED? @ 0= IF
+    PN-OVER? @ IF 2DROP PN-A @ PN-U @ PN-RANGE -1 EXIT THEN  * EXIT
+  THEN
+  OVER -1 1 RSHIFT U> PN-OVER? @ OR IF            \ past the largest positive
+    DUP 0< IF OVER -1 1 RSHIFT 1+ = PN-OVER? @ 0= AND IF 2DROP -1 1 RSHIFT 1+ EXIT THEN THEN
+    PN-A @ PN-U @ PN-RANGE
+    0< IF DROP -1 1 RSHIFT 1+ ELSE DROP -1 1 RSHIFT THEN EXIT
+  THEN
+  * ;
 : PARSE-PF-NUMBER ( c-addr u --- n )
   \ decimal, 0NNN octal, 0xNN hex, or 'c / "c for a character's code
   2DUP PN-U ! PN-A !
@@ -5845,16 +5919,19 @@ VARIABLE PN-U
   DUP 1 > IF OVER C@ 48 = IF
     OVER 1+ C@ 32 OR 120 = IF R> DROP 16 >R 2 /STRING ELSE R> DROP 8 >R 1 /STRING THEN
   THEN THEN
+  0 PN-OVER? !
   0 ROT ROT                                  ( value c-addr u )
   BEGIN DUP WHILE
     OVER C@ HEX-DIGIT DUP 0< OVER R@ < 0= OR IF
       DROP PN-A @ PN-U @ PF-BAD-NUMBER
       2DROP R> DROP R> * EXIT
     THEN
-    >R ROT R> SWAP R@ * + ROT ROT
+    >R ROT R> SWAP                           ( c-addr u digit value )
+    2DUP SWAP R@ PN-FITS? 0= IF -1 PN-OVER? ! THEN
+    R@ * +  ROT ROT
     1 /STRING
   REPEAT
-  2DROP R> DROP R> * ;
+  2DROP R> DROP R> PN-RESULT ;
 
 : PF-DIGITS ( i --- i' n )   \ a decimal number in the format
   0 BEGIN OVER EC DUP 48 - 10 U< WHILE 48 - SWAP 10 * + SWAP 1+ SWAP REPEAT
@@ -5887,6 +5964,7 @@ VARIABLE PN-U
   PF-BUF PF# @ PF-PAD ;
 
 : PF-NUMBER-ARG ( --- n )   NEXT-ARG PARSE-PF-NUMBER ;
+: PF-UNUMBER-ARG ( --- u )   0 PN-SIGNED? !  PF-NUMBER-ARG  -1 PN-SIGNED? ! ;
 
 : PF-CONVERSION ( i --- i' )   \ i is at a %
   DUP PF-START !
@@ -5925,10 +6003,10 @@ VARIABLE PN-U
     NEXT-ARG ?DUP IF 1 MIN ELSE DROP NUL-BYTE 1 THEN PF-PAD 1+ EXIT
   THEN
   DUP 100 = OVER 105 = OR IF DROP  PF-NUMBER-ARG 10 -1 0 PF-INTEGER 1+ EXIT THEN
-  DUP 117 = IF DROP  PF-NUMBER-ARG 10 0 0 PF-INTEGER 1+ EXIT THEN
-  DUP 111 = IF DROP  PF-NUMBER-ARG 8 0 0 PF-INTEGER 1+ EXIT THEN
-  DUP 120 = IF DROP  PF-NUMBER-ARG 16 0 0 PF-INTEGER 1+ EXIT THEN
-  DUP 88 = IF DROP  PF-NUMBER-ARG 16 0 -1 PF-INTEGER 1+ EXIT THEN
+  DUP 117 = IF DROP  PF-UNUMBER-ARG 10 0 0 PF-INTEGER 1+ EXIT THEN
+  DUP 111 = IF DROP  PF-UNUMBER-ARG 8 0 0 PF-INTEGER 1+ EXIT THEN
+  DUP 120 = IF DROP  PF-UNUMBER-ARG 16 0 0 PF-INTEGER 1+ EXIT THEN
+  DUP 88 = IF DROP  PF-UNUMBER-ARG 16 0 -1 PF-INTEGER 1+ EXIT THEN
   DROP
   S" printf: " ERR-TYPE
   EA @ PF-START @ +  OVER 1+ EU @ MIN PF-START @ -  ERR-TYPE
@@ -6781,43 +6859,15 @@ CREATE PD-PWD-NM   CSTR," PWD"
   LOOP
   255 AND PD-C ;
 
-VARIABLE PD-EUID                 \ the effective uid; -2 until read, -1 unknown
--2 PD-EUID !
-2048 BUFFER: PD-STATUS           \ /proc/self/status, while it is read
-VARIABLE PD-SN
-
-: PD-NUMBER ( i --- i' n )   \ the decimal number at PD-STATUS + i, after blanks
-  BEGIN DUP PD-SN @ < IF DUP PD-STATUS + C@ DUP 32 = SWAP 9 = OR ELSE 0 THEN WHILE 1+ REPEAT
-  0 SWAP
-  BEGIN DUP PD-SN @ < IF DUP PD-STATUS + C@ 48 58 WITHIN ELSE 0 THEN WHILE
-    DUP PD-STATUS + C@ 48 -  ROT 10 * +  SWAP 1+
-  REPEAT
-  SWAP ;
-
-: PD-READ-EUID ( --- uid )   \ the Uid: line's second field, or -1
-  \ No engine primitive gives the effective uid, and $USER is only what
-  \ someone set: `sudo -E` keeps it, `su` may not change it. Linux says
-  \ what is true in /proc/self/status - "Uid:", then the real,
-  \ EFFECTIVE, saved and filesystem uids - and the shell cannot change
-  \ its own, so it is read once (Iteration 417).
-  S" /proc/self/status" R/O OPEN-FILE IF DROP -1 EXIT THEN
-  >R  PD-STATUS 2047 R@ READ-FILE DROP  PD-SN !  R> CLOSE-FILE DROP
-  PD-SN @ 4 - 0 MAX 0 ?DO
-    PD-STATUS I + 4 S" Uid:" COMPARE 0= IF
-      I 4 + PD-NUMBER DROP  PD-NUMBER NIP  UNLOOP EXIT
-    THEN
-  LOOP
-  -1 ;
 
 
 : PD-DOLLAR ( --- )   \ \$: # for the superuser, else $
-  PD-EUID @ -2 = IF PD-READ-EUID PD-EUID ! THEN
-  PD-EUID @ 0< IF                        \ no /proc: $USER, as before
+  EUID 0< IF                             \ no /proc: $USER, as before
     PD-USER-NM LOOKUP-VAR ?DUP IF
       DUP CSTRLEN S" root" COMPARE 0= IF 35 ELSE 36 THEN
     ELSE 36 THEN PD-C EXIT
   THEN
-  PD-EUID @ 0= IF 35 ELSE 36 THEN PD-C ;
+  36 EUID 0= + PD-C ;             \ # for uid 0 (958: no branch, so any user tests it)
 
 \ \! and \#: the number the next history entry will have. The history
 \ is in edit.4, loaded after this file, so it arrives through a DEFER;
@@ -6833,7 +6883,8 @@ DEFER HIST-NEXT-CALL                \ ( 0 --- n )
 : PD-NOW ( --- )   LOCAL-TIME  7 0 DO  PD-TM 6 I - CELLS + !  LOOP ;
 : PD-TM@ ( i --- n )   CELLS PD-TM + @ ;
 : PD-2D ( n --- )   DUP 10 < IF 48 PD-C THEN N>STR DUP CSTRLEN PD-S ;
-: PD-12 ( hour --- hour' )   12 MOD ?DUP 0= IF 12 THEN ;
+: PD-12 ( hour --- hour' )   11 + 12 MOD 1+ ;      \ 0 and 12 are 12, 13 is 1 (958: no branch)
+: PD-AMPM ( hour --- )   12 < 0= 2 AND  S" AMPM" DROP +  2 PD-S ;
 : PD-HM ( hour --- )   PD-2D 58 PD-C 1 PD-TM@ PD-2D ;
 
 : PD-TIME ( c --- )   \ one of t T @ A d
@@ -6841,7 +6892,7 @@ DEFER HIST-NEXT-CALL                \ ( 0 --- n )
   DUP 116 = IF DROP 2 PD-TM@ PD-HM 58 PD-C 0 PD-TM@ PD-2D EXIT THEN        \ t
   DUP 84  = IF DROP 2 PD-TM@ PD-12 PD-HM 58 PD-C 0 PD-TM@ PD-2D EXIT THEN  \ T
   DUP 64  = IF DROP 2 PD-TM@ PD-12 PD-HM 32 PD-C
-               2 PD-TM@ 12 < IF S" AM" ELSE S" PM" THEN PD-S EXIT THEN     \ @
+               2 PD-TM@ PD-AMPM EXIT THEN                                    \ @
   DUP 65  = IF DROP 2 PD-TM@ PD-HM EXIT THEN                                \ A
   DROP                                                                       \ d
   S" SunMonTueWedThuFriSat" DROP 6 PD-TM@ 3 * + 3 PD-S  32 PD-C
@@ -6850,26 +6901,20 @@ DEFER HIST-NEXT-CALL                \ ( 0 --- n )
 
 : PD-4D ( n --- )   N>STR DUP CSTRLEN PD-S ;
 : PD-SP2 ( n --- )   DUP 10 < IF 32 PD-C THEN N>STR DUP CSTRLEN PD-S ;
+\ The names by table (958): a chain of compares until then, whose other
+\ days and months no test could reach but on those dates.
 : PD-FULLDAY ( wday --- )
-  DUP 0 = IF DROP S" Sunday" PD-S EXIT THEN    DUP 1 = IF DROP S" Monday" PD-S EXIT THEN
-  DUP 2 = IF DROP S" Tuesday" PD-S EXIT THEN   DUP 3 = IF DROP S" Wednesday" PD-S EXIT THEN
-  DUP 4 = IF DROP S" Thursday" PD-S EXIT THEN  DUP 5 = IF DROP S" Friday" PD-S EXIT THEN
-  DROP S" Saturday" PD-S ;
+  S" Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday" ROT NTH-FIELD PD-S ;
 : PD-FULLMON ( mon --- )
-  DUP 0 = IF DROP S" January" PD-S EXIT THEN   DUP 1 = IF DROP S" February" PD-S EXIT THEN
-  DUP 2 = IF DROP S" March" PD-S EXIT THEN     DUP 3 = IF DROP S" April" PD-S EXIT THEN
-  DUP 4 = IF DROP S" May" PD-S EXIT THEN       DUP 5 = IF DROP S" June" PD-S EXIT THEN
-  DUP 6 = IF DROP S" July" PD-S EXIT THEN      DUP 7 = IF DROP S" August" PD-S EXIT THEN
-  DUP 8 = IF DROP S" September" PD-S EXIT THEN DUP 9 = IF DROP S" October" PD-S EXIT THEN
-  DUP 10 = IF DROP S" November" PD-S EXIT THEN
-  DROP S" December" PD-S ;
+  S" January|February|March|April|May|June|July|August|September|October|November|December"
+  ROT NTH-FIELD PD-S ;
 : PD-HMS ( --- )   2 PD-TM@ PD-2D 58 PD-C 1 PD-TM@ PD-2D 58 PD-C 0 PD-TM@ PD-2D ;
 : PD-SPEC ( c --- )   \ one %-specifier of \D{format}, as strftime has it
   DUP 72  = IF DROP 2 PD-TM@ PD-2D EXIT THEN                       \ H
   DUP 77  = IF DROP 1 PD-TM@ PD-2D EXIT THEN                       \ M
   DUP 83  = IF DROP 0 PD-TM@ PD-2D EXIT THEN                       \ S
   DUP 73  = IF DROP 2 PD-TM@ PD-12 PD-2D EXIT THEN                 \ I
-  DUP 112 = IF DROP 2 PD-TM@ 12 < IF S" AM" ELSE S" PM" THEN PD-S EXIT THEN  \ p
+  DUP 112 = IF DROP 2 PD-TM@ PD-AMPM EXIT THEN                     \ p
   DUP 100 = IF DROP 3 PD-TM@ PD-2D EXIT THEN                       \ d
   DUP 101 = IF DROP 3 PD-TM@ PD-SP2 EXIT THEN                      \ e
   DUP 109 = IF DROP 4 PD-TM@ 1+ PD-2D EXIT THEN                    \ m
@@ -7360,7 +7405,6 @@ VARIABLE TA-E
   REPEAT
   TA-REC @ FREE DROP ;
 
-VARIABLE REDIRS-PARSED?   \ EXPAND-AND-RUN already took them out of ARGV
 VARIABLE NO-REDIRS?   \ set by tree.4 for a simple command without redirections
 
 CREATE PS4-DEFAULT  CSTR," + "   \ "+ "
@@ -7406,8 +7450,6 @@ VARIABLE PS4-TEXT#
 ' DISPATCH IS DISPATCH-CALL
 ' RUN-EXTERNAL IS RUN-EXTERNAL-CALL
 
-VARIABLE ASSIGNED-HERE?   \ this command's assignments were permanent
-VARIABLE RE-PREFIX        \ how many assignment prefixes it had
 
 : APPLY-BARE-REDIRS ( --- )
   \ The redirections of a command that never reaches RUN-EXPANDED: one
@@ -7421,45 +7463,15 @@ VARIABLE RE-PREFIX        \ how many assignment prefixes it had
   THEN ;
 
 : RUN-EXPANDED ( --- )   \ the command in ARGV, its words already expanded
-  \ A simple command from the tree has no pipes (Iteration 265), and the
-  \ tree says whether it has redirections at all (Iteration 266).
-  REDIRS-PARSED? @ 0= IF
-    NO-REDIRS? @ IF 0 REDIR-N ! ELSE PARSE-REDIRECTIONS THEN
-  THEN
-  0 REDIRS-PARSED? !
-  XTRACE-ARGV
-  ARGC @ 0 > IF
-    \ Assignments with a redirection beside them: the test in
-    \ EXPAND-AND-RUN runs before the redirection words are taken out of
-    \ ARGV, so `> f var=ok` and `var=ok > f` both missed it - the first
-    \ ran the assignment as a command, the second lost it
-    \ (Iteration 349).
-    PREFIX-COUNT ARGC @ = IF
-      REDIR-N @ 0 > IF
-        BEGIN-REDIRECT
-        REDIR-FAILED? @ IF 1 LAST-STATUS ! END-REDIRECT EXIT THEN
-        END-REDIRECT
-      THEN
-      TRY-ASSIGNMENT-CALL DROP
-      -1 ASSIGNED-HERE? !                    \ do not restore them afterwards
-      EXIT
-    THEN
-    DISPATCH 0= IF RUN-EXTERNAL THEN
-  ELSE
-    \ A command that is only redirections still performs them - `> f`
-    \ creates or truncates f - and yields 0 (XCU 2.9.1). This shell did
-    \ nothing at all with such a command until Iteration 334.
-    REDIR-N @ 0 > IF
-      BEGIN-REDIRECT
-      REDIR-FAILED? @ IF 1 ELSE 0 THEN LAST-STATUS !
-      END-REDIRECT
-    THEN
-    \ `var=ok > f` leaves no words at all once the redirection is taken
-    \ out, and its assignment is the shell's own: the caller applied it
-    \ already, so it just must not be restored (Iteration 349).
-    RE-PREFIX @ 0 > IF -1 ASSIGNED-HERE? ! THEN
-
-  THEN ;
+  \ EXPAND-AND-RUN, its one caller, has taken the redirections out of
+  \ ARGV and itself run a command that was assignments only or expanded
+  \ to nothing (Iterations 349, 379, 385). The branches here for those,
+  \ and for redirections not yet parsed, could not be reached - nothing
+  \ ran them (tools/coverage.py) - and went at 958, with the three
+  \ variables only they read. set -x traces it there, too, before
+  \ TEMP-ASSIGN takes its assignments out (958: `y=2 echo z` was traced
+  \ `+ echo z`; dash, mksh and busybox say `+ y=2 echo z`).
+  DISPATCH 0= IF RUN-EXTERNAL THEN ;
 
 \ ==================================================================
 \ Control structures: if/then/else/fi

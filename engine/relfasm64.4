@@ -81,7 +81,7 @@ LABEL term_restore LABEL ud_ior LABEL unimpl
 S" engine/relfasm-consts.4" INCLUDED
 
 4 1024 * 1024 * CONSTANT MEMSIZE         \ the call reach (A17, 545)
-262144 CONSTANT DSTACK_BYTES             \ as cv8.c: DICT-LIMIT is the data stack's floor
+524288 CONSTANT DSTACK_BYTES             \ as cv8.c: DICT-LIMIT is the data stack's floor (512 KB since 958)
 1048576 CONSTANT RSTACK_BYTES             \ 1 MB since 956, as cv8.c's (relfsh: 1,000 levels of functions)
 4096 CONSTANT PAGE
 \ the stack guards (Iteration 586), where cv8.c puts its own: offsets in
@@ -1984,7 +1984,13 @@ r12d r12d xor,
 rax rax test,
 2 F jnz,
 r12d [ scratch 24 + ] dword-ptr mov,
-r9 1 # cmp,
+r9 3 # cmp,                              \ follow? 3: st_uid, 4: st_gid (958, test -O -G)
+4 F jne,
+r12d [ scratch 28 + ] dword-ptr mov,
+4 L:  r9 4 # cmp,
+5 F jne,
+r12d [ scratch 32 + ] dword-ptr mov,
+5 L:  r9 1 # cmp,
 3 F jne,
 r12 [ scratch 8 + ] mov,                 \ st_ino
 3 L:  r9 2 # cmp,
@@ -2018,7 +2024,29 @@ syscall,
 \ L_sysexit with 70, the engine's own exit. The message is TRAPPED's.
 \ The saved registers are the kernel's sigcontext, at ucontext + 40.
 trap_handler L:                          \ edi: the signal; rsi: the siginfo; rdx: the ucontext
-r8 [ rdx 128 ] mov,                      \ rbx as the trap found it: the base
+\ (958) A signal sent - kill(2): a si_code of 0 or less - is not a fault,
+\ as cv8.c's sent_signal: its default action back and the signal again,
+\ which waits, blocked, until this returns, and then ends the process.
+rax [ rsi 8 ] dword-ptr movsxd,          \ si_code
+rax rax test,
+6 F jg,                                  \ above 0: the CPU's, a trap
+rsi [ scratch ] lea,                     \ struct kernel_sigaction: SIG_DFL
+[ rsi ] qword-ptr 0 # mov,
+[ rsi 8 ] qword-ptr 0 # mov,
+[ rsi 16 ] qword-ptr 0 # mov,
+[ rsi 24 ] qword-ptr 0 # mov,
+edx edx xor,
+r10d 8 # mov,
+eax SYS_rt_sigaction # mov,              \ edi: the signal still
+syscall,
+eax SYS_getpid # mov,
+syscall,
+rsi rdi mov,
+rdi rax mov,
+eax SYS_kill # mov,
+syscall,
+ret,
+6 L:  r8 [ rdx 128 ] mov,                \ rbx as the trap found it: the base
 r9 -9 # mov,
 edi 8 # cmp,                             \ SIGFPE
 3 F jne,
