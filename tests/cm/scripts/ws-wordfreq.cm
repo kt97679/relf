@@ -1,0 +1,23 @@
+# word frequencies (971): a text's words counted in a map, get's default the first count; the ten most
+# frequent by count, then by word - by sort(1); the words lower-cased by the text's own operation
+var text "The quick brown fox jumps over the lazy dog. The dog sleeps; the fox runs!
+A fox, a dog, and THE end - the quick end.\tTabs\tcount too.
+Élan and élan: one word, twice."
+var clean $(echo $text | tr -c 'a-zA-Z\n\200-\377' ' ')
+var counts [:]
+var total 0
+for line @($($clean lower) split "\n") {
+    for w @($line split ' ') {
+        if $(( $($w count) == 0 )) { continue }
+        set counts[$w] $(( $($counts get $w 0) + 1 ))
+        set total $(( $total + 1 ))
+    }
+}
+echo "$total words, $($counts count) distinct"
+var rows []
+for w @($counts keys) { append rows "$counts[$w] $w" }
+echo "the ten most frequent:"
+var line ""
+$rows join "\n" | env LC_ALL=C sort -k1,1nr -k2,2 | head -10 | while read line { echo "  $line" }
+$counts has fox && ! $counts has cat && echo "fox, no cat"
+echo "élan twice: $(( $($counts get élan 0) == 2 ))"

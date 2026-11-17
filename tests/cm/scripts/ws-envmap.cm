@@ -1,0 +1,23 @@
+# the environment as a map (971): a tool's settings read from $env with defaults by get, its own names
+# found by keys and match, children shown what setenv and del made, and a name not set refused
+set env[APP971_MODE] fast
+set env[APP971_DEPTH] 3
+set env[APP971_EMPTY] ''
+set env[APP971_GONE] soon
+del env[APP971_GONE]
+var mode $($env get APP971_MODE slow)
+var depth $($env get APP971_DEPTH 1)
+var colour $($env get APP971_COLOUR auto)
+echo "mode $mode, depth $(( $depth * 2 )), colour $colour"
+var mine []
+for k @($env keys) { if $k match 'APP971_*' { append mine $k } }
+echo "its names: $($mine count) -" @($mine join "\n" | env LC_ALL=C sort)
+echo "a child's:" @(env | grep '^APP971_' | cut -d= -f1 | env LC_ALL=C sort)
+$env has APP971_EMPTY && echo "set, if empty: [$env[APP971_EMPTY]]"
+$env has APP971_GONE || echo "gone, and not had"
+var copy $env
+set copy[APP971_MODE] careful
+run sh -c 'echo "the child sees $APP971_MODE, ${APP971_GONE-no GONE}"'
+var all $env
+echo "a map: $(kind $all), its count at least three: $(( $($env count) >= 3 ))"
+echo "colour: $env[APP971_COLOUR]"

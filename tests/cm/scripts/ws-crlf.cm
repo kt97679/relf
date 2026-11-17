@@ -1,0 +1,29 @@
+# a CRLF export (971): a spreadsheet's CSV, each line ended by \r\n, read into maps - a missing cell by
+# get's default - its totals by person, written as JSON with CRLF line ends and read back by from-json
+source ../../../lib/json.cm
+var csv "name,item,qty\r\nada,pens,3\r\nalan,pads,2\r\nada,ink,\r\ngrace,pens,5\r\nalan,pens,1\r\n"
+var rows []
+var head []
+for line @($csv split "\r\n") {
+    if $(( $($line count) == 0 )) { continue }
+    var cells [@($line split ,)]
+    if $(( $($head count) == 0 )) { set head $cells; continue }
+    var row [:]
+    for i @(range $($head count)) { set row[$head[$i]] $([@($cells slice $i $(( $i + 1 )))] join '') }
+    append rows $row
+}
+echo "$($rows count) rows, columns $($head join ' ')"
+var totals [:]
+for r @rows {
+    var q $($r get qty 0)
+    if $(( $($q count) == 0 )) { set q 0 }
+    set totals[$r[name]] $(( $($totals get $r[name] 0) + $q ))
+}
+for who @($totals keys) { echo "  $who $totals[$who]" }
+var doc [rows: $rows  totals: $totals]
+var json $(to-json $doc)
+var crlf $([@($json split ',')] join ",\r\n")
+echo "JSON: $($json count) characters, $($crlf count) with its CRLFs"
+var back @(from-json $crlf)
+echo "read back the same, as JSON again: $(( "$(to-json $back)" == $json ))"
+echo "ada's: $back[totals][ada], a row's qty: $back[rows][2][qty], empty: [$back[rows][2][qty]]"

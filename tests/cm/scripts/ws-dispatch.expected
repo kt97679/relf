@@ -1,0 +1,19 @@
+  names count  -> 3
+  names join / -> ada/alan/grace
+  names slice 1 -> alan grace
+  ages keys  -> ada alan grace
+  ages get alan 0 -> 41
+  ages get bob 0 -> 0
+  motto upper  -> HELLO, WORLD
+  motto split ,  -> Hello World
+  motto slice 0 5 -> Hello
+  ages: a map has no split - it has count, keys, has, get
+  nothing: no such value
+  names has grace -> yes
+  names has bob -> no
+13 requests, 2 refused
+  lower: hello, world
+  words: 2
+  own: the tool at a path with blanks, given: one two
+the tool at a path with blanks, given: directly
+status 0

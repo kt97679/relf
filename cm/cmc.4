@@ -760,7 +760,9 @@ VARIABLE FN-NEXT   \ the var being made has a block written as its value: a func
 : SET-CMD ( from to --- c-addr u )   \ set name value, set name[key]... value - its target read as $'s are,
   BIND SWAP TARGET >R VALUE-CODE R> SET-TO ;           \ so a key any word: $k too (881)
 : READ-CMD ( from to --- c-addr u )   \ read name: a line of stdin into it - status 1 at the end (886)
-  OVER NSKIP <> IF S" read takes one name" G-ERR THEN  TARGET T" STDIN-LINE" ROT SET-TO ;
+  OVER NSKIP <> IF  DUP BARE? IF DUP BARE$ S" -r" COMPARE 0= IF       \ read -r line, sh's habit (971): said so
+      S" read takes one name - it reads a line as it is: no -r" G-ERR THEN THEN
+    S" read takes one name" G-ERR THEN  TARGET T" STDIN-LINE" ROT SET-TO ;
 : WORDS# ( from to --- n )   0 ROT ROT BEGIN 2DUP <> WHILE SWAP NSKIP SWAP ROT 1+ ROT ROT REPEAT 2DROP ;
 : PLAIN-ARGS0? ( from to x --- f )   DROP BEGIN 2DUP <> WHILE  OVER N+ @ N-SP = IF 2DROP 0 EXIT THEN  SWAP NSKIP SWAP  REPEAT 2DROP -1 ;   \ no spread
 : STACK-CODE ( from to --- c-addr u )   \ each word's value, in order

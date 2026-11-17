@@ -994,6 +994,7 @@ do not trust the absence of a line below.
 - 968 — rill3: every stage of a pipeline counts for its status (`false | cat` fails); `!`, `&&` and `||` in `$(( ))` take true or false only; `return` outside a function is an error, as break and continue outside a loop
 - 969 — rill3: a here-document reads as "..." does (`\n`, `\t`), `<< 'END'` as '...'; `$env` a map in every way - kind, count, has, keys, merge, printed - a name not set an error; `$m get key default`
 - 970 — rill3: in "..." and a here-document a `\` before a character that is no escape is an error (it had been dropped: `"\d+"` was d+); `\r` a carriage return - lib/json.cm's "\r" had been the letter r
+- 971 — rill3: six whole scripts where 967-970 reach - word counts by get, $env as a map, pipelines' statuses, files from here-documents, a CRLF export to JSON, a query tool of `$v $op` and run - no defect found; `read -r` said as sh's habit
 
 ### Not tied to an iteration
 

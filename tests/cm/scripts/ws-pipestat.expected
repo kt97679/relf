@@ -1,0 +1,13 @@
+2
+two errors counted: status 0
+0
+none counted, lines failing: status 1
+0
+lines failing before cat: status 1
+grep failing in the middle: status 1
+0
+a program's 4, lines after it 1: status 1
+the 4, wc after it 0: status 4
+1
+cm: status 5 - the script stops (line 14)
+status 5

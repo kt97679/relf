@@ -1,0 +1,10 @@
+Makefile: 7 lines, 3 begun by a tab
+  recipe: echo "hello from $@"
+  recipe: echo "$@ after $<" \
+  recipe:   "and a continued line"
+data.csv: 3 CRs
+  apple	3
+  pear	12
+  total	15
+the total as expected: true
+status 0

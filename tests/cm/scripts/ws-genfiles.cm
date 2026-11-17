@@ -1,0 +1,35 @@
+# files made from here-documents (971): a Makefile, its recipes' tabs by \t and make's own $ by \$; a
+# CRLF file by \r; an awk program in << 'END', as written, run over the data - each read back by od or awk
+var dir /tmp/cm-ws-genfiles
+rm -rf $dir
+mkdir -p $dir
+trap { rm -rf $dir }
+var targets [hello world]
+var name demo
+cat > "$dir/Makefile" << END
+# made for $name, $($targets count) targets
+all: $($targets join ' ')
+hello:
+\techo "hello from \$@"
+world: hello
+\techo "\$@ after \$<" \\
+\t  "and a continued line"
+END
+echo "Makefile: $(wc -l < "$dir/Makefile" | tr -d ' ') lines, $(grep -c "$(printf '^\t')" "$dir/Makefile") begun by a tab"
+awk '-F\t' 'NF > 1 { print "  recipe: " $2 }' "$dir/Makefile"
+cat > "$dir/data.csv" << END
+name,qty\r
+apple,3\r
+pear,12\r
+END
+echo "data.csv: $(tr -cd '\r' < "$dir/data.csv" | wc -c | tr -d ' ') CRs"
+cat > "$dir/sum.awk" << 'END'
+BEGIN { FS = "," }
+{ sub(/\r$/, "") }
+NR > 1 { total += $2; printf "  %s\t%d\n", $1, $2 }
+END { printf "  total\t%d\n", total }
+END
+run awk -f "$dir/sum.awk" "$dir/data.csv"
+var expected 15
+var got @(awk -f "$dir/sum.awk" "$dir/data.csv" | tail -1 | cut -f2)
+echo "the total as expected: $(( $got == $expected ))"

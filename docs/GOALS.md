@@ -270,7 +270,7 @@ the account of what each gained and cost.
    and lower, TAB completion, an index after any value (904-914). Open (docs/progress/
    0900-0999.md, the last handoff): more whole scripts - each round had found something (960's
    seven: three defects - @( ) in "...", @( ) of `a && prog`, return in `|| { }`), until 962's six,
-   written where 961 reached, found none;
+   written where 961 reached, found none, nor 971's six, written where 967-970 reached;
    docs/SIMILAR-PROJECTS.md (921): projects like kbool, and eleven action items from them;
    the deferred items, offered again at 961, all done: heredocs at 963, at the owner's word (910's no
    reversed) - sh's `<< END` and `<< 'END'`, an indented END taking its indent off each line; $( ) of a

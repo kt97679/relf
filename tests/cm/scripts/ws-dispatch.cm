@@ -1,0 +1,30 @@
+# a little query tool (971): requests naming a value and an operation, done by `$v $op` - the operation's
+# name a value, as a program's subcommand may be - checked first against the operations its kind has; and
+# the tools a table names run by run, one at a path with a blank in it
+var store [names: [ada alan grace]  ages: [ada: 36  alan: 41  grace: 85]  motto: 'Hello, World']
+var ops [list: [count join slice has]  map: [count keys has get]  text: [count upper lower split has slice]]
+var ask {|name op words|
+    if ! $store has $name { echo "  $name: no such value"; return 1 }
+    var v $store[$name]
+    var kind $(kind $v)
+    if ! $ops[$kind] has $op { echo "  $name: a $kind has no $op - it has $($ops[$kind] join ', ')"; return 1 }
+    case $op {
+        has { if $v has @words { echo "  $name has $words[0] -> yes" } else { echo "  $name has $words[0] -> no" } }
+        * { var out [@($v $op @words)]; echo "  $name $op $($words join ' ') -> $($out join ' ')" }
+    }
+}
+var requests [[names count []] [names join [/]] [names slice [1]] [ages keys []] [ages get [alan 0]]
+              [ages get [bob 0]] [motto upper []] [motto split [', ']] [motto slice [0 5]] [ages split [,]]
+              [nothing count []] [names has [grace]] [names has [bob]]]
+var failed 0
+for r @requests { ask $r[0] $r[1] $r[2] || set failed $(( $failed + 1 )) }
+echo "$($requests count) requests, $failed refused"
+var dir "/tmp/cm ws dispatch"
+rm -rf $dir
+mkdir -p $dir
+trap { rm -rf $dir }
+printf '#!/bin/sh\necho "the tool at a path with blanks, given: $*"\n' > "$dir/my tool"
+chmod +x "$dir/my tool"
+var tools [lower: [tr A-Z a-z]  words: [wc -w]  own: ["$dir/my tool" one two]]
+for t @($tools keys) { echo "  $t: $(echo $store[motto] | run @tools[$t] | tr -s ' ')" }
+run "$dir/my tool" directly

@@ -1,0 +1,9 @@
+mode fast, depth 6, colour auto
+its names: 3 - APP971_DEPTH APP971_EMPTY APP971_MODE
+a child's: APP971_DEPTH APP971_EMPTY APP971_MODE
+set, if empty: []
+gone, and not had
+the child sees careful, no GONE
+a map: map, its count at least three: true
+cm: no APP971_COLOUR in $env - $env get NAME '' for a default (line 23)
+status 2

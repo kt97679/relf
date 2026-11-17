@@ -14,3 +14,5 @@ echo still here
 echo -n no newline
 echo "values: @(put a b)"
 echo "mail ada\@(home)"
+var line ""
+read -r line

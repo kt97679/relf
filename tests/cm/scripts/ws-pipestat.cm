@@ -1,0 +1,15 @@
+# pipelines' statuses (971): a log filtered by functions and programs, any stage able to fail - the
+# pipeline's status its rightmost failing stage's, as bash's with pipefail, a function's stage counted
+var log ["INFO start" "WARN disk 91%" "ERROR db down" "INFO retry" "ERROR db down again" "INFO done"]
+var only {|level| each {|l| if $l match "$level *" { put $l } } }
+var lines { var n 0; each {|l| set n $(( $n + 1 )) }; put $n; $(( $n > 0 )) }
+var report {|what| echo "$what: status $status" }
+put @log | only ERROR | lines; report "two errors counted"
+put @log | only FATAL | lines || report "none counted, lines failing"
+put @log | only FATAL | lines | cat || report "lines failing before cat"
+put @log | only ERROR | grep -q nothing | cat || report "grep failing in the middle"
+put @log | only ERROR | sh -c 'cat > /dev/null; exit 4' | lines || report "a program's 4, lines after it 1"
+put @log | only ERROR | sh -c 'cat > /dev/null; exit 4' | wc -l > /dev/null || report "the 4, wc after it 0"
+# untested, a failing stage stops the script - here the 5, lines after it well
+put @log | only WARN | sh -c 'cat; exit 5' | lines
+echo not reached
