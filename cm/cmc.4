@@ -121,17 +121,24 @@ VARIABLE IN-QU                                     \ reading a "...": ${name} al
 : IX? ( --- )   \ [key]... after a value written in one word - a list or map, a text, a capture, a spread's capture -
   \ a N-IX of its keys, after the value (913): as $name[key] is a variable's, so [a b c][1] and $(cmd)[0]
   CUR [CHAR] [ <> IF EXIT THEN  0 0 N-IX N, KEYS-P ;
-: QU-ESC ( --- )   \ a \ and the character after it, in "..." and a here-document (969): \n a newline, \t a tab, else
-  GET DROP GET  DUP [CHAR] n = IF DROP 10 THEN  DUP [CHAR] t = IF DROP 9 THEN  T, ;      \ the character
+VARIABLE IN-HD   CREATE ESC1 1 ALLOT                \ reading a here-document's body; a character for a message
+: ESC-ERR ( c --- )   \ a \ before a character that is no escape (970)
+  DUP 10 = OVER 13 = OR OVER 0= OR IF DROP S" \ at a line's end" ELSE ESC1 C!  S" \" ESC1 1 CAT THEN
+  S"  is no escape in " CAT  IN-HD @ IF S" a here-document" ELSE S" a double-quoted text" THEN CAT
+  S" ; \n \t \r are, and \ before \ $ @ [ or a quote - \\ for a backslash, '...' takes all as written" CAT P-ERR ;
+: QU-ESC ( --- )   \ a \ and the character after it, in "..." and a here-document: \n a newline, \t a tab, \r a carriage
+  1 PK  DUP [CHAR] n = IF DROP 10 ELSE  DUP [CHAR] t = IF DROP 9 ELSE  DUP [CHAR] r = IF DROP 13 ELSE   \ return; \
+    DUP [CHAR] " = OVER [CHAR] \ = OR OVER [CHAR] $ = OR OVER [CHAR] @ = OR OVER [CHAR] [ = OR 0= IF ESC-ERR THEN  \ " $ @ [
+  THEN THEN THEN  GET DROP GET DROP T, ;   \ the character; any other an error (970: it had been the character, "\d" d)
 : QU-DOLLAR ( --- )   GET DROP T) -1 IN-QU ! DOLLAR-P 0 IN-QU ! IX? T0 ;   \ $(cmd)[k] indexed, as in a word
 : QU-AT ( c --- )   \ @( ) here would be the characters themselves: written for $( ), three times in 960's round
   [CHAR] @ = IF 1 PK [CHAR] ( = IF S" @( ) is not taken in a double-quoted text or a here-document - $( ) is the text there, \@( the characters" P-ERR THEN THEN ;
-: QUOTED-P ( --- )   \ "...": a N-QU of texts - \n, \t and \ before any other character in them - and $s
-  0 0 N-QU N,  T0
+: QUOTED-P ( --- )   \ "...": a N-QU of texts - \n, \t, \r, \ before \ " $ @ [ in them (970) - and $s
+  IN-HD @ >R  0 IN-HD !  0 0 N-QU N,  T0                 \ one inside a here-document's $( ): its errors its own
   BEGIN CUR DUP [CHAR] " <> WHILE
     DUP 0= IF S" a closing quote is missing" P-ERR THEN
     DUP [CHAR] \ = IF DROP QU-ESC ELSE  DUP [CHAR] $ = IF DROP QU-DOLLAR ELSE  QU-AT GET T,  THEN THEN
-  REPEAT DROP GET DROP T) N) ;
+  REPEAT DROP GET DROP T) N)  R> IN-HD ! ;
 : SQUOTE-P ( --- )   \ after a ': the text to the next ', a leaf - '' too, an empty text
   T0 BEGIN CUR [CHAR] ' <> WHILE CUR 0= IF S" ' missing" P-ERR THEN GET T, REPEAT  GET DROP  TXS @ TXP @ OVER - N-TX N, T0 ;
 : OPR, ( n --- )   HERE-IN OVER N-OP N,  0 ?DO GET DROP LOOP ;      \ an operator of n characters, a leaf
@@ -328,14 +335,14 @@ VARIABLE HD-D  VARIABLE HD-DU  VARIABLE HD-Q  VARIABLE HD-IND  VARIABLE HD-SP  V
 : HD-LS ( --- )   \ a body line's start: HD-IND blanks at most off it
   HD-IND @ 0 ?DO  CUR HD-BL? 0= IF LEAVE THEN  GET DROP  LOOP ;
 : HD-BODY ( start term --- )   \ the body, start up to the END line at term: a N-QU's pieces - read as a "..." is,
-  SWAP IN-POS !  0 0 N-QU N,  T0  HD-LS                \ but for " and the lines; as a '...' when END is quoted (969:
+  -1 IN-HD !  SWAP IN-POS !  0 0 N-QU N,  T0  HD-LS                \ but for " and the lines; as a '...' when END is quoted (969:
   BEGIN IN-POS @ OVER < WHILE                          \ it had followed sh's, \n two characters where "..." makes one)
     CUR 10 = IF GET T, HD-LS
     ELSE HD-Q @ IF GET T,
-    ELSE CUR [CHAR] \ = IF  1 PK 10 = IF GET DROP ELSE QU-ESC THEN     \ \ at a line's end: the newline, as "..."'s
+    ELSE CUR [CHAR] \ = IF QU-ESC
     ELSE CUR [CHAR] $ = IF QU-DOLLAR
     ELSE CUR QU-AT GET T, THEN THEN THEN THEN
-  REPEAT DROP T) N) ;
+  REPEAT DROP T) N)  0 IN-HD ! ;
 : HEREDOC-P ( closer --- )   \ the word after <<: its body, read ahead - after this line, or the body before on it
   0 0 N-WRD N,  HD-DELIM  WORD-ENDS  IN-POS @ HD-SP !  IN-LINE @ HD-SL !
   IN-POS @ HD-EOL  DUP HD-AT @ = IF DROP HD-TO @ ELSE 1+ THEN                       ( start )
@@ -931,7 +938,7 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
   DUP BARE$ 2DUP NAME? 0= IF 2DROP DROP EXIT THEN  2DUP IN-SCOPE? IF 2DROP DROP EXIT THEN        ( w c u )
   0 DECLARE -1 OVER 6 CELLS + !  SWAP NSKIP DUP @ IF N+ @ N-BK = ELSE DROP 0 THEN SWAP 7 CELLS + ! ;
 : CM-COMPILE1 ( c-addr u --- c-addr2 u2 )   \ a script's text made Forth - the output, to EVALUATE
-  DUP IN-LEN ! OVER IN-TEXT ! 0 IN-POS ! 1 IN-LINE ! -1 HD-AT !  2DUP SF-START  NIP SF-MORE @ +
+  DUP IN-LEN ! OVER IN-TEXT ! 0 IN-POS ! 1 IN-LINE ! -1 HD-AT ! 0 IN-HD !  2DUP SF-START  NIP SF-MORE @ +
   DUP 6 * 64 + 3 * CELLS ND0 NDP NDE AREA   DUP 2* 64 + TX0 TXP TXE AREA
   DUP 64 * 65536 + CH0 CHP CHE AREA   DUP 64 * 65536 + OU0 OUP OUE AREA
   SESSION @ RH0 @ 0<> AND IF DROP ELSE  16 * 4096 + CELLS  1 20 LSHIFT SESSION @ AND MAX  RH0 RHP RHE AREA  NAMES-NEW  THEN

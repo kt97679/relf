@@ -1,0 +1,11 @@
+0000000   a  \r   b   |  \t   c   |  \n
+\ " $x @(x) [0]
+cm: \d is no escape in a double-quoted text; \n \t \r are, and \ before \ $ @ [ or a quote - \\ for a backslash, '...' takes all as written (line 1)
+cm: \' is no escape in a double-quoted text; \n \t \r are, and \ before \ $ @ [ or a quote - \\ for a backslash, '...' takes all as written (line 1)
+cm: \U is no escape in a double-quoted text; \n \t \r are, and \ before \ $ @ [ or a quote - \\ for a backslash, '...' takes all as written (line 1)
+cm: \ at a line's end is no escape in a double-quoted text; \n \t \r are, and \ before \ $ @ [ or a quote - \\ for a backslash, '...' takes all as written (line 1)
+cm: \d is no escape in a here-document; \n \t \r are, and \ before \ $ @ [ or a quote - \\ for a backslash, '...' takes all as written (line 2)
+cm: \q is no escape in a double-quoted text; \n \t \r are, and \ before \ $ @ [ or a quote - \\ for a backslash, '...' takes all as written (line 2)
+\d \q as written
+\d \q as written \d for a backslash and d
+status 0

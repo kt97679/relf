@@ -1,0 +1,5 @@
+# a carriage return (970): "\r" - the letter r before, so from-json took r for a blank and not a CR
+source ../../../lib/json.cm
+put @(from-json "[1,\r\n2]") @(from-json "{\"a\":\r\n \"x\ry\"}")
+echo $(to-json "a\rb")
+put @(from-json '[1,r2]')

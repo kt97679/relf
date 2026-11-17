@@ -4,9 +4,8 @@ var name world
 var l [a b c]
 cat << END
 hello $name, ${name}s, first $l[0], all $l, sum $(( 1 + 2 )), said $(echo hi)
-  "quotes" and @signs as written, \$HOME and \\ the characters, \" a quote, \d a d
-  a tab:\tthere, a line:\nhere, a \\ at a line's end gone, its newline kept \
-as "..." does
+  "quotes" and @signs as written, \$HOME and \\ the characters, \" a quote
+  a tab:\tthere, a line:\nhere, as "..." does - any other escape an error (970), as there
 END
 cat << 'END'
 as written: $name ${name} $(echo no) \$ \\

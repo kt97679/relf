@@ -1,0 +1,17 @@
+echo "a\rb|\tc|" | od -c | head -1
+echo "\\ \" \$x \@(x) \[0]"
+echo "\d+"
+echo "don\'t"
+echo "C:\Users\me"
+echo "a\
+b"
+cat << END
+a \t tab, a \d
+END
+cat << END
+$(echo "\q") inside one
+END
+cat << 'END'
+\d \q as written
+END
+echo '\d \q as written' "\\d for a backslash and d"

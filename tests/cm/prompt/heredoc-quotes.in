@@ -1,5 +1,5 @@
 cat << END
-a tab\there "quoted" \d \$ \\
+a tab\there "quoted" \$ \\ \r
 END
 cat << END
 @(echo no)

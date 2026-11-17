@@ -7,14 +7,12 @@
 #                     whole numbers; null the empty text
 # An error in the text stops the script, naming where it is.
 
-var cr $(printf '\r')   # rill3 writes no carriage return in a text but by a program
-
 var json-str {|t|
     var s $([@($t split '\')] join '\\')
     set s $([@($s split '"')] join '\"')
     set s $([@($s split "\n")] join '\n')
     set s $([@($s split "\t")] join '\t')
-    set s $([@($s split $cr)] join '\r')
+    set s $([@($s split "\r")] join '\r')
     put "\"$s\""
 }
 
@@ -59,7 +57,7 @@ var j-string {
                 case $e {
                     n { set s "$s\n" }
                     t { set s "$s\t" }
-                    r { set s "$s$cr" }
+                    r { set s "$s\r" }
                     b f { }
                     u { set s "$s$(forth 'JSON-U8' @(forth 'JSON-HEX' $($($jt slice $ji $(( $ji + 4 ))) upper)))"; set ji $(( $ji + 4 )) }
                     * { set s "$s$e" }

@@ -1,8 +1,7 @@
 hello world, worlds, first a, all [a b c], sum 3, said hi
-  "quotes" and @signs as written, $HOME and \ the characters, " a quote, d a d
+  "quotes" and @signs as written, $HOME and \ the characters, " a quote
   a tab:	there, a line:
-here, a \ at a line's end gone, its newline kept 
-as "..." does
+here, as "..." does - any other escape an error (970), as there
 as written: $name ${name} $(echo no) \$ \\
 as written too: $name
 in a function, world

@@ -993,6 +993,7 @@ do not trust the absence of a line below.
 - 967 — rill3: the value is the command, the operation its subcommand - `$l count`, `$m has $k`, `$t split ,`; an operation a kind has not names the ones it has; `run` runs the program a text names; the ten moved builtins programs as a first word, with a hint; a function named like a builtin an error; `$b x` no longer faults; tools/cm-migrate-ops.py rewrote 514 calls in 118 files
 - 968 — rill3: every stage of a pipeline counts for its status (`false | cat` fails); `!`, `&&` and `||` in `$(( ))` take true or false only; `return` outside a function is an error, as break and continue outside a loop
 - 969 — rill3: a here-document reads as "..." does (`\n`, `\t`), `<< 'END'` as '...'; `$env` a map in every way - kind, count, has, keys, merge, printed - a name not set an error; `$m get key default`
+- 970 — rill3: in "..." and a here-document a `\` before a character that is no escape is an error (it had been dropped: `"\d+"` was d+); `\r` a carriage return - lib/json.cm's "\r" had been the letter r
 
 ### Not tied to an iteration
 

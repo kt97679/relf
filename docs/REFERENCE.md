@@ -49,7 +49,7 @@ word's first character says what it is - as Forth reads its input:
 | first character | the word is | it ends at |
 |---|---|---|
 | `'` | a text, exactly as written | the next `'` |
-| `"` | a text with `$` values in it, and `\n` `\t` `\"` `\\` | the next `"` |
+| `"` | a text with `$` values in it, and the escapes `\n` `\t` `\r` `\\` `\"` `\$` `\@` `\[` - any other `\` an error | the next `"` |
 | `$` | a value: `$x`, `$l[0]`, `$m[k][j]`; `$(cmd)` a capture; `$(( ))` arithmetic | the name and its `[...]`, or the `)` |
 | `@` | a spread: `@l`, `@(cmd)`, `@[a b c]` - several words; inside `"..."` an error (`\@` the character) | likewise |
 | `[` | a list `[a b c]`, or a map `[k: v  j: w]`, `[:]` empty | the matching `]` |
@@ -255,8 +255,8 @@ its values' printed forms, a line each.
 
 A here-document, `cmd << END`, is the lines after the one holding it, up to a line that is `END`
 alone - cmd's stdin, as `< file` would be. Its lines read as a `"..."` does - `$` values, `\n` a newline,
-`\t` a tab, `\` before any other character that character, `@( )` refused - but for `"`, which is itself
-there. `<< 'END'` takes them all as written, as `'...'` does: for a program's text in one. `END`
+`\t` a tab, `\r` a carriage return, `\\` `\"` `\$` `\@` `\[` those characters, any other `\` an error, `@( )`
+refused - but for `"`, which is itself there. `<< 'END'` takes them all as written, as `'...'` does: for a program's text in one. `END`
 may be indented: that much is taken off each line, so a here-document can sit in a block:
 
     var greet-all {
@@ -317,6 +317,8 @@ as deep as memory allows, though printing or comparing one nested past about 20,
   `for i in ...`, `name() { }`, `then`/`fi`/`do`/`done`, `export`, `local`, `unset`, backticks. A
   program not found says `cm: name: no such program`.
 - `${x}` only inside `"..."`; `$x` everywhere else. No `$1`: `$args[0]`.
+- In `"..."`, a `\` before a character that is no escape is an error, where sh keeps the `\`: a regex
+  goes in `'...'` - `grep '\d+'`, `sed 's/\./,/'` - or doubles it, `"\\d+"`.
 - Operators need blanks round them: `2> /dev/null`, `a | b`; so does a line's closing `\`.
 - `[` is a list, not `test`: `test -f x`, or `$(( ))` for numbers.
 - `if $m has $k`, `if $t match '*.txt'`: statuses, as `test` gives.
