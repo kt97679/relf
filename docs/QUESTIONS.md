@@ -18,8 +18,8 @@ same iteration.
 3. *(Rill's features - Q7 answered at 823, Q8 closed at 972: Rill was
    retired at 871 for the command model, rill3.)*
 4. **Blocking nothing**: Q9 (divergences kept on purpose), Q12 (binary
-   plugins), Q13 (the assembly engine: size or speed), Q49 (rill3: maps
-   compared by their entries), Q50 (rill3: return in a sourced file).
+   plugins), Q13 (the assembly engine: size or speed), Q50 (rill3: return
+   in a sourced file). *(Q49, maps compared by their entries, answered at 973.)*
    *(Q14 was answered at 523; Q1 at 552, A20.)*
 5. *(Q15, before the self-hosted assembler, was answered at 528.)*
 6. *(Q16, the speed gap, was answered at 535: accepted. Q18, local time,
@@ -36,15 +36,6 @@ same iteration.
    priced first, the assembly engine only.)*
 
 ## Open
-
-**Q49. rill3: two maps alike - equal? (971)** `$a == $b` compares lists item by item since 961,
-but a map equals only itself (REFERENCE.md: "a map or a block equals only itself"): two maps of the
-same entries are not ==. ws-crlf.cm (971) wanted a map read back from JSON compared with the one
-written, and compared their JSON instead. Options: (a) keep it - a map's identity, as now; (b) equal
-when they hold the same keys with equal values, their order not counting, as Python's dicts; (c)
-the order counting too, as their printed forms would. *Recommendation*: (b) - a map is its entries,
-as a list is its items, and keys' order is the order they came in, not part of what the map says.
-*Blocks*: nothing.
 
 **Q50. rill3: return at a sourced file's top level (968)** An error since 968, as at the script's own
 top level: `source` reads the file in place when the script is read (890), so its top level is the
@@ -724,6 +715,19 @@ first whether `cmd1 && cmd2` stays: it does. (5) A `\` before a character that i
 point): three ways offered - leave it, keep it as sh does, refuse it; the owner: "option 3 for now",
 done at 970. (6) After 970, the open items listed: a round of whole scripts, TAB for a value's
 operations and this file cleaned - "proceed as you suggested" (971, 972). Left open: Q49, Q50.
+
+**Q49. rill3: two maps alike - equal? (971; answered A50)** `$a == $b` compares lists item by item since 961,
+but a map equals only itself (REFERENCE.md: "a map or a block equals only itself"): two maps of the
+same entries are not ==. ws-crlf.cm (971) wanted a map read back from JSON compared with the one
+written, and compared their JSON instead. Options: (a) keep it - a map's identity, as now; (b) equal
+when they hold the same keys with equal values, their order not counting, as Python's dicts; (c)
+the order counting too, as their printed forms would. *Recommendation*: (b) - a map is its entries,
+as a list is its items, and keys' order is the order they came in, not part of what the map says.
+*Blocks*: nothing.
+
+**A50. Maps compared by their entries (Q49; 972 -> 973).** The user: "yes" - option (b): `==` takes
+two maps as equal when they hold the same keys, each one's values equal as `==` takes them, their
+order not counting; `$env` compared as the map it is. Done at 973.
 
 **Closed at 972: Rill's and Rill 2's questions (Q8, Q39-Q46).** Kept in Open until 972, though
 their object had gone: Rill (729-833) and Rill 2 (834-862) were retired at 871, their sources out,

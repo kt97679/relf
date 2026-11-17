@@ -996,6 +996,7 @@ do not trust the absence of a line below.
 - 970 — rill3: in "..." and a here-document a `\` before a character that is no escape is an error (it had been dropped: `"\d+"` was d+); `\r` a carriage return - lib/json.cm's "\r" had been the letter r
 - 971 — rill3: six whole scripts where 967-970 reach - word counts by get, $env as a map, pipelines' statuses, files from here-documents, a CRLF export to JSON, a query tool of `$v $op` and run - no defect found; `read -r` said as sh's habit
 - 972 — rill3: TAB after a value offers its operations - those of the kind a prompt variable holds; QUESTIONS.md cleaned: Rill's questions closed, answered ones out of Open, 965-971's recorded (A49), Q49 and Q50 new
+- 973 — rill3: two maps alike are == - the same keys, their values equal, in any order; $env compared as the map it is (Q49, A50)
 
 ### Not tied to an iteration
 

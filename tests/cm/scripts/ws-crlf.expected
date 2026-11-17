@@ -3,6 +3,6 @@
   alan 3
   grace 5
 JSON: 245 characters, 279 with its CRLFs
-read back the same, as JSON again: true
+read back the same, as JSON again: true, as maps: true
 ada's: 3, a row's qty: , empty: []
 status 0

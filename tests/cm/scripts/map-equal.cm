@@ -1,0 +1,29 @@
+# two maps alike are == (973): the same keys, each one's values equal as == takes them, their order not
+# counting - a map had equalled only itself, where lists compare item by item since 961
+var a [x: 1  y: [2 3]  z: [k: v]]
+var b [z: [k: v]  y: [2 3]  x: 1]
+var fewer [x: 1  y: [2 3]]
+var other [x: 1  y: [2 3]  z: [k: w]]
+var none [:]
+var none2 [:]
+echo $(( $a == $b )) $(( $a != $b )) $(( $a == $fewer )) $(( $fewer == $a )) $(( $a == $other )) $(( $none == $none2 ))
+var n [x: 1]
+var t [x: "1"]
+var k [y: 1]
+var l [x]
+echo $(( $n == $t )) $(( $n == $k )) $(( $n == $l ))
+var maps [$a [q: 1]]
+$maps has $b && echo "a list has a map alike"
+var deep [p: [q: [r: [s: 1]]]]
+var deep2 [p: [q: [r: [s: 1]]]]
+var l1 [$a $deep]
+var l2 [$b $deep2]
+echo $(( $deep == $deep2 )) $(( $l1 == $l2 ))
+set env[CM973] one
+var e @([:] merge $env)
+echo $(( $env == $e )) $(( $e == $env ))
+del env[CM973]
+echo $(( $env == $e ))
+var c $a
+set c[w] 0
+echo "a map is shared - set through c, a has w: $(( $a == $b ))"

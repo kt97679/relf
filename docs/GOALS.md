@@ -282,8 +282,8 @@ the account of what each gained and cost.
    `&&` `||` in `$(( ))` take true or false only, and `return` outside a function is an error; at 969 a
    heredoc reads as "..." does, and `$env` is a map as any, with `get` for a default; at 970 a `\` before
    a character that is no escape is an error in both, where it had been dropped; at 972 TAB offers a
-   value's operations after it. Open for the owner: QUESTIONS.md Q49 (two maps alike, equal?) and Q50
-   (return in a sourced file). Recursion's depth done at 961 - the 1 MB stack, 16 times as deep - and found by it: the collector
+   value's operations after it; at 973 two maps alike are == - by their entries, in any order. Open for
+   the owner: QUESTIONS.md Q50 (return in a sourced file). Recursion's depth done at 961 - the 1 MB stack, 16 times as deep - and found by it: the collector
    recursed a call a level of a value's nesting (a list 42,000 deep left the heap half moved), `==` on
    lists faulted, and after an error in a redirected function stdout stayed the file. The front end smaller - begun at 959: cm/cmc.4 is 21,282 of the image's 79,045
    bytes, 27 %; its repeated runs merged (336 bytes, the code made of every test script the same,

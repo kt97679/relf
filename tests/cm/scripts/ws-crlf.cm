@@ -25,5 +25,5 @@ var json $(to-json $doc)
 var crlf $([@($json split ',')] join ",\r\n")
 echo "JSON: $($json count) characters, $($crlf count) with its CRLFs"
 var back @(from-json $crlf)
-echo "read back the same, as JSON again: $(( "$(to-json $back)" == $json ))"
+echo "read back the same, as JSON again: $(( "$(to-json $back)" == $json )), as maps: $(( $back == $doc ))"
 echo "ada's: $back[totals][ada], a row's qty: $back[rows][2][qty], empty: [$back[rows][2][qty]]"

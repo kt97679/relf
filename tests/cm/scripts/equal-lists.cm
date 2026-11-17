@@ -1,5 +1,5 @@
 # == and != on lists (961): item by item, each as == takes it - Rill's R-CMP had taken cm's tagged
-# numbers for boxes, and [1 2] == [1 2] faulted (cm: error -9); a map or a block equals only itself
+# numbers for boxes, and [1 2] == [1 2] faulted (cm: error -9); a map entry by entry since 973, a block only itself
 var a [1 2]
 var b [1 2]
 echo $(( $a == $b )) $(( $a != $b ))

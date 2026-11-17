@@ -120,7 +120,8 @@ that does not exist is an error.
 `$(( ))` is the one place with infix operators: `+ - * / %`, `== != < <= > >=`, `&& || !`, and
 parentheses. Its operators take numbers and texts that read as whole numbers - a boolean, a list, a map
 or a block is an error; `<` and the rest put texts in order too, by their bytes; `==` and `!=` compare any
-two values, lists item by item - a map or a block equals only itself; `!`, `&&` and `||` take true or
+two values, lists item by item, maps entry by entry - the same keys, their values equal, in any order -
+and a block equals only itself; `!`, `&&` and `||` take true or
 false - a comparison's, a boolean's, a text that reads as one - as a condition does: `$(( !$n ))` is an
 error, `$(( $n == 0 ))` the test. It gives a number or a boolean: one value alone in it is read as the
 operators read theirs - `$(( "7" ))` is the number 7 - a boolean is itself.
