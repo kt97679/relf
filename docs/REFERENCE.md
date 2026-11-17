@@ -53,13 +53,13 @@ word's first character says what it is - as Forth reads its input:
 | `"` | a text with `$` values in it, and the escapes `\n` `\t` `\r` `\\` `\"` `\$` `\@` `\[` - any other `\` an error | the next `"` |
 | `$` | a value: `$x`, `$l[0]`, `$m[k][j]`; `$(cmd)` a capture; `$(( ))` arithmetic | the name and its `[...]`, or the `)` |
 | `@` | a spread: `@l`, `@(cmd)`, `@[a b c]` - several words; inside `"..."` an error (`\@` the character) | likewise |
-| `[` | a list `[a b c]`, or a map `[k: v  j: w]`, `[:]` empty | the matching `]` |
+| `[` | a list `[a b c]`, or a map `[k: v  j: w]`, `["a b": v]`, `[:]` empty | the matching `]` |
 | `{` | a block `{ cmds }`, `{|a b| cmds }` | the matching `}` |
 | `#` | a comment | the line's end |
 | anything else | plain text - a number if written as a whole one is (`42`, `-7`; `01` and `-0` stay texts), `true` and `false` booleans; with `*` or `?` it globs: the paths it matches, sorted, a word each, none an error; a `[`, `]` or `#` inside it is itself | a blank, `;`, or a closer |
 
 A word ends where its form does: nothing may be glued after a quote, a `]`, a `}` or a `$value` but
-index keys (below), and
+index keys (below) and, in a map, a quoted key's `:`, and
 plain text holds no `$` and no quote. Texts and values are joined inside double quotes, where `${name}`
 marks where a name ends:
 
@@ -92,12 +92,19 @@ text, a capture - as it follows a variable; `@(cmd)[k]` is the k-th of cmd's val
     echo [a b c][-1] [k: v  j: w][j] $(printf hello)[0] @('a,b,c' split ,)[2]
 
 `echo`, a value nobody takes, and a value inside `"..."` or joined by `join` all
-use one printed form - a list as `[a b]`, a map as `[k: v]`, a block as `<block>`; inside a list or a
-map a text is quoted when it is empty or holds a blank, a control character or one of `[ ] { } " $` -
-`[a "b c" ""]`, a `"` or `\` in it escaped - where `echo` of the text itself prints it as it is.
+use one printed form - a list as `[a b]`, a map as `[k: v]`, a block as `<block>` - and a list's or a
+map's reads back: pasted into a script, it is an equal value. Inside a list or a map a text is written
+as a script would write it - plain when that reads back as the text, quoted when it is empty, `true` or
+`false`, ends in `:`, begins with `#` or `@`, is `\`, or holds a blank, a control character or one of
+``" ' ` [ ] { } ( ) $ ; | & < > * ?`` - `[a "b c" "" "true" "x:"]`; in the quotes `\"`, `\\`, `\$`,
+`\@` before `(`, and `\n` `\t` `\r` - where `echo` of the text itself prints it as it is. A text
+that reads as a number is written as one, and reads back as the number, `==` to it; a block does not
+read back.
 
-A map's key in `[k: v]` is a plain word ending in `:` - `[1: a  a-b: c]`; one with a blank, or a
-variable's, goes in by `set m['a b'] v`, `set m[$k] v`. Keys are texts - `$m[1]` reads the key `1` -
+A map's key in `[k: v]` is a word with `:` right after it - plain, `[1: a  a-b: c]`, or quoted,
+`["a b": 1  'c d': 2  "$k": 3]`, a `"..."` key with its `$`s as anywhere; `set m[$k] v` puts one in
+too. A printed map writes its keys so - quoted as a text is, but for `true`, `false` and a `:` at the
+end, which a key keeps plain: `["a b": 1  x:: 2]`. Keys are texts - `$m[1]` reads the key `1` -
 kept in the order they came; two maps are `==` when they hold the same keys with equal values.
 
 ## Variables

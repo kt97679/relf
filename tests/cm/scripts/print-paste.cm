@@ -1,0 +1,18 @@
+# a list's and a map's printed form reads back (975): pasted into a script, it is an equal value - a text
+# is quoted wherever it would not read back as itself, and a map's key may be quoted, "a b": or 'a b':
+var odd ["a b" "" "true" true 12 "12" "x:" "@x" "#y" "\\" "\$v" "q\"q" "it's" "a*" "a;b" "a|b" "(x)" "\@(z" "n\nl" "t\tb" x\y e=f ~ 01 [n "m o"] [:]]
+var m [:]
+for x @odd { set m["$x"] $x }
+echo $odd
+echo $m
+# the two lines echo printed, pasted:
+var odd2 ["a b" "" "true" true 12 12 "x:" "@x" "#y" "\\" "\$v" "q\"q" "it's" "a*" "a;b" "a|b" "(x)" "\@(z" "n\nl" "t\tb" x\y e=f ~ 01 [n "m o"] [:]]
+var m2 ["a b": "a b"  "": ""  true: true  12: 12  x:: "x:"  "@x": "@x"  "#y": "#y"  "\\": "\\"  "\$v": "\$v"  "q\"q": "q\"q"  "it's": "it's"  "a*": "a*"  "a;b": "a;b"  "a|b": "a|b"  "(x)": "(x)"  "\@(z": "\@(z"  "n\nl": "n\nl"  "t\tb": "t\tb"  x\y: x\y  e=f: e=f  ~: ~  01: 01  "[n \"m o\"]": [n "m o"]  "[:]": [:]]
+echo $(( $odd == $odd2 )) $(( $m == $m2 )) $($odd2 count) $($m2 count)
+# keys quoted in a literal: "..." with its $s, as anywhere, and '...' as written
+var k x
+var q ["a b": 1  'c $d': 2  "${k}-key": 3  plain: 4  "": 5  "true": 6]
+echo $q
+echo $q["a b"] $q['c $d'] $q[x-key] $q[""] $(kind $q[true])
+echo [@($q keys)]
+echo [[a: 1] ["b c": 2]] ["a b": ['c d': "e f"]]

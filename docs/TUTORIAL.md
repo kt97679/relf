@@ -53,6 +53,13 @@ Numbers are whole; arithmetic and comparison live in `$(( ))`.
     echo $($m get c 0)
     # 0
 
+A key with a blank in it is quoted, as a text is. What `echo` prints of a list or a map reads back:
+pasted into a script, it is the same value.
+
+    var who ["full name": 'Ada Lovelace'  born: 1815]
+    echo $who $who["full name"]
+    # ["full name": "Ada Lovelace"  born: 1815] Ada Lovelace
+
 A list, a map or a text is a command, its operations its subcommands - as `git commit` is git's: `$l
 count`, `$l slice 1 3`, `$m keys`, `$t split ,`, `$t upper`; `$m has a` and `$t match '*.txt'` give a
 status, for `if`.

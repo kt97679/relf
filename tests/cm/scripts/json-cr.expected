@@ -1,5 +1,5 @@
 [1 2]
-[a: "xy"]
+[a: "x\ry"]
 "a\rb"
 from-json: ] expected at character 3
 status 2

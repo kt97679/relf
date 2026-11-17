@@ -1,0 +1,10 @@
+["a b": 1  "c d": 2] 1
+cm: a map: key: value - each key k: or 'a b': (line 1)
+cm: a map: key: value - each key k: or 'a b': (line 1)
+cm: a map: key: value - each key k: or 'a b': (line 1)
+cm: a map: key: value - each key k: or 'a b': (line 1)
+cm: a : after an index (line 1)
+cm: nothing right after a ] } quote or $value - a blank first; a double-quoted text joins texts (line 1)
+cm: nothing right after a ] } quote or $value - a blank first; a double-quoted text joins texts (line 1)
+list ["x:" y]
+status 0

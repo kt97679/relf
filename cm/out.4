@@ -5,21 +5,34 @@
 
 \ ---- the printed form: lists [a b], maps [k: v  k2: v2], [:] when empty, blocks <block> ----
 DEFER SHOW ( item --- )
-: QUOTE? ( c-addr u --- f )   \ a text that would not read back as one word
+CREATE QMASK -2882295145812721665 , -5188146765764755456 ,   \ a bit each, 0 to 127 (975), for the characters that end a
+  \ plain word or are not taken in one: blanks and control characters, " ' ` [ ] { } ( ) $ ; | & < > * ?
+: QCHAR? ( c --- f )   DUP 127 > IF DROP 0 EXIT THEN  DUP 6 RSHIFT CELLS QMASK + @ SWAP 63 AND RSHIFT 1 AND ;
+: QUOTE-KEY? ( c-addr u --- f )   \ a text that would not read back as one plain word - a map's key, its : after it
   DUP 0= IF 2DROP -1 EXIT THEN
-  0 ?DO  DUP I + C@  DUP 33 < OVER [CHAR] [ = OR OVER [CHAR] ] = OR OVER [CHAR] { = OR
-         OVER [CHAR] } = OR OVER [CHAR] " = OR SWAP [CHAR] $ = OR
-         IF DROP -1 UNLOOP EXIT THEN  LOOP DROP 0 ;
-: SHOW-QUOTED ( c-addr u --- )   [CHAR] " OUT-EMIT
-  0 ?DO  DUP I + C@  DUP [CHAR] " = OVER 92 = OR IF 92 OUT-EMIT THEN  OUT-EMIT  LOOP DROP  [CHAR] " OUT-EMIT ;
+  OVER C@ DUP [CHAR] # = SWAP [CHAR] @ = OR IF 2DROP -1 EXIT THEN     \ # a comment, @ a spread
+  DUP 1 = IF OVER C@ 92 = IF 2DROP -1 EXIT THEN THEN                   \ \ alone, the line goes on
+  0 ?DO  DUP I + C@ QCHAR? IF DROP -1 UNLOOP EXIT THEN  LOOP DROP 0 ;
+: QUOTE? ( c-addr u --- f )   \ an item's: as a key's - and a : at its end, a key, and true and false, booleans (975:
+  2DUP QUOTE-KEY? IF 2DROP -1 EXIT THEN                                \ the printed form reads back as an equal value)
+  2DUP + 1- C@ [CHAR] : = IF 2DROP -1 EXIT THEN
+  DUP 4 = OVER 5 = OR 0= IF 2DROP 0 EXIT THEN
+  2DUP S" true" COMPARE 0= >R  S" false" COMPARE 0= R> OR ;
+: SHOW-QUOTED ( c-addr u --- )   \ "...", as a script writes it (975): \" \\ \$, \@ before (, \n \t \r - " and \ alone had been
+  [CHAR] " OUT-EMIT                                                    \ escaped, and a $ read back was a variable
+  BEGIN DUP WHILE  OVER C@
+    DUP 10 = IF DROP S" \n" OUT-TYPE ELSE  DUP 9 = IF DROP S" \t" OUT-TYPE ELSE  DUP 13 = IF DROP S" \r" OUT-TYPE ELSE
+    DUP [CHAR] " = OVER 92 = OR OVER [CHAR] $ = OR  OVER [CHAR] @ = 3 PICK 1 > AND IF 3 PICK 1+ C@ [CHAR] ( = OR THEN
+    IF 92 OUT-EMIT THEN  OUT-EMIT  THEN THEN THEN  1 /STRING  REPEAT 2DROP  [CHAR] " OUT-EMIT ;
 : SHOW-IN ( item --- )   \ an element: a text quoted when it must be
   DUP 0<> IF DUP D-KIND K-TEXT = IF CELL+ @ R-T@ 2DUP QUOTE? IF SHOW-QUOTED ELSE OUT-TYPE THEN EXIT THEN THEN
   SHOW ;
+: SHOW-KEY ( item --- )   CELL+ @ R-T@ 2DUP QUOTE-KEY? IF SHOW-QUOTED ELSE OUT-TYPE THEN ;   \ a map's key, a text
 : SHOW-LIST ( l --- )   [CHAR] [ OUT-EMIT
   DUP @ 0 ?DO  I IF BL OUT-EMIT THEN  DUP R-ITEMS I CELLS + @ SHOW-IN  LOOP DROP  [CHAR] ] OUT-EMIT ;
 : SHOW-MAP ( r --- )   DUP @ @ 0= IF DROP S" [:]" OUT-TYPE EXIT THEN  [CHAR] [ OUT-EMIT   \ OUT-TYPE, not ." or SPACES: the
   DUP @ @ 0 ?DO  I IF BL OUT-EMIT BL OUT-EMIT THEN                                                 \ kernel's would miss $( )'s text (896)
-    DUP @ R-ITEMS I CELLS + @ SHOW-IN  S" : " OUT-TYPE  DUP CELL+ @ R-ITEMS I CELLS + @ SHOW-IN  LOOP DROP
+    DUP @ R-ITEMS I CELLS + @ SHOW-KEY  S" : " OUT-TYPE  DUP CELL+ @ R-ITEMS I CELLS + @ SHOW-IN  LOOP DROP
   [CHAR] ] OUT-EMIT ;
 24 BUFFER: NB
 : N-TYPE ( n --- )   \ a whole number's digits, no text made (898): # and #S divide double cells, and R-NUM made a text

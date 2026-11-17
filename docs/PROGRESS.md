@@ -998,6 +998,7 @@ do not trust the absence of a line below.
 - 972 — rill3: TAB after a value offers its operations - those of the kind a prompt variable holds; QUESTIONS.md cleaned: Rill's questions closed, answered ones out of Open, 965-971's recorded (A49), Q49 and Q50 new
 - 973 — rill3: two maps alike are == - the same keys, their values equal, in any order; $env compared as the map it is (Q49, A50)
 - 974 — rill3: its docs audited against the implementation - REFERENCE.md corrected and filled in (a prompt section, the printed form, map keys, `/` and `%`, function stages, every builtin's details), the tutorial and COMMAND-MODEL.md brought up; on the way `$args` at the prompt no longer eats memory, a trap's `$status` is the ending one, a trapped signal in the last command is kept, and sh's `$?` `$#` `$@` `$!` `<<<` named
+- 975 — rill3: a map's key may be quoted, `["a b": 1]` and `'a b': 1`, and a list's or a map's printed form reads back as an equal value - a text quoted wherever it would not read back as itself (`$`, `'`, globs, operators, a `:` at the end, `true`, a leading `#` or `@`), `\$` `\n` `\t` `\r` `\@(` escaped; Q50 answered - `return` at a sourced file's top level stays an error
 
 ### Not tied to an iteration
 

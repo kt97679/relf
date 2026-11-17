@@ -1,0 +1,8 @@
+["a b" "" "true" true 12 12 "x:" "@x" "#y" "\\" "\$v" "q\"q" "it's" "a*" "a;b" "a|b" "(x)" "\@(z" "n\nl" "t\tb" x\y e=f ~ 01 [n "m o"] [:]]
+["a b": "a b"  "": ""  true: true  12: 12  x:: "x:"  "@x": "@x"  "#y": "#y"  "\\": "\\"  "\$v": "\$v"  "q\"q": "q\"q"  "it's": "it's"  "a*": "a*"  "a;b": "a;b"  "a|b": "a|b"  "(x)": "(x)"  "\@(z": "\@(z"  "n\nl": "n\nl"  "t\tb": "t\tb"  x\y: x\y  e=f: e=f  ~: ~  01: 01  "[n \"m o\"]": [n "m o"]  "[:]": [:]]
+true true 26 24
+["a b": 1  "c \$d": 2  x-key: 3  plain: 4  "": 5  true: 6]
+1 2 3 5 number
+["a b" "c \$d" x-key plain "" "true"]
+[[a: 1] ["b c": 2]] ["a b": ["c d": "e f"]]
+status 0

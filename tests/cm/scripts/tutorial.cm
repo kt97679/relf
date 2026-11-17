@@ -21,6 +21,8 @@ set m[b] 2
 for k @($m keys) { echo $k is $m[$k] }
 echo $($m get c 0)
 # 0
+var who ["full name": 'Ada Lovelace'  born: 1815]
+echo $who $who["full name"]
 for x @[1 2 3] { if $(( $x == 2 )) { continue }; echo x $x }
 var i 0
 while $(( $i < 2 )) { set i $(( $i + 1 )) }

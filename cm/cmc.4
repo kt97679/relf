@@ -105,8 +105,8 @@ DEFER CMDS ( close closer --- )   DEFER WORD-P ( closer --- )   DEFER ARITH-P ( 
 : NAME-P ( --- c-addr u )   \ a name's characters - and a - between letters, kebab-case, as a def's name had (930)
   HERE-IN  BEGIN CUR NAMEC?  CUR [CHAR] - = 1 PK LETTER? AND  OR WHILE GET DROP REPEAT  HERE-IN OVER - ;
 : KEYS-P ( --- )   \ [key]...: each key a word, then the node's end - a N-VR's or a N-IX's
-  BEGIN CUR [CHAR] [ = WHILE  GET DROP 0 SKIP-WS [CHAR] ] WORD-P 0 SKIP-WS
-    GET [CHAR] ] <> IF S" ] missing after a key" P-ERR THEN  REPEAT  N) ;
+  BEGIN CUR [CHAR] [ = WHILE  GET DROP 0 SKIP-WS NDP @ [CHAR] ] WORD-P  @B IF S" a : after an index" P-ERR THEN
+    0 SKIP-WS  GET [CHAR] ] <> IF S" ] missing after a key" P-ERR THEN  REPEAT  N) ;   \ (975: "k": a map's)
 : VAR-P ( --- )   \ name[key]...: a N-VR, its keys words
   NAME-P N-VR N, KEYS-P ;
 VARIABLE IN-QU                                     \ reading a "...": ${name} allowed (899)
@@ -214,18 +214,22 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
   GLOBW @ IF 1 OVER 3 CELLS - CELL+ ! THEN  DROP  R> GLOBW ! ;
 : TEXT-ALONE ( w --- p | 0 )   \ the word a text alone, its one piece
   N+ DUP @ N-TX = OVER N+ @ 0= AND 0= IF DROP 0 THEN ;
-: MAP-KEY? ( w --- f )   \ a map's key: a text alone, ending in : after something
-  TEXT-ALONE DUP 0= IF EXIT THEN
+: MAP-KEY? ( w --- f )   \ a map's key: a text alone, ending in : after something - or a quoted word, its : read
+  DUP @B IF DROP -1 EXIT THEN                       \ after it (975: a key with a blank had no way in a literal, though
+  TEXT-ALONE DUP 0= IF EXIT THEN                    \ printed so, ["a b": 1] - it goes in so now, print-paste)
   DUP @B 1 > SWAP DUP @A SWAP @B + 1- C@ [CHAR] : = AND ;
 : COLON? ( w --- f )   \ [:]'s word
   TEXT-ALONE DUP 0= IF EXIT THEN  DUP @B 1 = SWAP @A C@ [CHAR] : = AND ;
-: MAP-ERR ( --- )   S" a map: key: value, each key a word ending in :" P-ERR ;
-: MAP? ( ls --- )   \ the list read: [:] or [key: value ...] - a map, its keys without their :
-  DUP N+ DUP @ 0= IF 2DROP EXIT THEN
-  DUP NSKIP @ 0= OVER COLON? AND IF DROP N-MP OVER ! N+ NDP ! N) EXIT THEN
-  DUP MAP-KEY? 0= IF 2DROP EXIT THEN  N-MP ROT !
-  BEGIN DUP @ WHILE  DUP MAP-KEY? 0= IF MAP-ERR THEN  -1 OVER N+ 2 CELLS + +!  NSKIP
-    DUP @ 0= IF MAP-ERR THEN  NSKIP  REPEAT DROP ;
+: MAP-ERR ( --- )   S" a map: key: value - each key k: or 'a b':" P-ERR ;
+: KEY-CUT ( w --- )   DUP @B IF DROP EXIT THEN  -1 SWAP N+ 2 CELLS + +! ;   \ a plain key's text without its :
+: NO-KEYS ( ls --- )   N+ BEGIN DUP @ WHILE DUP @B IF MAP-ERR THEN NSKIP REPEAT DROP ;   \ a list's: no "k": in it
+VARIABLE QK#                                       \ the quoted keys read (975): a list's words looked at only if one was
+: MAP? ( ls f --- )   \ the list read: [:] or [key: value ...] - a map, its keys without their :; f, a quoted key read in it
+  >R  DUP N+ DUP @ 0= IF 2DROP R> DROP EXIT THEN
+  DUP NSKIP @ 0= OVER COLON? AND IF DROP N-MP OVER ! N+ NDP ! N) R> DROP EXIT THEN
+  DUP MAP-KEY? 0= IF DROP R> IF NO-KEYS ELSE DROP THEN EXIT THEN  R> DROP  N-MP ROT !
+  BEGIN DUP @ WHILE  DUP MAP-KEY? 0= IF MAP-ERR THEN  DUP KEY-CUT  NSKIP
+    DUP @ 0= IF MAP-ERR THEN  DUP @B IF MAP-ERR THEN  NSKIP  REPEAT DROP ;
 : BS-WORD? ( w --- f )   DUP IF S" \" BARE= THEN ;     \ the word \ - the line goes on (906)
 : BS-AT-END ( --- )   \ after a \ word only blanks or a comment before the line's end: the next line its command's too
   IN-POS @ BEGIN DUP IN-LEN @ < WHILE
@@ -235,10 +239,10 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
     1+ REPEAT
   DROP S" a \ at the end with no line after it" P-ERR ;
 : LIST-P ( --- )   \ [ ... ]: a N-LS of its words - or a map
-  NDP @  0 0 N-LS N,
+  QK# @ >R  NDP @  0 0 N-LS N,
   BEGIN -1 SKIP-WS CUR [CHAR] ] <> WHILE CUR 0= IF S" ] missing" P-ERR THEN
     NDP @ [CHAR] ] WORD-P  DUP BS-WORD? IF BS-AT-END NDP ! ELSE DROP THEN REPEAT   \ a \ at a line's end: as a command's (906)
-  GET DROP N)  MAP? ;
+  GET DROP N)  R> QK# @ <> MAP? ;
 : BLOCK-P ( --- )   \ { |a b| ... }: a N-BK - its parameters' names as leaves, then its commands
   NDP @ 0 0 N-BK N,  0 SKIP-WS
   CUR [CHAR] | = IF GET DROP
@@ -248,6 +252,9 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
   DROP [CHAR] } DUP CMDS N) ;      \ } ends a word too, as ) and ] do (920): { echo $y} and }} had been refused
 : WORD-ENDS ( closer --- )   \ after a word's form - ] } " ' a $name or $( ): its end, nothing glued (899)
   CUR SWAP WORD-END? 0= IF S" nothing right after a ] } quote or $value - a blank first; a double-quoted text joins texts" P-ERR THEN ;
+: QKEY? ( closer wrd --- closer f )   \ a quoted word in [ ], a : glued and then its end: a map's key, marked (975)
+  CUR [CHAR] : <> IF DROP 0 EXIT THEN
+  OVER [CHAR] ] = IF  1 PK 2 PICK WORD-END? IF  GET DROP  1 SWAP 2 CELLS + !  1 QK# +!  -1 EXIT THEN THEN  DROP 0 ;
 : WORD-P' ( closer --- )   \ one word: a N-WRD - what it is said by its first character (899)
   0 0 N-WRD N,
   CUR [CHAR] [ = IF GET DROP LIST-P IX? N) WORD-ENDS EXIT THEN
@@ -257,8 +264,8 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
     CUR [CHAR] ( = IF GET DROP 0 0 N-CP N, [CHAR] ) DUP CMDS N) IX?
     ELSE CUR [CHAR] [ = IF GET DROP LIST-P IX?                        \ @[a b c]: a list written there, spread (918)
     ELSE CUR NAME0? 0= IF S" @ spreads a name, a [list] or a ( ) - not this" P-ERR THEN VAR-P THEN THEN  N) N) WORD-ENDS EXIT THEN
-  CUR [CHAR] " = IF GET DROP QUOTED-P IX? N) WORD-ENDS EXIT THEN
-  CUR [CHAR] ' = IF GET DROP 0 0 N-QU N, SQUOTE-P N) IX? N) WORD-ENDS EXIT THEN
+  CUR [CHAR] " = IF NDP @ 3 CELLS - >R GET DROP QUOTED-P R> QKEY? 0= IF IX? THEN N) WORD-ENDS EXIT THEN
+  CUR [CHAR] ' = IF NDP @ 3 CELLS - >R GET DROP 0 0 N-QU N, SQUOTE-P N) R> QKEY? 0= IF IX? THEN N) WORD-ENDS EXIT THEN
   CUR [CHAR] $ = IF GET DROP DOLLAR-P IX? N) WORD-ENDS EXIT THEN
   PIECES-P N) ;
 ' WORD-P' IS WORD-P
@@ -578,9 +585,10 @@ DEFER A-OR ( --- c-addr u )
   0 SWAP N+ BEGIN DUP @ WHILE  DUP A-PAREN? 0= IF  DUP @ N-OP = 2 PICK OR IF 2DROP 0 EXIT THEN  NIP DUP  THEN  NSKIP REPEAT DROP ;
 : ARITH ( ar --- c-addr u )   AP @ >R  DUP A-ONE >R  N+ AP !  A-OR  AP @ @ IF S" in (( )): more than one expression" G-ERR THEN
   R> ?DUP IF @ N-NM <> IF T" D-ONE" ++ THEN THEN  R> AP ! ;   \ one value: a number, or a boolean (965, D-ONE)
+: KEY-CODE ( w --- c-addr u )   DUP @B IF WORD-CODE ELSE BARE$ TEXT-CODE THEN ;   \ "a b": a quoted word's (975)
 : MAP-CODE ( mp --- c-addr u )
   T" R-NEW-RECORD K-REC R-BOX" TOP$ ROT N+
-  BEGIN DUP @ WHILE  >R T" DUP" R@ BARE$ TEXT-CODE ++  R> NSKIP DUP >R WORD-CODE ++ T" D-SET" ++ SEQ+  R> NSKIP REPEAT DROP ;
+  BEGIN DUP @ WHILE  >R T" DUP" R@ KEY-CODE ++  R> NSKIP DUP >R WORD-CODE ++ T" D-SET" ++ SEQ+  R> NSKIP REPEAT DROP ;
 VARIABLE CAPS  VARIABLE CAPS#  VARIABLE CAPS-CAP   \ the names some block refers to: those variables boxed (866) -
 : CAPS+ ( c-addr u --- )   \ grown as they come (891; 512 at most before)
   CAPS# @ CAPS-CAP @ = IF  CAPS-CAP @ 2* 16 MAX DUP CAPS-CAP !  2* RC  CAPS @ OVER CAPS# @ 2* CELLS MOVE  CAPS !  THEN

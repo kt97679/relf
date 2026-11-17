@@ -18,8 +18,8 @@ same iteration.
 3. *(Rill's features - Q7 answered at 823, Q8 closed at 972: Rill was
    retired at 871 for the command model, rill3.)*
 4. **Blocking nothing**: Q9 (divergences kept on purpose), Q12 (binary
-   plugins), Q13 (the assembly engine: size or speed), Q50 (rill3: return
-   in a sourced file). *(Q49, maps compared by their entries, answered at 973.)*
+   plugins), Q13 (the assembly engine: size or speed). *(Q49, maps compared
+   by their entries, answered at 973; Q50, return in a sourced file, at 975.)*
    *(Q14 was answered at 523; Q1 at 552, A20.)*
 5. *(Q15, before the self-hosted assembler, was answered at 528.)*
 6. *(Q16, the speed gap, was answered at 535: accepted. Q18, local time,
@@ -36,15 +36,6 @@ same iteration.
    priced first, the assembly engine only.)*
 
 ## Open
-
-**Q50. rill3: return at a sourced file's top level (968)** An error since 968, as at the script's own
-top level: `source` reads the file in place when the script is read (890), so its top level is the
-script's. Suggested at 966 was bash's rule - return there leaves the file, back to the script that
-sourced it. Options: (a) keep the error; (b) bash's rule, each sourced file's commands made a word of
-their own, run under a catch, sharing the script's names. *Recommendation*: (a) until a library needs
-to stop part-way - source runs a file once already, so bash's commonest use, a guard against a
-second inclusion, is not needed. An error can become (b) later without breaking a script.
-*Blocks*: nothing.
 
 **Q12. Forth plugins in image form? (516)** The user's thought: load
 compiled extensions, not source. What it takes: a plugin compiled
@@ -728,6 +719,22 @@ as a list is its items, and keys' order is the order they came in, not part of w
 **A50. Maps compared by their entries (Q49; 972 -> 973).** The user: "yes" - option (b): `==` takes
 two maps as equal when they hold the same keys, each one's values equal as `==` takes them, their
 order not counting; `$env` compared as the map it is. Done at 973.
+
+**Q50. rill3: return at a sourced file's top level (968; answered A51)** An error since 968, as at the script's own
+top level: `source` reads the file in place when the script is read (890), so its top level is the
+script's. Suggested at 966 was bash's rule - return there leaves the file, back to the script that
+sourced it. Options: (a) keep the error; (b) bash's rule, each sourced file's commands made a word of
+their own, run under a catch, sharing the script's names. *Recommendation*: (a) until a library needs
+to stop part-way - source runs a file once already, so bash's commonest use, a guard against a
+second inclusion, is not needed. An error can become (b) later without breaking a script.
+*Blocks*: nothing.
+
+**A51. rill3, after 974's audit: return in a sourced file, and maps printed to be pasted back (975).**
+The owner: (1) Q50 - "let return at the top level be an error": option (a), kept as 968 made it.
+(2) 974 found that a map's printed form, `["a b": 1]`, could not be read back - a literal's keys were
+plain words; the owner: "being able to print-paste maps is useful". Done at 975: a key may be quoted,
+`"a b": 1` or `'a b': 1`, and the printed form of a list or a map reads back as an equal one - a text is
+quoted wherever it would not read back as itself.
 
 **Closed at 972: Rill's and Rill 2's questions (Q8, Q39-Q46).** Kept in Open until 972, though
 their object had gone: Rill (729-833) and Rill 2 (834-862) were retired at 871, their sources out,

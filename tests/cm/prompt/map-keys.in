@@ -1,0 +1,12 @@
+# a map's quoted keys (975): "a b": and 'a b': in a literal - where a key is no key, an error
+var m ["a b": 1  'c d': 2]
+echo $m $m["a b"]
+var l [a "b": 1]
+var m [a: "b":]
+var m ["a": 1 "b"]
+var m ["a":]
+echo $m["a b":]
+echo "a":
+var m ["a":1]
+var l ["x:" y]
+echo $(kind $l) $l

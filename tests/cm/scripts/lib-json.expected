@@ -1,6 +1,5 @@
 {"name":"Ada \"the first\"","langs":["forth","rill3"],"age":36,"ok":true,"path":"C:\\temp","note":"two\nlines","empty":[],"nested":{"k":{}}}
-[name: "Ada \"the first\""  langs: [forth rill3]  age: 36  ok: true  path: C:\temp  note: "two
-lines"  empty: []  nested: [k: [:]]]
+[name: "Ada \"the first\""  langs: [forth rill3]  age: 36  ok: true  path: C:\temp  note: "two\nlines"  empty: []  nested: [k: [:]]]
 {"name":"Ada \"the first\"","langs":["forth","rill3"],"age":36,"ok":true,"path":"C:\\temp","note":"two\nlines","empty":[],"nested":{"k":{}}}
 [a: [1 2 [b: ""]]  s: "café 日"  f: 1.5  n: -42  t: false]
 status 0
