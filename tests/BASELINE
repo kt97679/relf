@@ -74,7 +74,7 @@ native:peep same
 native:posix:failed 0
 native:prims same
 native:rill3 238/238
-native:rill3-bytes 290648
+native:rill3-bytes 294752
 native:self-built same
 native:shell 1
 native:shell-bytes 409184
@@ -120,7 +120,7 @@ size:engine-code-i386 31489
 size:engine-code-x86_64 30290
 size:i386 143503
 size:image-i386 110303
-size:image-rill3 85359
+size:image-rill3 85999
 size:image-x86_64 119115
 size:x86_64 152675
 toolchain:cc cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0

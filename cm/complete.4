@@ -115,19 +115,20 @@ VARIABLE CMP-PFX#
 
 : CMP-PREFIX ( --- c-addr u )   CMP-PFX CMP-PFX# @ ;   \ unescaped
 
-: CMP-AFTER-KEYWORD? ( --- flag )   \ the word before is one a command follows: if elif while ! && || |
-  CMP-START @ CMP-PREV DUP 0< IF DROP 0 EXIT THEN  1+     ( end )
+: CMP-AFTER-KEYWORD? ( start --- flag )   \ the word before is one a command follows: if elif while ! && || |
+  CMP-PREV DUP 0< IF DROP 0 EXIT THEN  1+                 ( end )
   DUP CMP-WORD-FROM  TUCK -  SWAP ED-BUF +  SWAP          ( c-addr u )
   2DUP S" if" CMP-STR= IF 2DROP -1 EXIT THEN  2DUP S" elif" CMP-STR= IF 2DROP -1 EXIT THEN
   2DUP S" while" CMP-STR= IF 2DROP -1 EXIT THEN  2DUP S" &&" CMP-STR= IF 2DROP -1 EXIT THEN
   2DUP S" ||" CMP-STR= IF 2DROP -1 EXIT THEN  2DUP S" |" CMP-STR= IF 2DROP -1 EXIT THEN
   S" !" CMP-STR= ;
 
-: CMP-COMMAND? ( --- flag )   \ the word names a command: first on the line or in a block or capture, no slash
-  CMP-HASSLASH @ IF 0 EXIT THEN
-  CMP-START @ CMP-PREV DUP 0< IF DROP -1 EXIT THEN
-  ED-BUF + C@  DUP 59 = OVER 123 = OR SWAP 40 = OR IF -1 EXIT THEN
+: CMP-CMD-AT? ( start --- flag )   \ a word there first in a command: first on the line or in a block or capture
+  DUP CMP-PREV DUP 0< IF 2DROP -1 EXIT THEN
+  ED-BUF + C@  DUP 59 = OVER 123 = OR SWAP 40 = OR IF DROP -1 EXIT THEN
   CMP-AFTER-KEYWORD? ;
+: CMP-COMMAND? ( --- flag )   \ the word names a command, no slash in it
+  CMP-HASSLASH @ IF 0 EXIT THEN  CMP-START @ CMP-CMD-AT? ;
 
 : CMP-MATCH? ( c-addr u --- flag )   \ a name that begins with the prefix
   OVER C@ 46 = IF                             \ a dot-file, or . or ..
@@ -254,10 +255,51 @@ VARIABLE CMP-VAR?                    \ completing a $name (914)
   CMP-W# @ BEGIN DUP WHILE  1-  CMP-W OVER + C@  DUP [CHAR] $ = IF DROP 1+ EXIT THEN   \ the $name begins, + 1
     DUP [CHAR] _ = OVER [CHAR] 0 [CHAR] 9 1+ WITHIN OR SWAP 32 OR [CHAR] a [CHAR] z 1+ WITHIN OR 0= IF DROP 0 EXIT THEN
   REPEAT ;
+\ ---- a value's operations (972): the word after a value first in a command - $l co TAB is $l count. The kinds
+\ the value can be: a quoted text's, a list literal's or a map's, a capture's - a text - or at the prompt a
+\ variable's own, its value read from the session's frame; one that has none - a block, a number - its files
+VARIABLE CMP-D
+B-L B-M OR B-T OR CONSTANT B-ALL
+: CMP-QUOTE-BACK ( i q --- j )   \ from past a closing quote q to its opening one
+  >R 1- BEGIN DUP 0> WHILE 1- DUP CMP-AT R@ = IF R> DROP EXIT THEN REPEAT R> DROP ;
+: CMP-WORD-BACK ( end --- start )   \ back from end to its word's start: a blank inside [ ] ( ) { } or quotes passed
+  0 CMP-D !
+  BEGIN DUP 0> WHILE
+    DUP 1- CMP-AT
+    CMP-D @ 0= IF DUP 32 = OVER 9 = OR OVER 59 = OR IF DROP EXIT THEN THEN
+    DUP [CHAR] ' = OVER [CHAR] " = OR IF CMP-QUOTE-BACK ELSE
+    DUP [CHAR] ] = OVER [CHAR] ) = OR OVER [CHAR] } = OR IF DROP 1 CMP-D +! 1- ELSE
+    DUP [CHAR] [ = OVER [CHAR] ( = OR OVER [CHAR] { = OR IF DROP CMP-D @ 0= IF EXIT THEN -1 CMP-D +! 1- ELSE
+    DROP 1- THEN THEN THEN
+  REPEAT ;
+: CMP-NAME-CHAR? ( c --- f )
+  DUP [CHAR] _ = OVER [CHAR] - = OR OVER [CHAR] 0 [CHAR] 9 1+ WITHIN OR SWAP 32 OR [CHAR] a [CHAR] z 1+ WITHIN OR ;
+: CMP-VAR-MASK ( c-addr u --- mask )   \ a $name's: env a map, args a list, status and job numbers; else its value's
+  2DUP S" env" COMPARE 0= IF 2DROP B-M EXIT THEN  2DUP S" args" COMPARE 0= IF 2DROP B-L EXIT THEN
+  2DUP S" status" COMPARE 0= >R 2DUP S" job" COMPARE 0= R> OR IF 2DROP 0 EXIT THEN
+  MAIN-SC @ ?DUP 0= IF 2DROP B-ALL EXIT THEN  CELL+ @ VAR-IN ?DUP 0= IF B-ALL EXIT THEN
+  DUP 4 CELLS + @  DUP MFP @ + LS# @ < 0= IF 2DROP B-ALL EXIT THEN   \ its slot in the frame so far
+  MLS@ SWAP 5 CELLS + @ IF DUP IF UPV@ THEN THEN
+  ?DUP 0= IF B-ALL EXIT THEN  DUP ENV-BOX = IF DROP B-M EXIT THEN  D-KIND 1 SWAP LSHIFT B-ALL AND ;
+: CMP-VAL-MASK ( start end --- mask )
+  OVER CMP-AT DUP [CHAR] ' = SWAP [CHAR] " = OR IF 2DROP B-T EXIT THEN
+  OVER CMP-AT [CHAR] [ = IF 2DROP B-L B-M OR EXIT THEN
+  OVER 1+ CMP-AT [CHAR] ( = IF DROP 2 + CMP-AT [CHAR] ( = IF 0 ELSE B-T THEN EXIT THEN   \ $(( )), $( )
+  SWAP 1+ TUCK -                                            ( name-start len )
+  DUP 0 ?DO  OVER I + CMP-AT CMP-NAME-CHAR? 0= IF 2DROP B-ALL UNLOOP EXIT THEN  LOOP   \ $m[k]: any
+  SWAP ED-BUF + SWAP CMP-VAR-MASK ;
+: CMP-OP-MASK ( --- mask | -1 )   \ the cursor's word the second of a command whose first is a value: its kinds
+  CMP-Q @ CMP-HASSLASH @ OR IF -1 EXIT THEN
+  CMP-START @ CMP-PREV DUP 0< IF DROP -1 EXIT THEN  1+ DUP CMP-WORD-BACK    ( end start )
+  DUP CMP-AT DUP [CHAR] $ = OVER [CHAR] [ = OR OVER [CHAR] ' = OR SWAP [CHAR] " = OR 0= IF 2DROP -1 EXIT THEN
+  DUP CMP-CMD-AT? 0= IF 2DROP -1 EXIT THEN
+  SWAP CMP-VAL-MASK ;
+: CMP-COLLECT-OPS ( mask --- )   OPS# 0 DO  DUP I OP-MASK AND IF I OP-NAME CMP-ADD THEN  LOOP DROP ;
 : CMP-COLLECT ( --- )   \ the candidates, into CMP-BUF
   0 CMP-N !  0 CMP-USED !  0 CMP-EXTRA !  65535 CMP-XLCP !  0 CMP-VAR? !
   CMP-VAR-AT ?DUP IF  1-  CMP-W# @ OVER - DUP CMP-PFX# !  >R CMP-W + CMP-PFX R> MOVE  0 CMP-PFX CMP-PFX# @ + C!
     -1 CMP-VAR? !  0 CMP-CMD? !  CMP-COLLECT-VARS EXIT  THEN
+  CMP-OP-MASK DUP 0> IF 0 CMP-CMD? ! CMP-COLLECT-OPS EXIT THEN DROP   \ $l co: count (972)
   CMP-COMMAND? DUP CMP-CMD? !
   IF
     \ The shell's own names first - aliases and functions, which are

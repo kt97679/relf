@@ -15,13 +15,12 @@ same iteration.
 1. *(Q2, Q3 and Q4, which blocked the assembly engine's Milestone 1,
    were answered at 516.)*
 2. *(Q5 and Q6, before its Milestone 4, were answered at 523.)*
-3. **Rill's features that wait on these** (Rill itself exists since 736;
-   809 corrected this line): Q36 answered (A36) and built - JSON at 811,
-   jobs at 813 - Q10 and Q11 with it; **Q7** (text blocks), **Q8** (the
-   prompt's questions, the name).
-4. **Blocking nothing**: Q1 (the space options), Q9 (divergences kept
-   on purpose), Q12 (binary plugins), Q13 (the assembly engine: size or
-   speed). *(Q14 was answered at 523.)*
+3. *(Rill's features - Q7 answered at 823, Q8 closed at 972: Rill was
+   retired at 871 for the command model, rill3.)*
+4. **Blocking nothing**: Q9 (divergences kept on purpose), Q12 (binary
+   plugins), Q13 (the assembly engine: size or speed), Q49 (rill3: maps
+   compared by their entries), Q50 (rill3: return in a sourced file).
+   *(Q14 was answered at 523; Q1 at 552, A20.)*
 5. *(Q15, before the self-hosted assembler, was answered at 528.)*
 6. *(Q16, the speed gap, was answered at 535: accepted. Q18, local time,
    at 544: UTC everywhere.)*
@@ -38,182 +37,23 @@ same iteration.
 
 ## Open
 
-**Q39. Rill's image: which of the size options? (826)** The image is 91,526
-bytes, 70 % of relfsh's; docs/RILL-SIZE.md has where it goes (the compiler 43 %,
-the runtime 22 %, the editor and its tables 13 %, the shared base 16 %) and six
-options with their bytes. *Recommendation*: (1) two images now - 12.3 KB off
-the script image, nothing slower or lost; (4) the dead words with it; (3) and
-(2) as measured follow-ups; (5) only if size comes to matter more than a
-change to the kernel every image shares. *Blocks*: nothing.
-
-**Q40. Rill: the compiler - rewritten, replaced, or moved out? (826)** Asked
-whether Rill could be done as BASIC is in Forth. docs/RILL-SIZE.md, "Alternatives
-to the compiler", measures it: (1) a compiler in Forth's own manner, keywords as
-words and code compiled directly, would save some 6-9 KB and compile faster, as a
-rewrite of compile.4 that leaves the oracle nothing to compare; (2) an
-interpreter would be no smaller and several times slower; (3) scripts compiled
-once and cached, run in an image of the runtime alone, would run in about 40 KB
-- 44 % of today's - with the compiler and editor kept for the prompt; (4) Q39's
-options. 828, asked for bytecode directly (docs/RILL-SIZE.md, "Bytecode directly"):
-a 177-line script starts in about half the time (15 ms of its 28 are EVALUATE),
-the image saves only some 3-6 KB, the text's five out-of-order places need
-restructuring, and the oracle becomes outputs only - the kernel has no
-decompiler. *Recommendation*: (3) if a script's running size is what matters, with
-Q39's (1) for the prompt's image; bytecode directly if start-up time is the goal,
-staged behind a gene with an output-comparing oracle built first; not (2).
+**Q49. rill3: two maps alike - equal? (971)** `$a == $b` compares lists item by item since 961,
+but a map equals only itself (REFERENCE.md: "a map or a block equals only itself"): two maps of the
+same entries are not ==. ws-crlf.cm (971) wanted a map read back from JSON compared with the one
+written, and compared their JSON instead. Options: (a) keep it - a map's identity, as now; (b) equal
+when they hold the same keys with equal values, their order not counting, as Python's dicts; (c)
+the order counting too, as their printed forms would. *Recommendation*: (b) - a map is its entries,
+as a list is its items, and keys' order is the order they came in, not part of what the map says.
 *Blocks*: nothing.
 
-**Q41. A scripting vocabulary on Forth: how far? (829)** The user's idea -
-grow the language up from the Forth implementation, words instead of a
-compiler. docs/FORTH-SCRIPTING.md: a sketch (examples/forth-script/) brings a
-pilot section from 685 characters of Forth to 396 - Rill's is 371 - with no
-compiler; the stack and variables (a quarter of the pilots' Forth) and
-expressions stay, and errors come late and far from their cause. Three
-questions: (1) who writes these scripts - people who read Forth, or the
-general shell and script users A35 names? (2) beside Rill, or in its place?
-(3) a vocabulary only, or a little syntax too (locals, an infix word)?
-*Recommendation*: beside Rill, for the project's own tools; first one whole
-pilot in the vocabulary, measured by the pilots' protocol. *Blocks*: nothing.
-
-**Q42. The minimal parser: Rill's next form? (830)** The user wants a
-general-purpose scripting language and shell in regular notation (`a = b + c`)
-with a small translation layer. The prototype, examples/forth-script/mini.4
-(docs/FORTH-SCRIPTING.md, "The minimal parser"), does it in 12.7 KB where
-Rill's compiler is 39: the image without its editor 52.8 KB against 79.2, with
-values checked when used - and fib(25) in 78 ms against Rill's 10 and Python's
-25. Questions: (1) make this Rill's design - the compiler replaced by the
-minimal parser, the scripts and tests moved to bare names (`a = b + c`;
-`$name` only in a command line)? (2) speed - answered by measuring at 831,
-asked whether it can be as fast as Rill: numbers tagged (2n+1) and counted
-`for i in range(n)` took fib(25) from 78 ms to 25 and a 300,000-add loop from
-66 to 19 (Rill 7 and 10, Python 18 and 31); Rill's speed is its purestack and
-rangeloop genes, which the parser can carry over - the first next. (3) of
-Rill's other features, which to carry over first? *Recommendation*: (1) yes,
-step by step - the minimal parser grown feature by feature until Rill's tests
-and scripts run in it, then the compiler removed; (2) defs of numbers on the
-stack next; (3) pipelines, `$(...)` and `{expr}` in strings, records, break
-and continue. *Blocks*: nothing.
-
-**Q43. The prototype's syntax, and the shell: what next? (832)**
-docs/FORTH-SCRIPTING.md, "The syntax, how friendly": eight things tried, one
-mended (else on its own line ran both branches); seven improvements priced at
-some 2.3 KB of parser and nothing at run time. The shell: pipes,
-redirections, quotes, $( ) and & cost 1,960 bytes of parser; each command
-costs what Rill's does, twice dash's, the runtime execing through env. And a
-Rill bug: a def's parameter is the global of its name, so a def called
-meanwhile reads the parameter - garbage where the kinds differ. Questions:
-(1) the seven improvements, all? (2) commands through env: search PATH in the
-runtime instead? *Recommendation*: fix Rill's scope first (a def's names its
-own, both compilers, the oracle with them); (2) yes, it halves every
-command's cost; (1) all, in the order listed. *Blocks*: nothing.
-
-**Q44. Rill 2: what next? (834)** The prototype is Rill 2 now (docs/RILL2.md):
-the issues of 832 mended, its tour checked, an image of 61,155 bytes against
-Rill's 91,795 - its own part 20.8 KB against Rill's compiler and editor's 51.4.
-Questions: (1) Rill 2 the language from here - Rill's compiler, its 61 oracle
-programs and its examples carried over or retired? (2) its prompt: relfsh's
-editor, as Rill's, 12.3 KB? (3) defs of numbers on the stack (fib 18 ms to
-Rill's 8)? (4) Rill's scope bug (832): mend it in Rill, or let Rill 2 take
-its place? *Recommendation*: (1) yes - the examples carried over one by one,
-the length rule kept; (2) next; (3) after; (4) only if Rill stays.
+**Q50. rill3: return at a sourced file's top level (968)** An error since 968, as at the script's own
+top level: `source` reads the file in place when the script is read (890), so its top level is the
+script's. Suggested at 966 was bash's rule - return there leaves the file, back to the script that
+sourced it. Options: (a) keep the error; (b) bash's rule, each sourced file's commands made a word of
+their own, run under a catch, sharing the script's names. *Recommendation*: (a) until a library needs
+to stop part-way - source runs a file once already, so bash's commonest use, a guard against a
+second inclusion, is not needed. An error can become (b) later without breaking a script.
 *Blocks*: nothing.
-
-**A45. Rill 2: smaller first (835 -> 836).** The user: "proceed" - the
-recommendation's first: the characters' widths at 3 bytes a bound (836),
-the wide table's 8-byte cells too, one halving search for both tables
-(CP-RANGE?, CP-IN? and CP-ZW? gone): 1,321 bytes off shell.4's section -
-relfsh's images 130,348 to 129,028 and 121,408 to 120,596, Rill's 91,795 to
-90,475, Rill 2's 71,458 to 70,130. Every code point's width the same before
-and after (all 1,114,112: 7,393 none, 923,734 one, 182,985 two, one hash);
-the tables checked ascending. Stack mode and TAB stay open in Q45.
-
-**Q45. Rill 2: smaller and faster - which next? (835)** (1) Stack mode for
-defs of numbers (docs/RILL2.md, "Stack mode"): fib 18 ms to about Rill's 8, some
-1-1.5 KB. (2) The characters' widths at 3 bytes a bound, not 4: 0.9 KB off both
-Rill 2's image and relfsh's (shell.4's section is theirs, and the editor's);
-checked by every code point's width before and after. (3) TAB completion at
-Rill 2's prompt: back in, 3.3 KB, or a smaller one of its own. *Recommendation*:
-(2) first, cheap and exact; (1) when speed asks; (3) left out. *Blocks*: nothing.
-*Since*: (2) done at 836 (A45); (1) at 837, the user's second "proceed" - fib(25)
-18 ms to 11, Rill's 9 (docs/RILL2.md, "Stack mode"), and found on the way: numbers
-past 62 bits wrapped silently since 831, mended. (3) open.
-
-**Q46. One syntax for shell and language - which? (842)** The user: mixing
-`var` and `$var` is inconsistent and confusing; how do other shells join a shell
-and a real language? docs/SYNTAX-STUDY.md: four ways others take (one sigil
-everywhere; two modes by syntax; two modes by name lookup; commands quoted in a
-language), seven lessons, Rill and rill2 probed against them. (A) One sigil,
-syntax decides: every variable `$name`, bound or read; a statement's first token
-says command or code; `$(...)` for commands and expressions both, `@` spreads,
-`?(...)` for success; text quoted in code; `{}` no longer interpolates. (A') The
-same, binding bare as the shell and Rill do (`total = 0`, read `$total`). (B)
-YSH's two modes: bare names in code, `$` in commands, the boundary in the syntax.
-(C) rill2 as it is. *Recommendation*: (A) - one rule for a variable, nothing
-guessed; in rill2, whose runtime stays; two or three turns, size about even.
-*Blocks*: the syntax work, till chosen. Out with other models since 845:
-four prompts in docs/asks/ (a review, users, a grammar, prior art). The review
-back (846): five models, three for A; ten holes held, filled as A.1
-(docs/asks/ask-rill-syntax-answers-845.md). The users round (847): no mistake
-left that runs wrongly under A once five more are refused - A.2. The grammar round
-(848): one parser shape agreed; six gaps measured and filled - A.3. At the owner's
-asking for minimalism (849): A.4, the minimal cut - eleven rules in place of twenty-two;
-*recommended* now, over A.3. And (850) option C, the command model -
-docs/COMMAND-MODEL.md, a draft: a function is a command, arguments and streams carry
-values; a base for further development, not yet weighed against A.4. Worked further
-(851): objects (rule 11), the six tasks, nine gaps, a size estimate - about even - and a
-side-by-side with A.4; three prompts out to other models. The review back (852): the
-direction stands, its contracts settled as C.1 - thirteen rules. Objects back (853): the
-object contract as C.2; inheritance by filling a given map; delegation deferred. The runtime
-back (854): a plan, the collector's safe points its largest piece; nothing left to ask.
-The prototype begun (855): blocks, upvalues and the collector's new roots, tested. Step 2
-(856): value and byte output apart, captures, the printed form. Step 3 (857): break,
-continue and return by identity. A front end (858): tools/cmc.py - the draft's examples run as written.
-Programs (859): pipelines, redirections, captures, statuses.
-The aim restated (861): smaller than relfsh - function stages buffered, no coroutines.
-Built (862): pipelines with functions in them.
-The front end in Forth (863): cm/cmc.4 makes cmc.py's Forth word for word; in its own image the
-command model's language is 19,112 bytes against rill2's 21,294, no prompt or library yet - on size, a draw.
-Syntax as genes (864, docs/SYNTAX-GENES.md): 33 systems split into 23 axes - a search over them could draw
-the trade-offs of size, length and hazards, gated by the same Forth; readability, and so the choice, stays the owner's.
-The first experiment (865): 16 genomes of four syntax choices - 280 bytes apart at most, C.2 the smallest; against
-Rill and Rill 2 the command model is smaller and slower, by design not syntax. Syntax decides neither size nor speed.
-*Decided (867)*, the owner having handed it over with the criteria - smallest binary and image, good speed,
-short scripts, consistent and friendly syntax, exactly one way to do each thing: the command model (C.2).
-docs/COMMAND-MODEL.md, "One way".
-
-**A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
-yet"; "add prompt with line editing and history, see if it can be refactored
-and optimized for smaller code size" - done at 835: rill2/prompt.4, 920 bytes,
-no session table (a rill2 input is a script of its own; its names are the
-dictionary's); relfsh's editor without its TAB completion, cut out by the
-build, and a shim of 239 bytes for Rill's 526 - the editor 8.6 KB against
-Rill's 12.3; "what exactly is stack mode" - docs/RILL2.md, "Stack mode", Q45;
-"let's put rill fixes on the backburner" - GOALS.md 15 says so. And asked: no
-list functions but append? - pop, insert, extend, index, values, `in`, lists
-joined by + (835); delete from a list or a record - pop; lists and records
-hold lists and records - yes, as deep as wanted.
-
-**Q1. The space audit: which, if any? (509)**
-`tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
-image and 23.1% of the 32-bit; full cells holding offsets or sizes come
-to about 2 KB, at 64-bit only; every DOVAR word carries three unused
-bytes, about 2 KB. Options:
-(a) an image that keeps names only for a documented extension API -
-about a sixth smaller at both widths, and `forth` sees only that API;
-(b) 4-byte fields for the offset cells - ~2 KB, 64-bit only;
-(c) DOVAR without the three bytes - ~2 KB, against the one rule for a
-parameter field that four past defects came from (FORTH-STYLE.md 12);
-(d) none.
-*Recommendation*: (a) if size matters to you - it is the only lever
-at both widths; I would leave (b) and (c). *Blocks*: nothing.
-
-**Q8. Rill's other open questions (503).** Records at the prompt
-(JSON on a marked port?); a softer failure rule at the prompt than in
-scripts; the kernel in Forth. And the name - SHELL-LANGUAGE.md, "Why
-Rill", says why; it is easy to change. *At 822*: the kernel in Forth is
-how Rill was built (it compiles to Forth in the image, 736 on); JSON is
-read where the script says, from-json (A36); the prompt's points are
-Q38's. Left here: the name.
 
 **Q12. Forth plugins in image form? (516)** The user's thought: load
 compiled extensions, not source. What it takes: a plugin compiled
@@ -258,24 +98,6 @@ bash does, where dash leaves the script (426); `a=b exec 1>&1` exports
 `a`, as bash does (424); the expansion order for special builtins,
 functions and external commands is bash's (484); `echo` processes no
 escapes, as bash's does. *Recommendation*: keep them all.
-
-**Q48. Hybrid-native: whose workloads choose the native words, and native code
-for what is compiled after load? (950; answered A48)** NATIVE.md 18 priced the knee. (1) *The
-choice.* Weighed alike over the four families - 946's rule for the generic
-Forth - the set spends its first bytes on the families whose time is
-concentrated: at 32 KB it brings the shell to 0.504 of its time where the
-shell's own set brings it to 0.314, and rill3 0.499 at 8 KB against 0.348. But
-most native words belong to one image only; only the kernel's are shared.
-*Recommendation*: the kernel's native words chosen over the four families alike,
-the owner's condition for the Forth underneath; each image's own words (the
-shell's, rill3's) by that image's workloads. (2) *Run-time code.* A Forth
-program's words are compiled when it loads (50-100 % of the Forth programs'
-dispatches), and so are rill3's scripts (5.6-21 % of rill3's); a hybrid made
-ahead of time reaches neither. Options: (a) not now - the hybrid is the images'
-words; (b) the kernel's compiler given a native path, as the native kernel has
-one, for definitions marked or chosen at run time. *Recommendation*: (a) until
-the first hybrid has measured R and C (NATIVE.md 18.5); then (b) priced as 18
-was. *Blocks*: (1) the choice of words after the first build; (2) nothing yet.
 
 
 ## Answered
@@ -611,6 +433,20 @@ binary; (c) gen-opcodes.sh writes the tables as a Forth include
 `make relfasm64` is relf's; identical to the last GNU as build.
 
 
+**Q1. The space audit: which, if any? (509; answered A20 - moved here at 972)**
+`tools/image-budget.py` found: headers are 21.6% of the 64-bit shell
+image and 23.1% of the 32-bit; full cells holding offsets or sizes come
+to about 2 KB, at 64-bit only; every DOVAR word carries three unused
+bytes, about 2 KB. Options:
+(a) an image that keeps names only for a documented extension API -
+about a sixth smaller at both widths, and `forth` sees only that API;
+(b) 4-byte fields for the offset cells - ~2 KB, 64-bit only;
+(c) DOVAR without the three bytes - ~2 KB, against the one rule for a
+parameter field that four past defects came from (FORTH-STYLE.md 12);
+(d) none.
+*Recommendation*: (a) if size matters to you - it is the only lever
+at both widths; I would leave (b) and (c). *Blocks*: nothing.
+
 **A20. Names stay in the image (Q1; 509 -> 552).** The user: keep the
 names, so that the shell's Forth builtin has every word. Headers stay
 ~21% of the image; OPTIMIZATIONS.md Z1 declined.
@@ -649,7 +485,7 @@ some punishment for it is acceptable. Agreed: ForthHub is read in email
 digests, where text survives; the Habr complaint was an article that
 promised graphics. Kept to 60-64 columns for readers on phones.
 
-**Q20. Refuse >R R> R@ outside a definition? (554, open)** Forth 2012
+**Q20. Refuse >R R> R@ outside a definition? (554; answered A27)** Forth 2012
 leaves their interpretation undefined, and in relf interpreting them
 crashes - the interpreter's own return address is what they reach; my
 own tests did it twice in 554. IF and its kind refuse now (552: ?COMP),
@@ -660,7 +496,7 @@ warns this way. Options: (a) refuse them so; (b) leave it, as most
 Forths do. Recommended: (a) - one flag bit and one test in INTERPRET,
 and a crash becomes a message.
 
-**Q21. A zero divisor kills the shell (555, open).** tools/twin-fuzz.py's
+**Q21. A zero divisor kills the shell (555; answered A26).** tools/twin-fuzz.py's
 probes: `7 0 /` and `5 0 0 UM/MOD` end the process with SIGFPE on both
 engines, and inside the shell `forth '1 0 /'; echo after` never echoes
 - the shell is gone. A24 says a Forth error fails its command only, but
@@ -847,6 +683,24 @@ only": native code in a hybrid image runs on relfasm64, x86-64, whose registers
 the native code can share with nothing translated; the C engine keeps running
 CV8 alone. Recorded in NATIVE.md 18; the price is there (18.3).
 
+**Q48. Hybrid-native: whose workloads choose the native words, and native code
+for what is compiled after load? (950; answered A48 - moved here at 972)** NATIVE.md 18 priced the knee. (1) *The
+choice.* Weighed alike over the four families - 946's rule for the generic
+Forth - the set spends its first bytes on the families whose time is
+concentrated: at 32 KB it brings the shell to 0.504 of its time where the
+shell's own set brings it to 0.314, and rill3 0.499 at 8 KB against 0.348. But
+most native words belong to one image only; only the kernel's are shared.
+*Recommendation*: the kernel's native words chosen over the four families alike,
+the owner's condition for the Forth underneath; each image's own words (the
+shell's, rill3's) by that image's workloads. (2) *Run-time code.* A Forth
+program's words are compiled when it loads (50-100 % of the Forth programs'
+dispatches), and so are rill3's scripts (5.6-21 % of rill3's); a hybrid made
+ahead of time reaches neither. Options: (a) not now - the hybrid is the images'
+words; (b) the kernel's compiler given a native path, as the native kernel has
+one, for definitions marked or chosen at run time. *Recommendation*: (a) until
+the first hybrid has measured R and C (NATIVE.md 18.5); then (b) priced as 18
+was. *Blocks*: (1) the choice of words after the first build; (2) nothing yet.
+
 **A48. Hybrid-native: the choice of words, and run-time code (Q48; 950 -> 951).**
 The user: "1. Please keep in mind we want this to run on different
 platforms/architectures in the future. I don't have strong opinion. Please
@@ -858,3 +712,188 @@ every machine; a hybrid image stays a CV8 image, native code beside the CV8
 bodies, per architecture; NATIVE's contract the engine's, not x86-64's; the back
 end x86-64's alone for now). (2) Native code for what is compiled after load
 waits until the first hybrid build has measured the crossing.
+
+**A49. The command model, 965-971: the questions asked and their answers.** In order: (1) `$(( ))` of one
+operand (964): the owner - behaviour that does not surprise shell experts, consistent with the rest of
+rill3, consistency first; done at 965, one rule for an operand alone. (2) An audit for inconsistencies
+(966): five found and left for the owner (below). (3) `command subcommand` everywhere (967), then a
+`typeof` (967): instead, the value the command and the operation its subcommand - "I really like it,
+please proceed"; done at 967. (4) 966's five: a pipeline's status, `!`/`&&`/`||` in `$(( ))`, return
+at the top level, a heredoc's escapes, `$env` as a map - all as suggested (968, 969), the owner asking
+first whether `cmd1 && cmd2` stays: it does. (5) A `\` before a character that is no escape (969's open
+point): three ways offered - leave it, keep it as sh does, refuse it; the owner: "option 3 for now",
+done at 970. (6) After 970, the open items listed: a round of whole scripts, TAB for a value's
+operations and this file cleaned - "proceed as you suggested" (971, 972). Left open: Q49, Q50.
+
+**Closed at 972: Rill's and Rill 2's questions (Q8, Q39-Q46).** Kept in Open until 972, though
+their object had gone: Rill (729-833) and Rill 2 (834-862) were retired at 871, their sources out,
+when the command model - rill3, chosen at 867 by the owner's criteria (GOALS.md 15) - took their
+place. Q44 and Q45 had been answered (A44, A45, beside them in Open) and Q46, one syntax for shell
+and language, decided by that choice at 867 (C.2, the command model); the rest - Rill's image and
+compiler (Q39, Q40), a scripting vocabulary on Forth and the minimal parser (Q41, Q42), the
+prototype's next step (Q43), and Q8's last point, the name - asked of languages no longer built. What carried into rill3 is its own: the size budget
+(size:image-rill3), the compiler to Forth in the image, from-json in lib/json.cm. Moved here, not
+deleted, as the head of this file asks.
+
+**Q8. Rill's other open questions (503; closed at 972).** Records at the prompt
+(JSON on a marked port?); a softer failure rule at the prompt than in
+scripts; the kernel in Forth. And the name - SHELL-LANGUAGE.md, "Why
+Rill", says why; it is easy to change. *At 822*: the kernel in Forth is
+how Rill was built (it compiles to Forth in the image, 736 on); JSON is
+read where the script says, from-json (A36); the prompt's points are
+Q38's. Left here: the name.
+
+**Q39. Rill's image: which of the size options? (826; closed at 972)** The image is 91,526
+bytes, 70 % of relfsh's; docs/RILL-SIZE.md has where it goes (the compiler 43 %,
+the runtime 22 %, the editor and its tables 13 %, the shared base 16 %) and six
+options with their bytes. *Recommendation*: (1) two images now - 12.3 KB off
+the script image, nothing slower or lost; (4) the dead words with it; (3) and
+(2) as measured follow-ups; (5) only if size comes to matter more than a
+change to the kernel every image shares. *Blocks*: nothing.
+
+**Q40. Rill: the compiler - rewritten, replaced, or moved out? (826; closed at 972)** Asked
+whether Rill could be done as BASIC is in Forth. docs/RILL-SIZE.md, "Alternatives
+to the compiler", measures it: (1) a compiler in Forth's own manner, keywords as
+words and code compiled directly, would save some 6-9 KB and compile faster, as a
+rewrite of compile.4 that leaves the oracle nothing to compare; (2) an
+interpreter would be no smaller and several times slower; (3) scripts compiled
+once and cached, run in an image of the runtime alone, would run in about 40 KB
+- 44 % of today's - with the compiler and editor kept for the prompt; (4) Q39's
+options. 828, asked for bytecode directly (docs/RILL-SIZE.md, "Bytecode directly"):
+a 177-line script starts in about half the time (15 ms of its 28 are EVALUATE),
+the image saves only some 3-6 KB, the text's five out-of-order places need
+restructuring, and the oracle becomes outputs only - the kernel has no
+decompiler. *Recommendation*: (3) if a script's running size is what matters, with
+Q39's (1) for the prompt's image; bytecode directly if start-up time is the goal,
+staged behind a gene with an output-comparing oracle built first; not (2).
+*Blocks*: nothing.
+
+**Q41. A scripting vocabulary on Forth: how far? (829; closed at 972)** The user's idea -
+grow the language up from the Forth implementation, words instead of a
+compiler. docs/FORTH-SCRIPTING.md: a sketch (examples/forth-script/) brings a
+pilot section from 685 characters of Forth to 396 - Rill's is 371 - with no
+compiler; the stack and variables (a quarter of the pilots' Forth) and
+expressions stay, and errors come late and far from their cause. Three
+questions: (1) who writes these scripts - people who read Forth, or the
+general shell and script users A35 names? (2) beside Rill, or in its place?
+(3) a vocabulary only, or a little syntax too (locals, an infix word)?
+*Recommendation*: beside Rill, for the project's own tools; first one whole
+pilot in the vocabulary, measured by the pilots' protocol. *Blocks*: nothing.
+
+**Q42. The minimal parser: Rill's next form? (830; closed at 972)** The user wants a
+general-purpose scripting language and shell in regular notation (`a = b + c`)
+with a small translation layer. The prototype, examples/forth-script/mini.4
+(docs/FORTH-SCRIPTING.md, "The minimal parser"), does it in 12.7 KB where
+Rill's compiler is 39: the image without its editor 52.8 KB against 79.2, with
+values checked when used - and fib(25) in 78 ms against Rill's 10 and Python's
+25. Questions: (1) make this Rill's design - the compiler replaced by the
+minimal parser, the scripts and tests moved to bare names (`a = b + c`;
+`$name` only in a command line)? (2) speed - answered by measuring at 831,
+asked whether it can be as fast as Rill: numbers tagged (2n+1) and counted
+`for i in range(n)` took fib(25) from 78 ms to 25 and a 300,000-add loop from
+66 to 19 (Rill 7 and 10, Python 18 and 31); Rill's speed is its purestack and
+rangeloop genes, which the parser can carry over - the first next. (3) of
+Rill's other features, which to carry over first? *Recommendation*: (1) yes,
+step by step - the minimal parser grown feature by feature until Rill's tests
+and scripts run in it, then the compiler removed; (2) defs of numbers on the
+stack next; (3) pipelines, `$(...)` and `{expr}` in strings, records, break
+and continue. *Blocks*: nothing.
+
+**Q43. The prototype's syntax, and the shell: what next? (832; closed at 972)**
+docs/FORTH-SCRIPTING.md, "The syntax, how friendly": eight things tried, one
+mended (else on its own line ran both branches); seven improvements priced at
+some 2.3 KB of parser and nothing at run time. The shell: pipes,
+redirections, quotes, $( ) and & cost 1,960 bytes of parser; each command
+costs what Rill's does, twice dash's, the runtime execing through env. And a
+Rill bug: a def's parameter is the global of its name, so a def called
+meanwhile reads the parameter - garbage where the kinds differ. Questions:
+(1) the seven improvements, all? (2) commands through env: search PATH in the
+runtime instead? *Recommendation*: fix Rill's scope first (a def's names its
+own, both compilers, the oracle with them); (2) yes, it halves every
+command's cost; (1) all, in the order listed. *Blocks*: nothing.
+
+**Q44. Rill 2: what next? (834; answered A44 - moved here at 972)** The prototype is Rill 2 now (docs/RILL2.md):
+the issues of 832 mended, its tour checked, an image of 61,155 bytes against
+Rill's 91,795 - its own part 20.8 KB against Rill's compiler and editor's 51.4.
+Questions: (1) Rill 2 the language from here - Rill's compiler, its 61 oracle
+programs and its examples carried over or retired? (2) its prompt: relfsh's
+editor, as Rill's, 12.3 KB? (3) defs of numbers on the stack (fib 18 ms to
+Rill's 8)? (4) Rill's scope bug (832): mend it in Rill, or let Rill 2 take
+its place? *Recommendation*: (1) yes - the examples carried over one by one,
+the length rule kept; (2) next; (3) after; (4) only if Rill stays.
+*Blocks*: nothing.
+
+**A44. Rill 2: what next (834 -> 835).** The user: "let's not retire rill
+yet"; "add prompt with line editing and history, see if it can be refactored
+and optimized for smaller code size" - done at 835: rill2/prompt.4, 920 bytes,
+no session table (a rill2 input is a script of its own; its names are the
+dictionary's); relfsh's editor without its TAB completion, cut out by the
+build, and a shim of 239 bytes for Rill's 526 - the editor 8.6 KB against
+Rill's 12.3; "what exactly is stack mode" - docs/RILL2.md, "Stack mode", Q45;
+"let's put rill fixes on the backburner" - GOALS.md 15 says so. And asked: no
+list functions but append? - pop, insert, extend, index, values, `in`, lists
+joined by + (835); delete from a list or a record - pop; lists and records
+hold lists and records - yes, as deep as wanted.
+
+**Q45. Rill 2: smaller and faster - which next? (835; answered A45 - moved here at 972)** (1) Stack mode for
+defs of numbers (docs/RILL2.md, "Stack mode"): fib 18 ms to about Rill's 8, some
+1-1.5 KB. (2) The characters' widths at 3 bytes a bound, not 4: 0.9 KB off both
+Rill 2's image and relfsh's (shell.4's section is theirs, and the editor's);
+checked by every code point's width before and after. (3) TAB completion at
+Rill 2's prompt: back in, 3.3 KB, or a smaller one of its own. *Recommendation*:
+(2) first, cheap and exact; (1) when speed asks; (3) left out. *Blocks*: nothing.
+*Since*: (2) done at 836 (A45); (1) at 837, the user's second "proceed" - fib(25)
+18 ms to 11, Rill's 9 (docs/RILL2.md, "Stack mode"), and found on the way: numbers
+past 62 bits wrapped silently since 831, mended. (3) open.
+
+**A45. Rill 2: smaller first (835 -> 836).** The user: "proceed" - the
+recommendation's first: the characters' widths at 3 bytes a bound (836),
+the wide table's 8-byte cells too, one halving search for both tables
+(CP-RANGE?, CP-IN? and CP-ZW? gone): 1,321 bytes off shell.4's section -
+relfsh's images 130,348 to 129,028 and 121,408 to 120,596, Rill's 91,795 to
+90,475, Rill 2's 71,458 to 70,130. Every code point's width the same before
+and after (all 1,114,112: 7,393 none, 923,734 one, 182,985 two, one hash);
+the tables checked ascending. Stack mode and TAB stay open in Q45.
+
+**Q46. One syntax for shell and language - which? (842; decided at 867 - moved here at 972)** The user: mixing
+`var` and `$var` is inconsistent and confusing; how do other shells join a shell
+and a real language? docs/SYNTAX-STUDY.md: four ways others take (one sigil
+everywhere; two modes by syntax; two modes by name lookup; commands quoted in a
+language), seven lessons, Rill and rill2 probed against them. (A) One sigil,
+syntax decides: every variable `$name`, bound or read; a statement's first token
+says command or code; `$(...)` for commands and expressions both, `@` spreads,
+`?(...)` for success; text quoted in code; `{}` no longer interpolates. (A') The
+same, binding bare as the shell and Rill do (`total = 0`, read `$total`). (B)
+YSH's two modes: bare names in code, `$` in commands, the boundary in the syntax.
+(C) rill2 as it is. *Recommendation*: (A) - one rule for a variable, nothing
+guessed; in rill2, whose runtime stays; two or three turns, size about even.
+*Blocks*: the syntax work, till chosen. Out with other models since 845:
+four prompts in docs/asks/ (a review, users, a grammar, prior art). The review
+back (846): five models, three for A; ten holes held, filled as A.1
+(docs/asks/ask-rill-syntax-answers-845.md). The users round (847): no mistake
+left that runs wrongly under A once five more are refused - A.2. The grammar round
+(848): one parser shape agreed; six gaps measured and filled - A.3. At the owner's
+asking for minimalism (849): A.4, the minimal cut - eleven rules in place of twenty-two;
+*recommended* now, over A.3. And (850) option C, the command model -
+docs/COMMAND-MODEL.md, a draft: a function is a command, arguments and streams carry
+values; a base for further development, not yet weighed against A.4. Worked further
+(851): objects (rule 11), the six tasks, nine gaps, a size estimate - about even - and a
+side-by-side with A.4; three prompts out to other models. The review back (852): the
+direction stands, its contracts settled as C.1 - thirteen rules. Objects back (853): the
+object contract as C.2; inheritance by filling a given map; delegation deferred. The runtime
+back (854): a plan, the collector's safe points its largest piece; nothing left to ask.
+The prototype begun (855): blocks, upvalues and the collector's new roots, tested. Step 2
+(856): value and byte output apart, captures, the printed form. Step 3 (857): break,
+continue and return by identity. A front end (858): tools/cmc.py - the draft's examples run as written.
+Programs (859): pipelines, redirections, captures, statuses.
+The aim restated (861): smaller than relfsh - function stages buffered, no coroutines.
+Built (862): pipelines with functions in them.
+The front end in Forth (863): cm/cmc.4 makes cmc.py's Forth word for word; in its own image the
+command model's language is 19,112 bytes against rill2's 21,294, no prompt or library yet - on size, a draw.
+Syntax as genes (864, docs/SYNTAX-GENES.md): 33 systems split into 23 axes - a search over them could draw
+the trade-offs of size, length and hazards, gated by the same Forth; readability, and so the choice, stays the owner's.
+The first experiment (865): 16 genomes of four syntax choices - 280 bytes apart at most, C.2 the smallest; against
+Rill and Rill 2 the command model is smaller and slower, by design not syntax. Syntax decides neither size nor speed.
+*Decided (867)*, the owner having handed it over with the criteria - smallest binary and image, good speed,
+short scripts, consistent and friendly syntax, exactly one way to do each thing: the command model (C.2).
+docs/COMMAND-MODEL.md, "One way".
