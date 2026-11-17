@@ -1,7 +1,12 @@
 # The command model (850; the language since 867; working name rill3 since 918)
 
-*Since 930 there is no `def`: a function is a block written to a variable, called by its name (929-930,
-docs/progress/0900-0999.md). What this file says of defs is their history.*
+*This file is how the language came to be; docs/REFERENCE.md is the language as it stands, and where they
+differ the reference is right. Since 930 there is no `def`: a function is a block written to a variable,
+called by its name (929-930). Since 967 `count`, `has`, `slice`, `join`, `keys`, `merge`, `split`, `upper`,
+`lower` and `match` are a value's operations - `$l count`, not `count $l` - and a program a text names
+runs with `run`; 968-973 changed a pipeline's status, `!` `&&` `||` in `$(( ))`, `return` outside a
+function, a here-document's escapes and `"..."`'s, `$env`, and `==` on maps (docs/progress/0900-0999.md).
+What this file says of defs and of those builtins is their history.*
 
 **Status: the language (867).** Drafted at 850 as Q46's option C, a base for further development; at
 867, the owner having handed the choice over, chosen over A.4 by the owner's criteria - the smallest

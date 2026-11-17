@@ -1,0 +1,4 @@
+# a trapped signal in the last command (974): 128 + it, the trap seeing that status - it had been lost, the
+# trap asked for it after its own run had cleared it, and the script ended 0
+trap { echo "trapped, status $status" } INT
+sh -c 'kill -INT $PPID'

@@ -16,3 +16,9 @@ echo "values: @(put a b)"
 echo "mail ada\@(home)"
 var line ""
 read -r line
+echo $?
+echo "a status: $?"
+echo $#
+echo $@
+echo $!
+cat <<< text

@@ -1,6 +1,6 @@
 # the trap's output after an error inside $( ) (961): the capture was left on, and the trap's echo went
 # into it - lost; and after one past recursion's bound inside a capture
-trap { echo trap ran }
+trap { echo trap ran, status $status }
 var x [1]
 var f { put $x[5] }
 echo $(f)

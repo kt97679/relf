@@ -454,7 +454,8 @@ VARIABLE JB-CAP  JB-MAX JB-CAP !                   \ grown when full (891): the 
 : R-ARG ( n --- t )   \ arg(n): the script's nth argument, or empty
   DUP 0< OVER SYS-ARGC < 0= OR IF DROP 0 0 R-TEXT EXIT THEN  SYS-ARG DUP CSTRLEN R-TEXT ;
 
-: R-ARGS ( --- l )   R-NEW-LIST  SYS-ARGC 1 ?DO  I R-ARG K-TEXT R-BOX OVER R-PUSH  LOOP ;
+: R-ARGS ( --- l )   R-NEW-LIST  SYS-ARGC 1 MAX 1 ?DO  I R-ARG K-TEXT R-BOX OVER R-PUSH  LOOP ;   \ 974: at the prompt SYS-ARGC
+    \ is 0, and 0 1 ?DO ran past the arguments until memory ran out - $args at the prompt took the machine
 : R-UNSETENV ( name --- )   \ del env[NAME] (907): programs run after it do not have it - env's --unset=NAME
   R-T@ DUP 9 + ALLOCATE THROW SE-B !  DUP SE-U !  S" --unset=" SE-B @ SWAP MOVE  SE-B @ 8 + SWAP MOVE
   0 SE-B @ SE-U @ 8 + + C!
@@ -538,11 +539,13 @@ VARIABLE R-TRAP-XT   ' R-TRAP R-TRAP-XT !XT
   0 R-ON-EXIT-XT !
   0 JB-N !  0 R-OUT-KEPT !  R-TRAP-XT @XT TRAP-XT!
   R-RUN-XT @XT CATCH ?DUP IF
+    DUP -4000 <> IF 2 R-STATUS ! THEN                  \ the status it ends with, R-STATUS, for a trap's $status (974)
     R-OUT-BACK  R-RUN-EXIT  R-JOBS-STOP               \ on EXIT runs however the script ends - to stdout (821); then its jobs stop (813)
     DUP -4000 = IF  DROP R-STATUS @ SYS-EXIT  THEN    \ a command failed, fail, exit: its status
     DUP -4100 -4000 WITHIN IF  DROP 2 SYS-EXIT  THEN    \ Rill's own errors: their message said already, with the line (781)
     R-ERR> ." cm: error " . R-NL  2 SYS-EXIT
-  THEN  R-OUT-BACK  R-RUN-EXIT  R-JOBS-STOP  R-ON-EXIT-XT @ IF R-SIGNAL ?DUP IF 128 + SYS-EXIT THEN THEN  0 SYS-EXIT ;   \ a signal at the very end: 128 + it (786)
+  THEN  0 R-STATUS !  R-SIGNAL ?DUP IF 128 + R-STATUS ! THEN     \ a trapped signal in its last command: 128 + it (786; 974:
+  R-OUT-BACK  R-RUN-EXIT  R-JOBS-STOP  R-STATUS @ SYS-EXIT ;     \ asked after R-RUN-EXIT had cleared the trap, it was lost)
 
 \ ---- The library for the Python-born scripts (Iteration 754) ----------------
 \ Texts, files, records sorted and sliced, and decimals: fixed point, six

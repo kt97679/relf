@@ -117,6 +117,10 @@ VARIABLE IN-QU                                     \ reading a "...": ${name} al
     GET DROP CUR NAME0? 0= IF S" ${ wants a name" P-ERR THEN  VAR-P  GET [CHAR] } <> IF S" } missing after ${name" P-ERR THEN EXIT THEN
   CUR NAME0? IF VAR-P EXIT THEN
   CUR DIG? IF S" $1 is sh's - the script's arguments are $args, $args[0] the first" P-ERR THEN   \ (916)
+  CUR [CHAR] ? = IF S" $? is sh's - the last command's status is $status" P-ERR THEN      \ sh's others (974): said
+  CUR [CHAR] # = IF S" $# is sh's - $($args count) counts the arguments" P-ERR THEN       \ as $1 is, where they had
+  CUR [CHAR] @ = CUR [CHAR] * = OR IF S" $@ and $* are sh's - @args spreads the arguments, $args is their list" P-ERR THEN
+  CUR [CHAR] ! = IF S" $! is sh's - $job is the job & started last" P-ERR THEN              \ been "nothing right after"
   S" $" N-TX N, ;
 : IX? ( --- )   \ [key]... after a value written in one word - a list or map, a text, a capture, a spread's capture -
   \ a N-IX of its keys, after the value (913): as $name[key] is a variable's, so [a b c][1] and $(cmd)[0]
@@ -197,8 +201,9 @@ VARIABLE GLOBW                                     \ an unquoted * or ? read in 
       ELSE S" a quote inside a plain word - a word is one thing; a double-quoted text joins texts" THEN P-ERR THEN
     GET DUP [CHAR] * = OVER [CHAR] ? = OR IF -1 GLOBW ! THEN T,   \ \ too (867): quotes are the one way to escape
   REPEAT DROP
-  TXS @ TXP @ OVER - DUP 2 > IF + 2 - 2 S" ()" COMPARE 0= IF S" name() { } is sh's - def name { } makes a function" P-ERR THEN ELSE 2DROP THEN   \ (916)
+  TXS @ TXP @ OVER - DUP 2 > IF + 2 - 2 S" ()" COMPARE 0= IF S" name() { } is sh's - var name {|params| ... } makes a function" P-ERR THEN ELSE 2DROP THEN   \ (916)
   TXP @ TXS @ - 2 > IF  TXS @ 2 S" <<" COMPARE 0= IF                                  \ (963)
+    TXS @ 2 + C@ [CHAR] < = IF S" <<< is bash's - echo text | cmd, or << END and the lines" P-ERR THEN   \ (974)
     S" <<END and <<- are sh's - << END, blanks round it; an END indented takes that much off each line" P-ERR THEN THEN
   TXS @ TXP @ OVER - GLUED? IF S" an operator glued to a word - | > < & and 2> are words of their own, blanks round them" P-ERR THEN
   TXS @ TXP @ OVER - DUP 1 > IF  + 1- C@ [CHAR] \ =  CUR 10 = CUR 13 = OR AND
@@ -472,7 +477,7 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   \ the prompt's session 
 : SH-SAYS ( c-addr u advice-a advice-u --- )   2SWAP S| S"  is sh's - " CAT 2SWAP CAT G-ERR ;
 : SH-HABIT ( c-addr u --- )   \ a first word that is sh's and no program here: an error that says this language's way (916)
   2DUP S" export" COMPARE 0= IF S" set env[NAME] value" SH-SAYS THEN
-  2DUP S" local declare typeset" IN-LIST? IF S" var name value - a def's variables are its own" SH-SAYS THEN
+  2DUP S" local declare typeset" IN-LIST? IF S" var name value - a function's variables are its own" SH-SAYS THEN
   2DUP S" unset" COMPARE 0= IF S" del name[key], del env[NAME]" SH-SAYS THEN
   2DUP S" function alias" IN-LIST? IF S" var name {|params| ... }" SH-SAYS THEN
   2DUP S" then fi do done esac" IN-LIST? IF S" blocks: if cond { }, while cond { }, for x values { }, case v { }" SH-SAYS THEN

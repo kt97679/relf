@@ -2,7 +2,7 @@
 \ bracket or a quote is open, or the line ends in |, && or || - is compiled and run in one session: what
 \ one line declares and defines the next sees (cm/cmc.4's SESSION - the session's own variables boxed,
 \ since a later line's block may capture them). At a terminal relfsh's line editor reads it (keys,
-\ history, ^R; no TAB); without one, lines as they come. An error is said and the prompt comes back; ^C
+\ history, ^R; TAB is cm/complete.4's, 911); without one, lines as they come. An error is said and the prompt comes back; ^C
 \ ends what runs; the input's end ends the prompt, with the last status. Rill 2's prompt (835), as cm.
 65536 CONSTANT CL-MAX   VARIABLE CL-BUF  VARIABLE CL#  VARIABLE CL-TTY  VARIABLE CL-D  VARIABLE CL-Q
 : CL@ ( i --- c )   DUP CL# @ < IF CL-BUF @ + C@ ELSE DROP 0 THEN ;

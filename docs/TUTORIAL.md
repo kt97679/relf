@@ -5,7 +5,8 @@ it has values - numbers, lists, maps, functions - so a script needs no Python to
 tutorial walks through it in order; docs/REFERENCE.md is the whole of it. Every example here is run by
 the test suite (tests/cm/scripts/tutorial.cm), so what it shows is what rill3 does.
 
-Run a script with `bin/cm script.cm`, or start the prompt with `bin/cm` alone.
+Run a script with `bin/cm script.cm`, or start the prompt with `bin/cm` alone. At the prompt TAB
+completes names - and after a value its operations: `$l co` TAB is `$l count`.
 
 ## 1. Commands and words
 
@@ -32,6 +33,8 @@ A word's first character says what it is: `'...'` a text exactly as written, `".
     echo "$name knows $langs, born in $born[city]"
     # Ada Lovelace knows [forth sh], born in London
 
+`$env` is the environment, a map: `$env[HOME]`, and `$env get EDITOR vi` for a default.
+
 Numbers are whole; arithmetic and comparison live in `$(( ))`.
 
     var n 7
@@ -47,6 +50,8 @@ Numbers are whole; arithmetic and comparison live in `$(( ))`.
     var m [a: 1]
     set m[b] 2
     for k @($m keys) { echo $k is $m[$k] }
+    echo $($m get c 0)
+    # 0
 
 A list, a map or a text is a command, its operations its subcommands - as `git commit` is git's: `$l
 count`, `$l slice 1 3`, `$m keys`, `$t split ,`, `$t upper`; `$m has a` and `$t match '*.txt'` give a
@@ -104,6 +109,16 @@ holds runs with `run`: `run $EDITOR notes.txt`.
     echo $($lines count) lines
     # 2 lines
 
+A here-document gives a command lines as its stdin, read as a `"..."` is; `<< 'END'` takes them as
+written.
+
+    cat << END
+    Dear $name,
+    you know $($langs count) languages.
+    END
+    # Dear Ada Lovelace,
+    # you know 2 languages.
+
 ## 7. When things fail
 
 A command that fails stops the script, with its status - unless its status is tested: by `if`,
@@ -112,9 +127,9 @@ A command that fails stops the script, with its status - unless its status is te
     var hits $(grep -c nothing-here /etc/passwd || true)
     echo $hits hits
 
-`trap` runs a block however the script ends - to clean up.
+`trap` runs a block however the script ends - to clean up; `$status` in it is the status it ends with.
 
-    trap { echo cleaned up } EXIT
+    trap { echo cleaned up, status $status } EXIT
 
 ## 8. Libraries, and Forth
 

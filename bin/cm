@@ -1,5 +1,5 @@
 #!/bin/sh
-# cm [script.cm [args...]]    run a command-model script (docs/COMMAND-MODEL.md) - or, with none, its prompt;
+# cm [script.cm [args...]]    run a rill3 script (docs/REFERENCE.md) - or, with none, its prompt;
 #                             a script that starts #!/usr/bin/env cm runs as itself
 # kernel64-cm.img is built first when it is missing or older than its sources.
 self=$0

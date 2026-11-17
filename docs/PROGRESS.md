@@ -997,6 +997,7 @@ do not trust the absence of a line below.
 - 971 — rill3: six whole scripts where 967-970 reach - word counts by get, $env as a map, pipelines' statuses, files from here-documents, a CRLF export to JSON, a query tool of `$v $op` and run - no defect found; `read -r` said as sh's habit
 - 972 — rill3: TAB after a value offers its operations - those of the kind a prompt variable holds; QUESTIONS.md cleaned: Rill's questions closed, answered ones out of Open, 965-971's recorded (A49), Q49 and Q50 new
 - 973 — rill3: two maps alike are == - the same keys, their values equal, in any order; $env compared as the map it is (Q49, A50)
+- 974 — rill3: its docs audited against the implementation - REFERENCE.md corrected and filled in (a prompt section, the printed form, map keys, `/` and `%`, function stages, every builtin's details), the tutorial and COMMAND-MODEL.md brought up; on the way `$args` at the prompt no longer eats memory, a trap's `$status` is the ending one, a trapped signal in the last command is kept, and sh's `$?` `$#` `$@` `$!` `<<<` named
 
 ### Not tied to an iteration
 

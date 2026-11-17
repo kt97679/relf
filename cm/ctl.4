@@ -23,7 +23,7 @@ VARIABLE T-TARGET
 : TRANSFER ( id code --- )   \ to the live activation numbered id; none live - an error
   OVER LIVE? 0= IF NIP  CASE  T-BREAK OF S" cm: break - its loop has ended" ENDOF
                               T-CONTINUE OF S" cm: continue - its loop has ended" ENDOF
-                              S" cm: return - its def has ended" ROT  ENDCASE  R-FAIL THEN
+                              S" cm: return - its function has ended" ROT  ENDCASE  R-FAIL THEN
   SWAP T-TARGET !  THROW ;
 : BREAK ( id-item --- )   D>N T-BREAK TRANSFER ;
 : CONTINUE ( id-item --- )   D>N T-CONTINUE TRANSFER ;
