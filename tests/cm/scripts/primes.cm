@@ -7,6 +7,6 @@ for n @(range 100) {
         if $(( $p * $p > $n )) { break }
         if $(( $n % $p == 0 )) { set prime false; break }
     }
-    if $prime { append primes $n }
+    if $prime { $primes append $n }
 }
 echo $($primes count) primes: $($primes join " ")

@@ -28,5 +28,5 @@ count 3
 # in a pipeline, a condition, $(( ))
 $l join "\n" | sort -r
 if $m has a && ! $m has z { echo a, no z }
-while $(( $($l count) < 5 )) { append l 0 }
+while $(( $($l count) < 5 )) { $l append 0 }
 echo $l

@@ -5,27 +5,27 @@ var text 'it was the best of times, it was the worst of times; it was the age of
 var freq [:]
 for i @(range $($text count)) {
     var ch $text[$i]
-    if $freq has $ch { set freq[$ch] $(( $freq[$ch] + 1 )) } else { set freq[$ch] 1 }
+    if $freq has $ch { $freq set $ch $(( $freq[$ch] + 1 )) } else { $freq set $ch 1 }
 }
 # a leaf [weight char], a node [weight left right]
 var nodes []
-for ch @($freq keys) { append nodes [$freq[$ch] $ch] }
+for ch @($freq keys) { $nodes append [$freq[$ch] $ch] }
 var lightest {
     var at 0
     for i @(range $($nodes count)) { if $(( $nodes[$i][0] < $nodes[$at][0] )) { set at $i } }
     var n $nodes[$at]
-    del nodes[$at]
+    $nodes del $at
     put $n
 }
 while $(( $($nodes count) > 1 )) {
     var a @(lightest)
     var b @(lightest)
-    append nodes [$(( $a[0] + $b[0] )) $a $b]
+    $nodes append [$(( $a[0] + $b[0] )) $a $b]
 }
 var tree $nodes[0]
 var codes [:]
 var walk {|t prefix|
-    if $(( $($t count) == 2 )) { set codes[$t[1]] $prefix; return }
+    if $(( $($t count) == 2 )) { $codes set $t[1] $prefix; return }
     walk $t[1] "${prefix}0"
     walk $t[2] "${prefix}1"
 }

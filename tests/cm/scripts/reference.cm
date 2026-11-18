@@ -1,7 +1,8 @@
 # the reference's examples, run (900): docs/REFERENCE.md shows each with what it prints here -
 # tools/reference-check.py, in tests/cm/run, fails if an example line there is not one here
 # -- words and values
-echo plain 'single quoted' "double quoted" 42 -7 1.5 true [a b] [k: v] { }
+var b { }   # echo of a block itself is an error (976): {a,b} is not bash's braces here
+echo plain 'single quoted' "double quoted" 42 -7 1.5 true [a b] [k: v] $b
 echo $(kind hello) $(kind 42) $(kind 1.5) $(kind true) $(kind [a]) $(kind [k: v]) $(kind { })
 printf '%s\n' a \
     b
@@ -10,8 +11,8 @@ var name ada
 var l [3 1 2]
 var m [name: ada  born: 1815]
 set name grace
-set m[born] 1906
-append l 4 5
+$m set born 1906
+$l append 4 5
 echo $name $l $l[0] $l[-1] $m[born] $($l count) $($m count) $($name count)
 echo [a b c][-1] [k: v  j: w][j] $(printf hello)[0] @('a,b,c' split ,)[2]
 # -- texts
@@ -59,6 +60,8 @@ echo $(range 3) @(range 3)
 # -- a value's operations (967)
 echo $($m count) $($name upper) [@($l slice 1 3)] $($l join -) @('a,b' split ,) @([b: 1  a: 2] keys)
 if $m has born { echo has born }
+var langs [forth rill3]; $langs set 1 sh; $langs append awk; $langs del 0; echo $langs
+# [sh awk]
 'notes.txt' match '*.txt' && echo a text file
 # -- programs, pipes and redirections
 printf 'b\na\n' | sort
@@ -84,7 +87,7 @@ tr a-z A-Z << 'END' | cat
 as $written
 END
 # -- the environment and arguments
-set env[CM_REF] hello
+$env set CM_REF hello
 sh -c 'echo program sees $CM_REF'
 echo args $args $($args count)
 echo $(glob "/tmp/cm-ref.*")

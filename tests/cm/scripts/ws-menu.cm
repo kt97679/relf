@@ -5,8 +5,8 @@ var menu {
     var items [:]
     while read choice {
         case $choice {
-            a { set items[apples] true; echo added apples }
-            p { set items[pears] true; echo added pears }
+            a { $items set apples true; echo added apples }
+            p { $items set pears true; echo added pears }
             l { echo list: @($items keys) }
             q { echo bye; break }
             * { echo "unknown choice: $choice" }

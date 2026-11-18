@@ -27,20 +27,22 @@ an eleventh.
    and the redirections - are words of their own.
 4. A command's first word says what runs: a builtin, a function, a value, or else the program of that
    name. A block runs, a boolean is a status; a list, a map or a text does the operation the next word
-   names - the value is the command, the operation its subcommand: `$l count`, `$m has k`.
+   names - the value is the command, the operation its subcommand: `$l count`, `$m has k`, `$l set 0 x`.
 5. Values are texts, whole 64-bit numbers, booleans, lists, maps and blocks; a value is one word,
    never split or globbed - `@` spreads a list into words.
 6. `$(cmd)` is the text cmd printed, `@(cmd)` its values one by one, `$(( ))` arithmetic and
    comparison.
-7. `var` makes a variable in its block, `set` changes one, `del` takes from one; a block sees the
-   variables around it, and keeps them - one made in a loop, or by a function that has returned.
+7. `var` makes a variable in its block, `set` gives one another value; a block sees the variables
+   around it, and keeps them - one made in a loop, or by a function that has returned. A list or a map
+   changes by its operations - `set`, `append`, `del` - in place: every variable holding it sees it.
 8. Every command has a status; `if`, `while`, `&&`, `||` and `!` test it. In a script, a command that
    fails and is not tested ends it, with its status.
 9. `|` carries bytes between programs and values between functions; `>` `>>` `<` `2>` `&>` `2>&1`
    redirect as sh's, and `<< END` makes the lines after its line, up to `END`, the command's stdin.
 10. The rest are builtins (the table below): control (`if` `for` `while` `case` `return`
    `break` `continue`), values (`put` `range` `glob` `kind` ...), programs (`run`), the script
-   (`source` `trap` `exit` `forth`) - and values' operations (`count` `has` `slice` `split` ...).
+   (`source` `trap` `exit` `forth`) - and values' operations (`count` `has` `slice` `split` `set`
+   `append` `del` ...).
 
 ## Words
 
@@ -102,7 +104,7 @@ that reads as a number is written as one, and reads back as the number, `==` to 
 read back.
 
 A map's key in `[k: v]` is a word with `:` right after it - plain, `[1: a  a-b: c]`, or quoted,
-`["a b": 1  'c d': 2  "$k": 3]`, a `"..."` key with its `$`s as anywhere; `set m[$k] v` puts one in
+`["a b": 1  'c d': 2  "$k": 3]`, a `"..."` key with its `$`s as anywhere; `$m set $k v` puts one in
 too. A printed map writes its keys so - quoted as a text is, but for `true`, `false` and a `:` at the
 end, which a key keeps plain: `["a b": 1  x:: 2]`. Keys are texts - `$m[1]` reads the key `1` -
 kept in the order they came; two maps are `==` when they hold the same keys with equal values.
@@ -113,17 +115,23 @@ kept in the order they came; two maps are `==` when they hold the same keys with
     var l [3 1 2]
     var m [name: ada  born: 1815]
     set name grace                  # one that exists
-    set m[born] 1906                # an element; set m[k][j] too
-    append l 4 5                    # items onto a list
+    $m set born 1906                # an element, its value's operation: $m[k] set j too
+    $l append 4 5                   # items onto a list
     echo $name $l $l[0] $l[-1] $m[born] $($l count) $($m count) $($name count)
     # grace [3 1 2 4 5] 3 5 1906 5 2 5
+
+`set` gives a variable another value; an element changes by its value's operation - `$m set k v`,
+`$l append x`, `$l del 0` - in place (976: `set m[k] v`, `append l x` and `del l[0]` had been builtins).
+A list or a map is one value however many variables hold it: after `var b $a`, `$b set 0 9` changes
+what `$a` reads too, and a function given a list changes its caller's; `set b [7 8]` gives `b` another
+list and leaves `a` its own. `[@l]` is a new list of the same items, `$m merge [:]` a new map.
 
 Scope is lexical. A function - a block - sees its parameters, its own variables, the variables around
 it, and the script's top-level variables wherever they are declared: those are known from the script's
 start, though one read before its `var` has run is not yet set. A loop's variable is a new one each time round, so a block made in a loop keeps that time's
 value. `$env` is the environment, a map: `$env[HOME]` reads a name - one not set is an error, as a
 map's missing key is; `$env get EDITOR vi` gives a default - `$env has NAME`, `$env keys` and `$env count`
-as any map's; `set env[NAME] value` sets it for programs run after, and `del env[NAME]` takes it away;
+as any map's; `$env set NAME value` sets it for programs run after, and `$env del NAME` takes it away;
 `$args` is the script's arguments, a list; `$status` the last command's status; `$job` the last job `&`
 started, for `wait $job` (sh's `$!`). Reading a variable
 that does not exist is an error.
@@ -217,7 +225,8 @@ first item the program - and `run "/opt/my tools/x"`; `run` is a program's stage
 
 A list, a map or a text is a command whose subcommands are its operations, as a program's are: the
 value first, the operation's name next, its words after - `$l count`, `$m has $k`, `$t split ,`. Each
-puts what it makes, as a function does, taken with `$( )` or `@( )`; `has` and `match` give a status.
+puts what it makes, as a function does, taken with `$( )` or `@( )`; `has` and `match` give a status;
+`set`, `append` and `del` change the value itself, in place, and put nothing.
 
 | operation | list | map | text |
 |---|---|---|---|
@@ -230,9 +239,13 @@ puts what it makes, as a function does, taken with `$( )` or `@( )`; `has` and `
 | `split sep` | | | its parts between the seps, put |
 | `upper`, `lower` | | | in capitals, in small letters - Unicode's simple case mapping: é to É, ж to Ж |
 | `match pattern` | | | status 0 if all of it matches - `*`, `?`, `[...]` by character |
+| `set key value` | the item at key - an index, negative from the end - is value | the key's value is value, a new key added | |
+| `append values...` | the values added at its end | | |
+| `del key` | the item at key taken out, those after it moved down | the key and its value taken out | |
 
 `slice`'s start and end may be negative, from the end, and are held to the length; a start past the end
-is none. `split` by an empty separator is an error, and an empty text splits into one empty part. `has`
+is none. `set`'s and `del`'s index must be in the list - past it, an error; `del` of a key the map has
+not, an error. `$env set NAME value` and `$env del NAME` change the environment, for programs run after. `split` by an empty separator is an error, and an empty text splits into one empty part. `has`
 of a text asks for a part of it, `match` for the whole - its pattern quoted, for a bare `*.txt` globs
 first, as any word does: `$t match '*.txt'`. A word as the operation's name may be a value
 too, `$l $op`. A kind that has not the operation is an error that names
@@ -240,10 +253,14 @@ the ones it has: `cm: a map has no split - its operations: count has keys merge 
 `$(( ))` does its arithmetic, and `"$n" count` counts its digits. Before 967 they were builtins -
 `count $l`, `has $m k`; tools/cm-migrate-ops.py rewrites such a script, and each name as a first word
 says it is an operation now: `cm: count: no such program - count is a value's operation: $v count`.
+Before 976 an element changed by builtins - `set m[k] v`, `append l x`, `del m[k]`; the same tool
+rewrites those (`--976` for those alone), and each says where it went: `cm: del is gone (976) - $m del key`.
 
     echo $($m count) $($name upper) [@($l slice 1 3)] $($l join -) @('a,b' split ,) @([b: 1  a: 2] keys)
     # 2 GRACE [1 2] 3-1-2-4-5 a b b a
     if $m has born { echo has born }
+    var langs [forth rill3]; $langs set 1 sh; $langs append awk; $langs del 0; echo $langs
+    # [sh awk]
     'notes.txt' match '*.txt' && echo a text file
 
 ## Output, and taking it
@@ -310,9 +327,7 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 
 | builtin | does |
 |---|---|
-| `var name value`, `set name value`, `set name[k] value` | make a variable, change one, change an element |
-| `append name values...`, `append name[k] values...` | add values to a list - one a variable holds, or one inside a list or map |
-| `del name[k]` | take an item out of a list - by index, negative from the end - or a key out of a map, in place; `del env[NAME]` unsets |
+| `var name value`, `set name value` | make a variable, give one another value - an element changes by its value's operation, `$m set k v` |
 | `put values...` | write values |
 | `echo words...` | write the words' printed forms, a blank between, a newline after - no options: `printf` for those |
 | `if c {..} elif c {..} else {..}`, `while c {..}`, `for x values... {..}` | control - with no block run, status 0 |
@@ -323,7 +338,7 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 | `kind v` | text, number, bool, list, map or block |
 | `glob patterns...` | each pattern's paths, sorted, put, the patterns in their order - none, none put |
 | `run program words...` | the program a text names, given the words: `run $EDITOR file`, `run @cmd` |
-| `read name`, `read name[k]` | a line of stdin into name, as it is - its blanks kept, nothing split; status 1 at the end |
+| `read name` | a line of stdin into name, as it is - its blanks kept, nothing split; status 1 at the end |
 | `source file` | another script read in where the line stands, once - a second source of it does nothing; its path from this file's directory; a name with no `/` not there, from the directories of `$env[RILL3_PATH]`; at the prompt, a later line's source reloads |
 | `forth words values...` | Forth run in rill3's own image: the values onto its stack (a number a cell, `true` and `false` -1 and 0, a text its address and length), the words run, what they leave put as numbers |
 | `source json.cm`, `source args.cm` | rill3's own library, written in rill3, in `lib/` - `bin/cm` puts it last on `$env[RILL3_PATH]`: `to-json value`, `from-json text`; `parse-args spec argv` (a map of option defaults: a boolean a flag, else a value; `--help` lists them), `usage spec` |
@@ -375,6 +390,9 @@ as deep as memory allows, though printing or comparing one nested past about 20,
 - `$EDITOR file` is `run $EDITOR file`: a text first in a command is a value, the next word its operation.
 - `$(cmd)` is text - the same as sh's; `@(cmd)` takes a function's values.
 - `{ ... }` alone is a group, as sh's `{ ...; }`: `cmd || { echo failed; return 1 }` returns from the function.
+  A `{...}` word is a block, not bash's braces: `echo {a,b}` is an error, and a program is not given
+  one - `'{}'` for find's `-exec ... '{}' ';'`.
+- `export NAME=v` is `$env set NAME v`; `unset NAME` is `$env del NAME`.
 - Here-documents as sh's, `<< END` with blanks round it; an indented `END` takes its indent off each
   line, where sh's `<<-` takes tabs. Inside, the escapes are `"..."`'s: `\$5` for a dollar sign, `\n`
   a newline; awk's or a program's text goes in `<< 'END'`.

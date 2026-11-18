@@ -9,8 +9,8 @@ var normalise {|p|
   var out []
   for s @(parts $p) {
     if $(( $s == '..' )) {
-      if $(( $($out count) > 0 )) && $(( $out[-1] != '..' )) { del out[-1] } elif ! $abs { append out .. }
-    } else { append out $s }
+      if $(( $($out count) > 0 )) && $(( $out[-1] != '..' )) { $out del -1 } elif ! $abs { $out append .. }
+    } else { $out append $s }
   }
   var body $($out join /)
   if $abs { put "/$body" } elif $(( $body == '' )) { put . } else { put $body }
@@ -22,7 +22,7 @@ var relative {|to from|
   var i 0
   while $(( $i < $($t count) && $i < $($f count) )) && $(( $t[$i] == $f[$i] )) { set i $(( $i + 1 )) }
   var up []
-  for _ @(range $(( $($f count) - $i ))) { append up .. }
+  for _ @(range $(( $($f count) - $i ))) { $up append .. }
   var rel $([@up @($t slice $i)] join /)
   if $(( $rel == '' )) { put . } else { put $rel }
 }

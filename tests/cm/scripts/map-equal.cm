@@ -19,11 +19,11 @@ var deep2 [p: [q: [r: [s: 1]]]]
 var l1 [$a $deep]
 var l2 [$b $deep2]
 echo $(( $deep == $deep2 )) $(( $l1 == $l2 ))
-set env[CM973] one
+$env set CM973 one
 var e @([:] merge $env)
 echo $(( $env == $e )) $(( $e == $env ))
-del env[CM973]
+$env del CM973
 echo $(( $env == $e ))
 var c $a
-set c[w] 0
+$c set w 0
 echo "a map is shared - set through c, a has w: $(( $a == $b ))"

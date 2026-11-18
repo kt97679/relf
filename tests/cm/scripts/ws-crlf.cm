@@ -9,15 +9,15 @@ for line @($csv split "\r\n") {
     var cells [@($line split ,)]
     if $(( $($head count) == 0 )) { set head $cells; continue }
     var row [:]
-    for i @(range $($head count)) { set row[$head[$i]] $([@($cells slice $i $(( $i + 1 )))] join '') }
-    append rows $row
+    for i @(range $($head count)) { $row set $head[$i] $([@($cells slice $i $(( $i + 1 )))] join '') }
+    $rows append $row
 }
 echo "$($rows count) rows, columns $($head join ' ')"
 var totals [:]
 for r @rows {
     var q $($r get qty 0)
     if $(( $($q count) == 0 )) { set q 0 }
-    set totals[$r[name]] $(( $($totals get $r[name] 0) + $q ))
+    $totals set $r[name] $(( $($totals get $r[name] 0) + $q ))
 }
 for who @($totals keys) { echo "  $who $totals[$who]" }
 var doc [rows: $rows  totals: $totals]

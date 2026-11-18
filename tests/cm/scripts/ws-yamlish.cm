@@ -10,10 +10,10 @@ var section ''
 for line @($text split "\n") {
     var parts [@($line split ': ')]
     if $line match '  *' {
-        set conf[$section][$($parts[0] slice 2)] $parts[1]
+        $conf[$section] set $($parts[0] slice 2) $parts[1]
     } else {
         set section $($parts[0] slice 0 -1)
-        set conf[$section] [:]
+        $conf set $section [:]
     }
 }
 echo $conf

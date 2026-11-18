@@ -6,7 +6,7 @@ echo $(( $a == $b )) $(( $a != $b ))
 var c [1 [2 x] [k: v]]
 var d [1 [2 x] $c[2]]
 echo $(( $c == $d ))
-set d[1][1] y
+$d[1] set 1 y
 echo $(( $c == $d ))
 var e ["1" 2]
 var one [1]

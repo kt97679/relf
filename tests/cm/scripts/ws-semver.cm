@@ -15,10 +15,10 @@ for v @versions {
     var out []
     var placed false
     for s @sorted {
-        if ! $placed && newer $s $v { append out $v; set placed true }
-        append out $s
+        if ! $placed && newer $s $v { $out append $v; set placed true }
+        $out append $s
     }
-    if ! $placed { append out $v }
+    if ! $placed { $out append $v }
     set sorted $out
 }
 echo oldest first: @sorted

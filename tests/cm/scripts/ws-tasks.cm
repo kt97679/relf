@@ -9,7 +9,7 @@ var run-task {|name|
     for d @deps[$name] { run-task $d || return 1 }
     var words [@($cmds[$name] split ' ')]
     run @words
-    set done[$name] true
+    $done set $name true
 }
 run-task test
 echo ran: @($done keys)

@@ -7,14 +7,14 @@ var parse {|argv|
         if $a match '--*=*' {
             var kv [@($a split =)]
             var key $([@($kv[0] split -)] join '')
-            set opts[$key] $kv[1]
+            $opts set $key $kv[1]
         } elif $a match '-v' {
-            set opts[verbose] true
+            $opts set verbose true
         } else {
-            append rest $a
+            $rest append $a
         }
     }
-    set opts[rest] $rest
+    $opts set rest $rest
     put $opts
 }
 var o @(parse [--name=ada -v one --mode=fast two])

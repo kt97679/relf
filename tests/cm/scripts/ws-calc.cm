@@ -11,11 +11,11 @@ var tokenize {|text|
     if $c match '[0-9]' {
       var j $i
       while $(( $j < $n )) && $text[$j] match '[0-9]' { set j $(( $j + 1 )) }
-      append toks [num: $($text slice $i $j)]
+      $toks append [num: $($text slice $i $j)]
       set i $j
       continue
     }
-    if '+-*/%()' has $c { append toks [op: $c]; set i $(( $i + 1 )); continue }
+    if '+-*/%()' has $c { $toks append [op: $c]; set i $(( $i + 1 )); continue }
     put "unexpected '$c' at $i"
     return 1
   }

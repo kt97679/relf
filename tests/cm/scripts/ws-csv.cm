@@ -10,7 +10,7 @@ var header [@($lines[0] split ,)]
 var totals [:]
 for line @($lines slice 1) {
     var f [@($line split ,)]
-    if $totals has $f[0] { set totals[$f[0]] $(( $totals[$f[0]] + $f[2] )) } else { set totals[$f[0]] $f[2] }
+    if $totals has $f[0] { $totals set $f[0] $(( $totals[$f[0]] + $f[2] )) } else { $totals set $f[0] $f[2] }
 }
 echo "$($header[0] upper) $($header[2] upper)"
 for r @($totals keys) { echo "$r $totals[$r]" }

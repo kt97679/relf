@@ -27,7 +27,7 @@ var field-set {|text i|
     }
     if $(( $from < $lo || $to > $hi || $from > $to )) { put "$names[$i]: $range is outside $lo-$hi"; return 1 }
     var v $from
-    while $(( $v <= $to )) { set nums[$v] true; set v $(( $v + $step )) }
+    while $(( $v <= $to )) { $nums set $v true; set v $(( $v + $step )) }
   }
   put $nums
 }
@@ -39,7 +39,7 @@ var parse {|line|
   for i @(range 5) {
     var s ''
     if ! set s @(field-set $fields[$i] $i) { put $s; return 1 }
-    append sets $s
+    $sets append $s
   }
   put [sets: $sets  command: $([@($fields slice 5)] join ' ')]
 }
@@ -48,17 +48,17 @@ var parse {|line|
 var month-days [31 28 31 30 31 30 31 31 30 31 30 31]
 var tick {|t|
   var m @($t merge [:])          # a copy: a map is held by reference, and var m $t would change the caller's
-  set m[minute] $(( $t[minute] + 1 ))
+  $m set minute $(( $t[minute] + 1 ))
   if $(( $m[minute] < 60 )) { put $m; return 0 }
-  set m[minute] 0
-  set m[hour] $(( $t[hour] + 1 ))
+  $m set minute 0
+  $m set hour $(( $t[hour] + 1 ))
   if $(( $m[hour] < 24 )) { put $m; return 0 }
-  set m[hour] 0
-  set m[weekday] $(( ($t[weekday] + 1) % 7 ))
-  set m[day] $(( $t[day] + 1 ))
+  $m set hour 0
+  $m set weekday $(( ($t[weekday] + 1) % 7 ))
+  $m set day $(( $t[day] + 1 ))
   if $(( $m[day] <= $month-days[$(( $t[month] - 1 ))] )) { put $m; return 0 }
-  set m[day] 1
-  set m[month] $(( $t[month] % 12 + 1 ))
+  $m set day 1
+  $m set month $(( $t[month] % 12 + 1 ))
   put $m
 }
 var runs-at {|job t|
@@ -81,7 +81,7 @@ var lines [
 var jobs []
 for l @lines {
   var j ''
-  if set j @(parse $l) { append jobs $j; echo "ok:    $l" } else { echo "error: $l - $j" }
+  if set j @(parse $l) { $jobs append $j; echo "ok:    $l" } else { echo "error: $l - $j" }
 }
 
 # from Wednesday 28 January, 23:58 (the 28th of a year whose 1 January is a Thursday: a Wednesday, 3)
@@ -93,7 +93,7 @@ for j @jobs {
   while $(( $($found count) < 3 && $steps < 7 * 24 * 60 )) {
     set t @(tick $t)
     set steps $(( $steps + 1 ))
-    if runs-at $j $t { append found @(show $t) }
+    if runs-at $j $t { $found append @(show $t) }
   }
   echo "$j[command]: $($found join ', ')"
 }

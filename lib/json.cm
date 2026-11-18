@@ -18,8 +18,8 @@ var json-str {|t|
 
 var to-json {|v|
     case $(kind $v) {
-        map { var parts []; for k @($v keys) { append parts "$(json-str $k):$(to-json $v[$k])" }; put "{$($parts join ,)}" }
-        list { var parts []; for x @v { append parts $(to-json $x) }; put "[$($parts join ,)]" }
+        map { var parts []; for k @($v keys) { $parts append "$(json-str $k):$(to-json $v[$k])" }; put "{$($parts join ,)}" }
+        list { var parts []; for x @v { $parts append $(to-json $x) }; put "[$($parts join ,)]" }
         text { put $(json-str $v) }
         * { put "$v" }
     }
@@ -88,7 +88,7 @@ var j-value {
                     j-ws
                     var k @(j-string)
                     j-take ':'
-                    set m[$k] @(j-value)
+                    $m set $k @(j-value)
                     j-ws
                     if $jt[$ji] match ',' { set ji $(( $ji + 1 )) } else { j-take '}'; break }
                 }
@@ -101,7 +101,7 @@ var j-value {
             j-ws
             if $jt[$ji] match ']' { set ji $(( $ji + 1 )) } else {
                 while true {
-                    append l @(j-value)
+                    $l append @(j-value)
                     j-ws
                     if $jt[$ji] match ',' { set ji $(( $ji + 1 )) } else { j-take ']'; break }
                 }

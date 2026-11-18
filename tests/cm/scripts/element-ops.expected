@@ -1,0 +1,13 @@
+[rill3 sh awk] 3
+[born: 1815  "full name": "Ada Lovelace"]
+[a: [x: 1  y: 2]  l: [[2] [3 4]]]
+[9 2 1] [9 2 1] true
+[9 2 1] [7 8]
+sh sees here
+sh sees []
+called
+from-cmd 1 block
+v2 [rill3 sh awk p q]
+the block got del 3
+[] 0
+status 0

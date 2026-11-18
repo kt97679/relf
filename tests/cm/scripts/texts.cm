@@ -6,5 +6,5 @@ var i $(( $($words count) - 1 ))
 while $(( $i >= 0 )) { set out "$out $words[$i]"; set i $(( $i - 1 )) }
 echo "reversed:$out"
 var caps []
-for w @words { append caps "$(echo $w[0] | tr a-z A-Z)$(echo $w | cut -c2-)" }
+for w @words { $caps append "$(echo $w[0] | tr a-z A-Z)$(echo $w | cut -c2-)" }
 echo $($caps join " ")

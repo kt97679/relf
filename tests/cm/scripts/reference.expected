@@ -36,6 +36,7 @@ each y
 2 0 1 2
 2 GRACE [1 2] 3-1-2-4-5 a b b a
 has born
+[sh awk]
 a text file
 a
 b

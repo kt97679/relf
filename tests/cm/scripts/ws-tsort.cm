@@ -18,9 +18,9 @@ var order {|text|
     for line @($text split "\n") {
         var p @($line split ' ')[0]
         var q @($line split ' ')[1]
-        for v $p $q { if ! $need has $v { set need[$v] 0; set before[$v] [] } }
-        append before[$p] $q
-        set need[$q] $(( $need[$q] + 1 ))
+        for v $p $q { if ! $need has $v { $need set $v 0; $before set $v [] } }
+        $before[$p] append $q
+        $need set $q $(( $need[$q] + 1 ))
     }
     var out []
     while $(( $($need count) > 0 )) {
@@ -30,15 +30,15 @@ var order {|text|
             return 1
         }
         var v $(put @ready | sort | head -1)
-        append out $v
-        for q @before[$v] { set need[$q] $(( $need[$q] - 1 )) }
-        del need[$v]
+        $out append $v
+        for q @before[$v] { $need set $q $(( $need[$q] - 1 )) }
+        $need del $v
     }
     put $out
 }
 var valid {|text o|
     var at [:]
-    for i @(range $($o count)) { set at[$o[$i]] $i }
+    for i @(range $($o count)) { $at set $o[$i] $i }
     for line @($text split "\n") {
         var p @($line split ' ')[0]
         var q @($line split ' ')[1]

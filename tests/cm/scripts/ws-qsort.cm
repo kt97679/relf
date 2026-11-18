@@ -5,7 +5,7 @@ var qsort {|l|
     var pivot $l[0]
     var less []
     var more []
-    for x @($l slice 1) { if $(( $x < $pivot )) { append less $x } else { append more $x } }
+    for x @($l slice 1) { if $(( $x < $pivot )) { $less append $x } else { $more append $x } }
     put [@(qsort $less)[0] $pivot @(qsort $more)[0]]
 }
 var sorted @(qsort [33 4 15 8 42 16 23 4])

@@ -12,35 +12,35 @@ var safe {|c|
     return 0
 }
 var place {
-    if $(( $($cols count) == $n )) { append sols [@cols]; return 0 }
+    if $(( $($cols count) == $n )) { $sols append [@cols]; return 0 }
     for c @(range $n) {
         if safe $c {
-            append cols $c
+            $cols append $c
             place
-            del cols[-1]
+            $cols del -1
         }
     }
 }
 place
-var rot {|q| var o [@(range $n)]; for r @(range $n) { set o[$q[$r]] $(( $n - 1 - $r )) }; put $o }
-var flip {|q| var o []; for c @q { append o $(( $n - 1 - $c )) }; put $o }
+var rot {|q| var o [@(range $n)]; for r @(range $n) { $o set $q[$r] $(( $n - 1 - $r )) }; put $o }
+var flip {|q| var o []; for c @q { $o append $(( $n - 1 - $c )) }; put $o }
 var canon {|q|
     var forms []
     var cur $q
     for i @(range 4) {
-        append forms $($cur join '')
+        $forms append $($cur join '')
         var f @(flip $cur)
-        append forms $($f join '')
+        $forms append $($f join '')
         set cur @(rot $cur)
     }
     put @forms | sort | head -1
 }
 var distinct [:]
-for q @sols { set distinct[$(canon $q)] true }
+for q @sols { $distinct set $(canon $q) true }
 echo "$($sols count) solutions, $($distinct count) distinct; the first:"
 for r @(range $n) {
     var cells []
-    for c @(range $n) { if $(( $sols[0][$r] == $c )) { append cells Q } else { append cells . } }
+    for c @(range $n) { if $(( $sols[0][$r] == $c )) { $cells append Q } else { $cells append . } }
     echo $($cells join ' ')
 }
 echo last $sols[-1]

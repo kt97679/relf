@@ -2,9 +2,9 @@
 var account {|owner|
     var balance 0
     var self [:]
-    set self[deposit] {|amount| set balance $(( $balance + $amount )) }
-    set self[twice] {|amount| $self[deposit] $amount; $self[deposit] $amount }
-    set self[report] { echo $owner has $balance }
+    $self set deposit {|amount| set balance $(( $balance + $amount )) }
+    $self set twice {|amount| $self[deposit] $amount; $self[deposit] $amount }
+    $self set report { echo $owner has $balance }
     put $self
 }
 var a @(account ada)
@@ -13,12 +13,12 @@ $a[report]
 
 # inheritance by filling a given map: an inherited method reaches the override through self
 var animal {|self name|
-    set self[speak] { echo $name makes a sound }
-    set self[greet] { echo hello; $self[speak] }
+    $self set speak { echo $name makes a sound }
+    $self set greet { echo hello; $self[speak] }
 }
 var dog {|self name|
     animal $self $name
-    set self[speak] { echo $name barks }
+    $self set speak { echo $name barks }
 }
 var d [:]
 dog $d rex

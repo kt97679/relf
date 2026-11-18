@@ -3,7 +3,7 @@
 var jobs [:]
 for name fast slow broken {
     if $name match broken { sh -c 'exit 4' & } else { sh -c "sleep 0.1; exit 0" & }
-    set jobs[$name] $job
+    $jobs set $name $job
 }
 var failed 0
 for name @($jobs keys) {

@@ -43,7 +43,7 @@ checks = [
     ('a $name in quotes', ['var greeting hi\r', 'echo "say $gree\t!"\r'], '\r\nsay hi!\r\n'),
     # a value's operations after it (972): its kind's, by the variable's value at the prompt
     ("a list's operation", ['var l [3 1 2]\r', 'echo $($l cou\t)\r'], '\r\n3\r\n'),
-    ("a map's operations listed", ['var m [a: 1]\r', '$m \t\t', '\x03'], 'count  get  has  keys  merge'),
+    ("a map's operations listed", ['var m [a: 1]\r', '$m \t\t', '\x03'], 'count  del  get  has  keys  merge  set'),  # set, del (976)
     ("a text's operation", ['var t hello\r', 'echo $($t up\t)\r'], '\r\nHELLO\r\n'),
     ("a quoted text's", ["echo $('a,b' spl\t , | wc -l)\r"], '\r\n2\r\n'),
     ("$env's, a map's", ['echo $(( $($env cou\t) > 0 ))\r'], '\r\ntrue\r\n'),

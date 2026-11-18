@@ -1,5 +1,5 @@
 # a whole script (885): files grouped by extension, a map of lists - it found append's target could not
-# have a key: append groups[$ext] $name
+# have a key: append groups[$ext] $name, now $groups[$ext] append $name (976)
 var dir /tmp/cm-885-g
 rm -rf $dir
 mkdir $dir
@@ -9,7 +9,7 @@ for f @(glob "$dir/*") {
     var name $(basename $f)
     var ext none
     if $name match '*.*' { set ext $(echo $name | sed 's/.*\.//') }
-    if $groups has $ext { append groups[$ext] $name } else { set groups[$ext] [$name] }
+    if $groups has $ext { $groups[$ext] append $name } else { $groups set $ext [$name] }
 }
 for k @($groups keys) { echo "$k:" $($groups[$k] join ", ") }
 rm -rf $dir

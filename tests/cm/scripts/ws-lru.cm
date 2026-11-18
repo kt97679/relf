@@ -8,8 +8,8 @@ var make-cache {|capacity|
   var misses 0
   var evicted []
   var touch {|key|
-    for i @(range $($order count)) { if $(( $order[$i] == $key )) { del order[$i]; break } }
-    append order $key
+    for i @(range $($order count)) { if $(( $order[$i] == $key )) { $order del $i; break } }
+    $order append $key
   }
   put [
     get: {|key|
@@ -20,11 +20,11 @@ var make-cache {|capacity|
     put: {|key value|
       if ! $values has $key && $(( $($order count) >= $capacity )) {
         var old $order[0]
-        del order[0]
-        del values[$old]
-        append evicted $old
+        $order del 0
+        $values del $old
+        $evicted append $old
       }
-      set values[$key] $value
+      $values set $key $value
       touch $key
     }
     stats: {|| put "hits $hits, misses $misses, evicted [$($evicted join ' ')], order [$($order join ' ')]" }

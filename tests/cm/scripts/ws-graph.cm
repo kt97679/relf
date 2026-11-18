@@ -3,7 +3,7 @@
 var g [a: [b c]  b: [d]  c: [d e]  d: [f]  e: [f]  f: []]
 var bfs {|start goal|
     var seen [:]
-    set seen[$start] true
+    $seen set $start true
     var queue [$start]
     var from [:]
     var at 0
@@ -17,7 +17,7 @@ var bfs {|start goal|
             return 0
         }
         for next @g[$node] {
-            if ! $seen has $next { set seen[$next] true; set from[$next] $node; append queue $next }
+            if ! $seen has $next { $seen set $next true; $from set $next $node; $queue append $next }
         }
     }
     return 1

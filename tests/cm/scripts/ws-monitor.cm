@@ -7,7 +7,7 @@ for name alpha beta gamma {
         beta { sh -c 'sleep 0.05; exit 2' & }
         * { sh -c 'sleep 0.05' & }
     }
-    set jobs[$name] $job
+    $jobs set $name $job
 }
 echo "$(pad NAME 8)STATUS"
 for name @($jobs keys) {

@@ -1,24 +1,24 @@
-# del name[k]: an item out of a list or a map, in place (905) - a list had no removal, ws-rpn popped by
-# rebuilding it; a map none at all. Its target as set's; a negative index from the end; out of range, an error
+# $l del i, $m del k: an item out of a list or a map, in place (976; del name[k] at 905) - a list had no removal,
+# ws-rpn popped by rebuilding it; a map none at all. A negative index from the end; out of range, an error
 var l [a b c d e]
-del l[0]
-del l[-1]
-del l[1]
+$l del 0
+$l del -1
+$l del 1
 echo $l $($l count)
 var m [x: 1  y: 2  z: 3]
-del m[y]
+$m del y
 echo $m $($m count)
 var big [:]
-for i @(range 40) { set big["k$i"] $i }
-del big[k7]
+for i @(range 40) { $big set "k$i" $i }
+$big del k7
 echo $($big count) $big[k8] $big[k39]
 $big has k7 || echo k7 gone
 var nest [inner: [1 2 3]]
-del nest[inner][0]
+$nest[inner] del 0
 echo $nest
 var stack [1 2 3]
 var top $stack[-1]
-del stack[-1]
+$stack del -1
 echo "popped $top, left $stack"
 sh -c 'exit 3' &
-del l[9]
+$l del 9

@@ -4,11 +4,11 @@ var queue [build test]
 var done []
 while $(( $($queue count) > 0 )) {
     var job $queue[0]
-    del queue[0]
-    append done $job
+    $queue del 0
+    $done append $job
     case $job {
-        build { append queue package }
-        package { append queue publish }
+        build { $queue append package }
+        package { $queue append publish }
     }
 }
 echo order: @done

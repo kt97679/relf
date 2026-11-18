@@ -6,8 +6,8 @@ var json {|m|
     for k @($m keys) {
         var v $m[$k]
         case $(kind $v) {
-            number bool { append parts "\"$(esc $k)\": $v" }
-            * { append parts "\"$(esc $k)\": \"$(esc $v)\"" }
+            number bool { $parts append "\"$(esc $k)\": $v" }
+            * { $parts append "\"$(esc $k)\": \"$(esc $v)\"" }
         }
     }
     put "{$($parts join ', ')}"

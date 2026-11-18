@@ -1,16 +1,16 @@
-# set's target read as $'s is (881): a key any word - $k, $(...), a number - for maps and lists, nested
+# an element set (881; $m set k v since 976): a key any word - $k, $(...), a number - for maps and lists, nested
 var counts [:]
-for w @(printf "x\ny\nx\n") { if $counts has $w { set counts[$w] $(( $counts[$w] + 1 )) } else { set counts[$w] 1 } }
+for w @(printf "x\ny\nx\n") { if $counts has $w { $counts set $w $(( $counts[$w] + 1 )) } else { $counts set $w 1 } }
 echo $counts
 var l [a b c]
 var i 1
-set l[$i] B
-set l[-1] C
+$l set $i B
+$l set -1 C
 echo $l
 var m [inner: [k: 1]]
 var key k
-set m[inner][$key] 2
-set m[inner]["new$i"] 3
+$m[inner] set $key 2
+$m[inner] set "new$i" 3
 echo $m
-set env[CM_881] yes
+$env set CM_881 yes
 sh -c 'echo $CM_881'

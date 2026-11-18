@@ -6,21 +6,26 @@ echo 'single: $x stays' "double: $(( 2 + 3 ))"
 var name 'Ada Lovelace'
 var langs [forth rill3]
 var born [year: 1815  city: London]
-set langs[1] sh
+$langs set 1 sh
 echo "$name knows $langs, born in $born[city]"
 # Ada Lovelace knows [forth sh], born in London
 var n 7
 echo $(( $n * 6 )) $(( $n > 5 ))
 # 42 true
 var l [3 1 2]
-append l 5
+$l append 5
 echo $($l count) $l[0] $l[-1] [@($l slice 1 3)]
 # 4 3 5 [1 2]
 var m [a: 1]
-set m[b] 2
+$m set b 2
 for k @($m keys) { echo $k is $m[$k] }
 echo $($m get c 0)
 # 0
+var add-one {|l| $l append 1 }
+add-one $l
+$m del a
+echo $l $m
+# [3 1 2 5 1] [b: 2]
 var who ["full name": 'Ada Lovelace'  born: 1815]
 echo $who $who["full name"]
 for x @[1 2 3] { if $(( $x == 2 )) { continue }; echo x $x }

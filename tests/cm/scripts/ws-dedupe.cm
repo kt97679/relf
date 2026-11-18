@@ -10,7 +10,7 @@ echo alpha > "$dir/d"
 var groups [:]
 for f @(glob "$dir/*") {
     var sum @(md5sum $f | cut -d ' ' -f 1)
-    if $groups has $sum { append groups[$sum] $f } else { set groups[$sum] [$f] }
+    if $groups has $sum { $groups[$sum] append $f } else { $groups set $sum [$f] }
 }
 for s @($groups keys) {
     var files $groups[$s]

@@ -20,7 +20,7 @@ var files-of {|root|
   var m [:]
   for f @(cd $root && find . -type f | sort) {
     var rel $($f slice 2)
-    set m[$rel] @(wc -c < "$root/$rel")
+    $m set $rel @(wc -c < "$root/$rel")
   }
   put $m
 }
@@ -32,9 +32,9 @@ var only-a []
 var only-b []
 var differ []
 for p @($a keys) {
-  if ! $b has $p { append only-a $p } elif ! cmp -s "$base/a/$p" "$base/b/$p" { append differ $p }
+  if ! $b has $p { $only-a append $p } elif ! cmp -s "$base/a/$p" "$base/b/$p" { $differ append $p }
 }
-for p @($b keys) { if ! $a has $p { append only-b $p } }
+for p @($b keys) { if ! $a has $p { $only-b append $p } }
 for p @only-a { echo "only in a: $p ($a[$p] bytes)" }
 for p @only-b { echo "only in b: $p" }
 for p @differ { echo "differ:    $p ($a[$p] and $b[$p] bytes)" }

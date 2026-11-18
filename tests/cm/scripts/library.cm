@@ -7,7 +7,7 @@ var m [b: 2  a: 1]
 for k @($m keys) { echo $k is $m[$k] }
 if "hello world" has "lo w" { echo has lo w }       # has gives a status, as match does (896)
 $m has c || echo no c
-set env[CM_870] hello
+$env set CM_870 hello
 sh -c 'echo a program sees $CM_870'
 echo $env[CM_870] "$($env get CM_870_NOT_SET '')."
 echo args: $args $($args count)

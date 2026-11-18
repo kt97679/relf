@@ -26,17 +26,17 @@ while read line {
   var t @(trim $line)
   if $t match '[[]*[]]' {
     set section @(trim $($t slice 1 -1))
-    if ! $conf has $section { set conf[$section] [:]; append order $section }
-    append entries [kind: section  name: $section]
+    if ! $conf has $section { $conf set $section [:]; $order append $section }
+    $entries append [kind: section  name: $section]
   } elif $(( $($t count) == 0 )) || $t match '[;#]*' {
-    append entries [kind: other  text: $line]
+    $entries append [kind: other  text: $line]
   } elif $t has = {
     var parts [@($t split =)]
     var key @(trim $parts[0])
     var value @(trim $([@($parts slice 1)] join =))
     if $(( $section == '' )) { echo "line $n: $key outside a section"; set problems $(( $problems + 1 )); continue }
-    set conf[$section][$key] $value
-    append entries [kind: key  section: $section  key: $key]
+    $conf[$section] set $key $value
+    $entries append [kind: key  section: $section  key: $key]
   } else {
     echo "line $n: not a key = value: $t"
     set problems $(( $problems + 1 ))
@@ -47,10 +47,10 @@ for s @order { echo "[$s] $($conf[$s] count) keys: $([@($conf[$s] keys)] join ' 
 echo "server: $conf[server][host]:$conf[server][port], after $conf[server][timeout]s; guest [$conf[users][guest]]"
 
 # changes: one value, one key new to a section, one section new
-set conf[server][port] 9090
-set conf[users][editor] grace
-set conf[log] [level: info  file: /var/log/app.log]
-append order log
+$conf[server] set port 9090
+$conf[users] set editor grace
+$conf set log [level: info  file: /var/log/app.log]
+$order append log
 
 # written back: each entry as it was, a key with its value now; a section's new keys after its last
 # line in the file; new sections at the end
@@ -59,28 +59,28 @@ var out []
 var last-of [:]
 for i @(range $($entries count)) {
   var e $entries[$i]
-  if $(( $e[kind] == 'key' )) { set last-of[$e[section]] $i }
-  if $(( $e[kind] == 'section' )) { set last-of[$e[name]] $i }
+  if $(( $e[kind] == 'key' )) { $last-of set $e[section] $i }
+  if $(( $e[kind] == 'section' )) { $last-of set $e[name] $i }
 }
 for i @(range $($entries count)) {
   var e $entries[$i]
   case $e[kind] {
-    section { append out "[$e[name]]" }
-    key { append out "$e[key] = $conf[$e[section]][$e[key]]"; set written["$e[section]/$e[key]"] true }
-    * { append out $e[text] }
+    section { $out append "[$e[name]]" }
+    key { $out append "$e[key] = $conf[$e[section]][$e[key]]"; $written set "$e[section]/$e[key]" true }
+    * { $out append $e[text] }
   }
   for s @order {
     if $last-of has $s && $(( $last-of[$s] == $i )) {
       for k @($conf[$s] keys) {
-        if ! $written has "$s/$k" { append out "$k = $conf[$s][$k]"; set written["$s/$k"] true }
+        if ! $written has "$s/$k" { $out append "$k = $conf[$s][$k]"; $written set "$s/$k" true }
       }
     }
   }
 }
 for s @order {
   if ! $last-of has $s {
-    append out '' "[$s]"
-    for k @($conf[$s] keys) { append out "$k = $conf[$s][$k]" }
+    $out append '' "[$s]"
+    for k @($conf[$s] keys) { $out append "$k = $conf[$s][$k]" }
   }
 }
 $out join '

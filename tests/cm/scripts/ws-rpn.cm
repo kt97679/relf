@@ -6,7 +6,7 @@ var pop {
     if $(( $n == 0 )) { echo stack empty >&2; exit 1 }
     var top $stack[-1]
     var rest []
-    for i @(range $(( $n - 1 ))) { append rest $stack[$i] }
+    for i @(range $(( $n - 1 ))) { $rest append $stack[$i] }
     set stack $rest
     put $top
 }
@@ -14,10 +14,10 @@ var calc {
   var line ''
   while read line {
     for tok @($line split ' ') {
-        if $tok match '[0-9]*' { append stack $tok } elif $tok match '[-+*/]' {
+        if $tok match '[0-9]*' { $stack append $tok } elif $tok match '[-+*/]' {
             var b @(pop)
             var a @(pop)
-            if $tok match '+' { append stack $(( $a + $b )) } elif $tok match '-' { append stack $(( $a - $b )) } elif $tok match '[*]' { append stack $(( $a * $b )) } else { append stack $(( $a / $b )) }
+            if $tok match '+' { $stack append $(( $a + $b )) } elif $tok match '-' { $stack append $(( $a - $b )) } elif $tok match '[*]' { $stack append $(( $a * $b )) } else { $stack append $(( $a / $b )) }
         } else { echo "unknown token: $tok" >&2 }
     }
     echo "= $stack[-1]"

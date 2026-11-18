@@ -5,6 +5,6 @@ var counts [:]
 for w @($text split ' ') {
     var word $($w lower)
     case $word { *. *, *! { set word $($word slice 0 -1) } }
-    if $counts has $word { set counts[$word] $(( $counts[$word] + 1 )) } else { set counts[$word] 1 }
+    if $counts has $word { $counts set $word $(( $counts[$word] + 1 )) } else { $counts set $word 1 }
 }
 for k @($counts keys) { echo "$counts[$k] $k" } | sort -rn | head -3

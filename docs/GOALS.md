@@ -286,7 +286,11 @@ the account of what each gained and cost.
    the docs audited against the implementation, claim by claim, and three defects found on the way
    fixed ($args at the prompt, a trap's $status, a trapped signal in the last command); at 975 `return`
    at a sourced file's top level stays an error (Q50), and a map's key may be quoted, `["a b": 1]`, so
-   a list's or a map's printed form reads back - pasted into a script, an equal value. Recursion's depth done at 961 - the 1 MB stack, 16 times as deep - and found by it: the collector
+   a list's or a map's printed form reads back - pasted into a script, an equal value; at 976 an
+   element changes by its value's operation, `$m set k v`, `$l append x`, `$m del k` - `set` gives a
+   variable another value, and `set m[k]`, `append` and `del` say where they went - and `echo {a,b}`
+   is an error (QUESTIONS.md A52: `=`, `$name set`, no `var`, one of `var` and `set`, `$[ ]` and `${ }`
+   weighed and not taken). Recursion's depth done at 961 - the 1 MB stack, 16 times as deep - and found by it: the collector
    recursed a call a level of a value's nesting (a list 42,000 deep left the heap half moved), `==` on
    lists faulted, and after an error in a redirected function stdout stayed the file. The front end smaller - begun at 959: cm/cmc.4 is 21,282 of the image's 79,045
    bytes, 27 %; its repeated runs merged (336 bytes, the code made of every test script the same,

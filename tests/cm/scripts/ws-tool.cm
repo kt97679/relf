@@ -7,7 +7,7 @@ var cmd-add {|name| echo $name >> $db; echo "added $name" }
 var cmd-list { var n 0; for line @(cat $db) { set n $(( $n + 1 )); echo "$n. $line" } }
 var cmd-remove {|name|
     var kept []
-    for line @(cat $db) { if $(( $line != $name )) { append kept $line } }
+    for line @(cat $db) { if $(( $line != $name )) { $kept append $line } }
     printf '%s\n' @kept > $db
     echo "removed $name"
 }

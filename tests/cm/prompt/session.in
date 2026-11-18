@@ -23,6 +23,6 @@ echo the prompt goes on: $n
 var sq {|x| put $(( $x * $x * $x )) }
 echo $(sq 2)
 var m [k: 1]
-set m[k] $(( $m[k] + 1 ))
+$m set k $(( $m[k] + 1 ))
 echo $m[k]
 false

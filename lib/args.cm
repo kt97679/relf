@@ -9,14 +9,14 @@ var usage {|spec| echo 'options:' >&2; for k @($spec keys) { echo "  --$k (defau
 
 var parse-args {|spec argv|
     var out [:]
-    for k @($spec keys) { set out[$k] $spec[$k] }
+    for k @($spec keys) { $out set $k $spec[$k] }
     var rest []
     var i 0
     var n $($argv count)
     while $(( $i < $n )) {
         var a $argv[$i]
         set i $(( $i + 1 ))
-        if ! $a match '--?*' { append rest $a; continue }
+        if ! $a match '--?*' { $rest append $a; continue }
         var name $($a slice 2)
         var value ''
         var given false
@@ -25,14 +25,14 @@ var parse-args {|spec argv|
             if $name match help { usage $spec; exit 0 }
             echo "unknown option --$name" >&2; usage $spec; exit 2
         }
-        if $(kind $spec[$name]) match bool { set out[$name] true; continue }
+        if $(kind $spec[$name]) match bool { $out set $name true; continue }
         if ! $given {
             if $(( $i >= $n )) { echo "--$name wants a value" >&2; usage $spec; exit 2 }
             set value $argv[$i]
             set i $(( $i + 1 ))
         }
-        set out[$name] $value
+        $out set $name $value
     }
-    set out[rest] $rest
+    $out set rest $rest
     put $out
 }

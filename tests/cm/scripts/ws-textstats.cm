@@ -15,9 +15,9 @@ for f @files {
         set chars $(( $chars + $($line count) + 1 ))
     }
     echo "$f: $lines $words $chars"
-    set total[lines] $(( $total[lines] + $lines ))
-    set total[words] $(( $total[words] + $words ))
-    set total[chars] $(( $total[chars] + $chars ))
+    $total set lines $(( $total[lines] + $lines ))
+    $total set words $(( $total[words] + $words ))
+    $total set chars $(( $total[chars] + $chars ))
 }
 echo "total: $total[lines] $total[words] $total[chars]"
 rm /tmp/cm-ws2-ts1.txt /tmp/cm-ws2-ts2.txt

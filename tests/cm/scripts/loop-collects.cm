@@ -5,5 +5,5 @@ var s ''
 for i @(range 400) { set s "$s$chunk" }
 echo $($s count)
 var parts []
-for i @(range 400) { append parts $chunk }
+for i @(range 400) { $parts append $chunk }
 echo $($($parts join '') count)

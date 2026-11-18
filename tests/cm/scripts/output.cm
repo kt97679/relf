@@ -12,5 +12,5 @@ var m @([a: 1  b: 2] merge [b: 3  c: 4])
 put $m
 echo $m[c] $(kind $m)
 var big [1 2]
-append big 3 @all
+$big append 3 @all
 put $big

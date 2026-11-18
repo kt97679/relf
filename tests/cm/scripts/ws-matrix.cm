@@ -4,8 +4,8 @@ var transpose {|m|
     var t []
     for j @(range $($m[0] count)) {
         var row []
-        for r @m { append row $r[$j] }
-        append t $row
+        for r @m { $row append $r[$j] }
+        $t append $row
     }
     put $t
 }
@@ -17,9 +17,9 @@ var mul {|a b|
         for c @bt {
             var s 0
             for k @(range $($r count)) { set s $(( $s + $r[$k] * $c[$k] )) }
-            append row $s
+            $row append $s
         }
-        append out $row
+        $out append $row
     }
     put $out
 }

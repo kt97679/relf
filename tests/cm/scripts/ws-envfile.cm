@@ -6,10 +6,10 @@ APP_LEVEL=3
 for line @($settings split "\n") {
     case $line {
         '#*' { continue }
-        *=* { var kv [@($line split =)]; set env[$kv[0]] $kv[1] }
+        *=* { var kv [@($line split =)]; $env set $kv[0] $kv[1] }
     }
 }
 sh -c 'echo "mode=$APP_MODE level=$APP_LEVEL off=${APP_OFF:-unset}"'
-del env[APP_LEVEL]
+$env del APP_LEVEL
 sh -c 'echo "after del: level=${APP_LEVEL:-unset}"'
 echo "read back: [$env[APP_MODE]] [$($env get APP_LEVEL '')]"

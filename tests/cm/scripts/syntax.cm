@@ -6,7 +6,7 @@ echo $(( $a * $b - 3 )) $(( ($a + $b) * 2 )) $(( $a - $b - 1 )) $(( $a - ($b - 1
 echo $(( -$a + 10 )) $(( !($a > $b) )) $(( $a > 1 && $b < 3 )) $(( $a > 1 || $b < 3 ))
 if $(( $a % 2 == 0 && !($b == 4) )) { echo even and not four }
 var m [k: v  n: 2]
-set m[n] $(( $m[n] * 10 ))
+$m set n $(( $m[n] * 10 ))
 echo "m[n] is $m[n], a+b is $(( $a + $b )), cost: \$5 {braces} (parens)"
 var w $(put world)
 echo "hello ${w}ly $(put there)"

@@ -13,11 +13,11 @@ var fields {|line|
                 if $(( $i + 1 < $n )) && $line[$(( $i + 1 ))] match '"' { set cur "$cur\""; set i $(( $i + 1 )) } else { set inq false }
             } else { set cur "$cur$c" }
         } elif $c match '"' { set inq true
-        } elif $c match ',' { append out $cur; set cur ''
+        } elif $c match ',' { $out append $cur; set cur ''
         } else { set cur "$cur$c" }
         set i $(( $i + 1 ))
     }
-    append out $cur
+    $out append $cur
     put $out
 }
 for f @(fields 'plain,"with, comma","say ""hi""",,end')[0] { echo "[$f]" }

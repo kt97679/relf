@@ -9,13 +9,13 @@ var total 0
 for line @($($clean lower) split "\n") {
     for w @($line split ' ') {
         if $(( $($w count) == 0 )) { continue }
-        set counts[$w] $(( $($counts get $w 0) + 1 ))
+        $counts set $w $(( $($counts get $w 0) + 1 ))
         set total $(( $total + 1 ))
     }
 }
 echo "$total words, $($counts count) distinct"
 var rows []
-for w @($counts keys) { append rows "$counts[$w] $w" }
+for w @($counts keys) { $rows append "$counts[$w] $w" }
 echo "the ten most frequent:"
 var line ""
 $rows join "\n" | env LC_ALL=C sort -k1,1nr -k2,2 | head -10 | while read line { echo "  $line" }

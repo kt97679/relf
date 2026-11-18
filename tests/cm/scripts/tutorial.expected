@@ -6,6 +6,7 @@ Ada Lovelace knows [forth sh], born in London
 a is 1
 b is 2
 0
+[3 1 2 5 1] [b: 2]
 ["full name": "Ada Lovelace"  born: 1815] Ada Lovelace
 x 1
 x 3

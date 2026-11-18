@@ -2,7 +2,7 @@
 # is quoted wherever it would not read back as itself, and a map's key may be quoted, "a b": or 'a b':
 var odd ["a b" "" "true" true 12 "12" "x:" "@x" "#y" "\\" "\$v" "q\"q" "it's" "a*" "a;b" "a|b" "(x)" "\@(z" "n\nl" "t\tb" x\y e=f ~ 01 [n "m o"] [:]]
 var m [:]
-for x @odd { set m["$x"] $x }
+for x @odd { $m set "$x" $x }
 echo $odd
 echo $m
 # the two lines echo printed, pasted:

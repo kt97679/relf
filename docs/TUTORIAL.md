@@ -24,12 +24,13 @@ A word's first character says what it is: `'...'` a text exactly as written, `".
 
 ## 2. Variables and values
 
-`var` makes a variable, `set` changes it. A value is never split or globbed: one value, one word.
+`var` makes a variable, `set` gives it another value; a list's or a map's element changes by the
+value's own operation, `$langs set 1 sh`. A value is never split or globbed: one value, one word.
 
     var name 'Ada Lovelace'
     var langs [forth rill3]
     var born [year: 1815  city: London]
-    set langs[1] sh
+    $langs set 1 sh
     echo "$name knows $langs, born in $born[city]"
     # Ada Lovelace knows [forth sh], born in London
 
@@ -44,14 +45,23 @@ Numbers are whole; arithmetic and comparison live in `$(( ))`.
 ## 3. Lists and maps
 
     var l [3 1 2]
-    append l 5
+    $l append 5
     echo $($l count) $l[0] $l[-1] [@($l slice 1 3)]
     # 4 3 5 [1 2]
     var m [a: 1]
-    set m[b] 2
+    $m set b 2
     for k @($m keys) { echo $k is $m[$k] }
     echo $($m get c 0)
     # 0
+
+`set`, `append` and `del` change the list or the map itself, so every variable holding it sees the
+change - a function given a list changes its caller's:
+
+    var add-one {|l| $l append 1 }
+    add-one $l
+    $m del a
+    echo $l $m
+    # [3 1 2 5 1] [b: 2]
 
 A key with a blank in it is quoted, as a text is. What `echo` prints of a list or a map reads back:
 pasted into a script, it is the same value.

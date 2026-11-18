@@ -8,8 +8,8 @@ for line @(cat $log) {
     var f [@($line split ' ')]
     var path $f[1]
     var code $f[2]
-    if $by_status has $code { set by_status[$code] $(( $by_status[$code] + 1 )) } else { set by_status[$code] 1 }
-    if $by_path has $path { set by_path[$path] $(( $by_path[$path] + 1 )) } else { set by_path[$path] 1 }
+    if $by_status has $code { $by_status set $code $(( $by_status[$code] + 1 )) } else { $by_status set $code 1 }
+    if $by_path has $path { $by_path set $path $(( $by_path[$path] + 1 )) } else { $by_path set $path 1 }
 }
 for c @($by_status keys) { echo "status $c: $by_status[$c]" }
 var best ''

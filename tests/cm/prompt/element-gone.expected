@@ -1,0 +1,25 @@
+cm: set name[key] is gone (976) - $m set key value changes an element (line 1)
+cm: set name[key] is gone (976) - $m set key value changes an element (line 1)
+cm: append is gone (976) - $l append values: a list's operation (line 1)
+cm: append is gone (976) - $m append values: a list's operation (line 1)
+cm: append is gone (976) - $l append x, $m del k: operations (line 1)
+cm: del is gone (976) - $m del key: a list's or a map's operation (line 1)
+cm: del is gone (976) - $env del key: a list's or a map's operation (line 1)
+cm: read name[key] is gone (976) - $m set key $line, after read line (line 1)
+[a: 1] [x y]
+cm: set takes a key and a value - $l set 0 x, $m set k x (line 1)
+cm: del takes a key - $l del 0, $m del k (line 1)
+cm: index 5 past a list of 2 (line 1)
+cm: a whole number was wanted (line 1)
+cm: a text has no set - its operations: count has slice split upper lower match (line 1)
+cm: a map has no append - its operations: count has keys merge get set del (line 1)
+cm: a map has no append - its operations: count has keys merge get set del (line 1)
+cm: no key nope (line 1)
+cm: echo of a block - { } makes one: '{a,b}' is the text, quoted (line 1)
+cm: echo of a block - { } makes one: '{a,b}' is the text, quoted (line 1)
+[a <block>]
+<block>
+got 1
+a
+b
+status 0

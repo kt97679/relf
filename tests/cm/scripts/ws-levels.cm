@@ -12,10 +12,10 @@ for line @($log split "\n") {
     var level $f[1]
     case $level {
         INFO WARN { }
-        ERROR { append errors "$($line slice 17)" }
+        ERROR { $errors append "$($line slice 17)" }
         * { echo "odd line: $line" }
     }
-    if $counts has $level { set counts[$level] $(( $counts[$level] + 1 )) } else { set counts[$level] 1 }
+    if $counts has $level { $counts set $level $(( $counts[$level] + 1 )) } else { $counts set $level 1 }
 }
 for l @($counts keys) { echo "$l: $counts[$l]" }
 for e @errors { echo "error -> $e" }

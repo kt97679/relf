@@ -4,8 +4,8 @@ var problems []
 trap { echo "$($problems count) problems"; for p @problems { echo " - $p" } } EXIT
 var check {|rec|
     var ok true
-    if ! $rec has name { append problems "a record with no name"; set ok false }
-    if $rec has age && ! "$rec[age]" match '[0-9]*' { append problems "$rec[name]: age is not a number"; set ok false }
+    if ! $rec has name { $problems append "a record with no name"; set ok false }
+    if $rec has age && ! "$rec[age]" match '[0-9]*' { $problems append "$rec[name]: age is not a number"; set ok false }
     $ok
 }
 var good 0

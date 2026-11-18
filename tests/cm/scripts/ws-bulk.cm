@@ -4,7 +4,7 @@ var keyed { each {|line| var f [@($line split ' ')]; put "$f[0] $f[1]" } }
 var totals [:]
 for line @(seq 1 10000 | awk '{ print "k" ($1 % 7), $1 }') {
     var f [@($line split ' ')]
-    if $totals has $f[0] { set totals[$f[0]] $(( $totals[$f[0]] + $f[1] )) } else { set totals[$f[0]] $f[1] }
+    if $totals has $f[0] { $totals set $f[0] $(( $totals[$f[0]] + $f[1] )) } else { $totals set $f[0] $f[1] }
 }
 for k @($totals keys) { echo "$k $totals[$k]" } | sort
 echo streamed: $(seq 1 100000 | awk '{ print "k", $1 }' | keyed | wc -l)

@@ -14,7 +14,7 @@ var read-value {
         while $(( $text[$pos] != ']' )) {
             if $(( $text[$pos] == ' ' )) { set pos $(( $pos + 1 )); continue }
             var v [@(read-value)] || return 1
-            append items $v[0]
+            $items append $v[0]
         }
         set pos $(( $pos + 1 ))
         put $items

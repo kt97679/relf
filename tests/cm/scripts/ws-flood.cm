@@ -8,8 +8,8 @@ var rnd { set seed $(( ($seed * 1103515245 + 12345) % 2147483648 )); put $(( $se
 var grid []
 for y @(range $h) {
     var row []
-    for x @(range $w) { var r @(rnd); if $(( $r % 100 < 30 )) { append row '#' } else { append row . } }
-    append grid $row
+    for x @(range $w) { var r @(rnd); if $(( $r % 100 < 30 )) { $row append '#' } else { $row append . } }
+    $grid append $row
 }
 echo $($grid[0] join '') ...
 var seen [:]
@@ -18,7 +18,7 @@ var fill {|y x|
     if $(( $grid[$y][$x] == '#' )) { put 0; return }
     var k "$y,$x"
     if $seen has $k { put 0; return }
-    set seen[$k] true
+    $seen set $k true
     var n 1
     for d @[[0 1] [1 0] [0 -1] [-1 0]] {
         var m @(fill $(( $y + $d[0] )) $(( $x + $d[1] )))
@@ -29,7 +29,7 @@ var fill {|y x|
 var sizes []
 for y @(range $h) {
     for x @(range $w) {
-        if $(( $grid[$y][$x] == '.' )) && ! $seen has "$y,$x" { append sizes @(fill $y $x) }
+        if $(( $grid[$y][$x] == '.' )) && ! $seen has "$y,$x" { $sizes append @(fill $y $x) }
     }
 }
 var byqueue {
@@ -39,7 +39,7 @@ var byqueue {
         for x @(range $w) {
             if $(( $grid[$y][$x] == '#' )) || $done has "$y,$x" { continue }
             var q [[$y $x]]
-            set done["$y,$x"] true
+            $done set "$y,$x" true
             var i 0
             while $(( $i < $($q count) )) {
                 var c $q[$i]
@@ -49,11 +49,11 @@ var byqueue {
                     var nx $(( $c[1] + $d[1] ))
                     if $(( $ny < 0 || $ny >= $h || $nx < 0 || $nx >= $w )) { continue }
                     if $(( $grid[$ny][$nx] == '#' )) || $done has "$ny,$nx" { continue }
-                    set done["$ny,$nx"] true
-                    append q [$ny $nx]
+                    $done set "$ny,$nx" true
+                    $q append [$ny $nx]
                 }
             }
-            append out $($q count)
+            $out append $($q count)
         }
     }
     put $out

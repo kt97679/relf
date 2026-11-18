@@ -8,7 +8,7 @@ var load {|file|
         if $line match '#*' { continue }
         if $line match '*=*' {
             var kv [@($line split =)]
-            set conf[$kv[0]] $kv[1]
+            $conf set $kv[0] $kv[1]
         }
     }
     put $conf

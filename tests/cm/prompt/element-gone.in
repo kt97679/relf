@@ -1,0 +1,30 @@
+# 976: an element changes by its value's operation - the old builtins' forms say where they went
+var m [a: 1]
+var l [x y]
+set m[a] 2
+set m[a][b] 2
+append l z
+append m[a] 3
+append
+del m[a]
+del env[HOME]
+read m[line]
+echo $m $l
+# the operations' own errors
+$m set a
+$l del
+$l set 5 z
+$l set x z
+'abc' set 0 x
+$m append 1
+$env append 1
+$m del nope
+# echo of a block: bash's {a,b} - and a block inside a list, or in a variable, prints as one
+echo {a,b}
+echo x {}
+echo [a { }]
+var f { }
+echo $f
+# a block after | && || is another command's, not echo's
+echo 1 | each {|v| echo got $v }
+echo a && { echo b }

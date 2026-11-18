@@ -10,7 +10,7 @@ var sizes [:]
 for f @(find $dir -type f) {
     var ext [@($f split .)][-1]
     var n $(stat -c %s $f)
-    if $sizes has $ext { set sizes[$ext] $(( $sizes[$ext] + $n )) } else { set sizes[$ext] $n }
+    if $sizes has $ext { $sizes set $ext $(( $sizes[$ext] + $n )) } else { $sizes set $ext $n }
 }
 for e @($sizes keys) { echo "$sizes[$e] $e" } | sort -n
 rm -rf $dir

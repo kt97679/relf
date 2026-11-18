@@ -736,6 +736,35 @@ plain words; the owner: "being able to print-paste maps is useful". Done at 975:
 `"a b": 1` or `'a b': 1`, and the printed form of a list or a map reads back as an equal one - a text is
 quoted wherever it would not read back as itself.
 
+**A52. rill3: how a variable and an element change - the owner's questions after 975 (976).** The
+owner asked, one at a time, whether these would be more consistent; each answer the owner took:
+- `set langs[1] sh` against `langs at 1 is sh` or `langs[1] = sh`, `=` a subcommand: not those - a bare
+  first word is a builtin, a function or a program (rule 4), so `langs` first would let a variable
+  shadow any program, and `=` would make the second word decide the command, an eleventh rule. But
+  the form hid what it does: lists and maps are shared - after `var b $a`, `set b[0] 9` changed
+  `$a` too - so it is a change to a value written as a variable's. Taken: an element changes by its
+  value's operation, as everything else done to a value is: `$l set 1 sh`, `$l append x`, `$m del k`,
+  `$m[a] set b v`, `$env set NAME v`.
+- `$name set grace` for `set name grace`: no - a `$` word is a value, which knows no variable it came
+  from; `$b set [7 8]` would rebind `b` alone where `$b set 0 9` changes what `a` sees too, the same
+  two words doing opposite things. Every place that binds a name writes it bare: `var x`, `set x`,
+  `for x`, `read x`, `{|x| }`.
+- No `var`, a first `set` making the variable: no - `set` would have to guess where the variable lives;
+  the nearest's (sh's, fish's) lets a function's own `i` overwrite a caller's - what it does then
+  depending on what happens to be above it in the file - and always this block's (Python's) stops a
+  closure changing its state (the counter), so `nonlocal` comes back; and `set cuont 2`, an error
+  before the script runs, would be a new variable.
+- One of `var` and `set`: no - the two differ exactly where a name exists further out: `add`'s
+  `set total` must mean that one, `sum`'s `var total 0` its own; one word for both is one of the two
+  rules above. Elvish has the same pair; `let x = 1` then `x = 2` elsewhere.
+- `$` for every value - `${ }` a block, `$[ ]` a list or map: no - `$` is "fetch or compute now", `$name`
+  `$(cmd)` `$(( ))`, and literals carry none - `'a b'`, `12`, `[a b]`, `{ }`; a block is the
+  opposite of `$( )`, run later, not now. And it would cost a `$` on 2,100 of the suite's 27,500 words
+  (1,259 blocks, 845 lists and maps, against 3,064 `$`s), on every `if`, `while`, `for` and function;
+  `${name}` is taken in `"..."`. What it buys - bare `{}` and `[ab]*` as sh's - is sh's, not
+  consistency. Found on the way: `echo {a,b}`, bash's braces, printed `<block>` - an error since 976.
+
+
 **Closed at 972: Rill's and Rill 2's questions (Q8, Q39-Q46).** Kept in Open until 972, though
 their object had gone: Rill (729-833) and Rill 2 (834-862) were retired at 871, their sources out,
 when the command model - rill3, chosen at 867 by the owner's criteria (GOALS.md 15) - took their

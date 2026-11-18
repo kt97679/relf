@@ -8,7 +8,7 @@ printf 'a dog, a cat; the bird\n' > "$dir/b.txt"
 var counts [:]
 for f @(glob "$dir/*.txt") {
     for w @(tr -cs 'A-Za-z' '\n' < $f | tr 'A-Z' 'a-z') {
-        if $counts has $w { set counts[$w] $(( $counts[$w] + 1 )) } else { set counts[$w] 1 }
+        if $counts has $w { $counts set $w $(( $counts[$w] + 1 )) } else { $counts set $w 1 }
     }
 }
 for k @($counts keys) { echo $counts[$k] $k } | sort -k1,1rn -k2 | head -4

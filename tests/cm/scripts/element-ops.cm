@@ -1,0 +1,52 @@
+# a list's and a map's element changed by its operation (976): $l set i x, $l append x..., $l del i,
+# $m set k x, $m del k - in place, the value itself: every variable that holds it sees the change
+var langs [forth rill3]
+$langs set 1 sh
+$langs set -1 rill3
+$langs append sh awk
+$langs del 0
+echo $langs $($langs count)
+var m [name: ada]
+$m set born 1815
+$m set "full name" 'Ada Lovelace'
+$m del name
+echo $m
+# nested: the inner value's operation - set m[a][b] x had been
+var tree [a: [x: 1]  l: [[1 2] [3]]]
+$tree[a] set y 2
+$tree[l][1] append 4
+$tree[l][0] del 0
+echo $tree
+# shared: two variables, one list - and a function's parameter is the caller's list
+var a [1 2]
+var b $a
+$b set 0 9
+var add-one {|l| $l append 1 }
+add-one $a
+echo $a $b $(( $a == $b ))
+# set changes a variable: b holds another list now, a keeps its own
+set b [7 8]
+echo $a $b
+# the environment: $env set and del, for programs run after
+$env set CM976 here
+sh -c 'echo "sh sees $CM976"'
+$env del CM976
+sh -c 'echo "sh sees [${CM976-}]"'
+# a key or a value from any word - $k, $(cmd), @(f)'s one value, a block
+var k key
+var one { put 1 }
+$m set $k $(echo from-cmd)
+$m set "$k-2" @(one)
+$m set fn { echo called }
+$m[fn]
+echo $m[key] $m[key-2] $(kind $m[fn])
+# a spread among the words, or a block as the value, goes the way any operation goes - the same result
+var pair [k2 v2]
+$m set @pair
+var more [p q]
+$langs append @more
+echo $m[k2] $langs
+var blk {|op k| echo the block got $op $k }
+$blk del 3
+# they put nothing, and their status is 0
+echo [@($langs append x)] $status

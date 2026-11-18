@@ -17,7 +17,7 @@ var play {
             }
             take {
                 if $rooms[$here] has item && $rooms[$here][item] match $w[1] {
-                    append bag $w[1]; del rooms[$here][item]; echo "Taken: $w[1]."
+                    $bag append $w[1]; $rooms[$here] del item; echo "Taken: $w[1]."
                 } else { echo 'Nothing like that here.' }
             }
             bag { echo "You carry: $bag" }

@@ -10,19 +10,19 @@ var diff-lines {|a b|
   var t []
   for i @(range $(( $n + 1 ))) {
     var row []
-    for j @(range $(( $m + 1 ))) { append row 0 }
-    append t $row
+    for j @(range $(( $m + 1 ))) { $row append 0 }
+    $t append $row
   }
   var i $(( $n - 1 ))
   while $(( $i >= 0 )) {
     var j $(( $m - 1 ))
     while $(( $j >= 0 )) {
       if $(( $a[$i] == $b[$j] )) {
-        set t[$i][$j] $(( $t[$(( $i + 1 ))][$(( $j + 1 ))] + 1 ))
+        $t[$i] set $j $(( $t[$(( $i + 1 ))][$(( $j + 1 ))] + 1 ))
       } else {
         var down $t[$(( $i + 1 ))][$j]
         var right $t[$i][$(( $j + 1 ))]
-        if $(( $down >= $right )) { set t[$i][$j] $down } else { set t[$i][$j] $right }
+        if $(( $down >= $right )) { $t[$i] set $j $down } else { $t[$i] set $j $right }
       }
       set j $(( $j - 1 ))
     }
@@ -60,7 +60,7 @@ var diff-lines {|a b|
     # a's line goes when b is done, or when dropping it keeps the longer common part
     var drop-a $(( $j >= $m ))
     if $(( $i < $n && $j < $m )) { set drop-a $(( $t[$(( $i + 1 ))][$j] >= $t[$i][$(( $j + 1 ))] )) }
-    if $drop-a { append dels $a[$i]; set i $(( $i + 1 )) } else { append adds $b[$j]; set j $(( $j + 1 )) }
+    if $drop-a { $dels append $a[$i]; set i $(( $i + 1 )) } else { $adds append $b[$j]; set j $(( $j + 1 )) }
   }
   flush
   echo "common: $t[0][0] of $n and $m lines"

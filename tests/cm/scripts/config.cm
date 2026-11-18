@@ -10,7 +10,7 @@ for line @(cat $file) {
     var kv [@($t split =)]
     var k $(echo $kv[0] | sed 's/ *$//')
     var v $(echo $kv[1] | sed 's/^ *//')
-    set conf[$k] $v
+    $conf set $k $v
 }
 echo $conf
 echo port plus one: $(( $conf[port] + 1 ))
