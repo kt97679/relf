@@ -8,15 +8,28 @@
 64 CONSTANT IN-MAX
 IN-MAX CELLS BUFFER: INS   VARIABLE IN#
 VARIABLE IN-CAP  IN-MAX IN-CAP !   ' INS >BODY START @ - CONSTANT INS'   \ grown when full (891)
-: INPUT ( --- list )   IN# @ IF INS IN# @ 1- CELLS + @ ELSE ARGL THEN ;
+: INPUT ( --- list|0 )   IN# @ IF INS IN# @ 1- CELLS + @ ELSE 0 THEN ;   \ a stage's; 0, none: stdin (977)
 : IN-PUSH ( list --- )
   IN# @ IN-CAP @ < 0= IF  INS' BODY-OF BUF-GROW  IN-CAP @ 2* IN-CAP !  THEN  INS IN# @ CELLS + !  1 IN# +! ;
 VARIABLE HELD                                      \ runtime words holding the arena by hand while user code runs (918)
-: EACH-RUN ( block input --- )   DUP #ARGS 0 ?DO  DUP I ARGN 1  3 PICK BLK-RUN  LOOP 2DROP ;   \ one argument, on the stack (930)
-VARIABLE XT-EACH-RUN   ' EACH-RUN XT-EACH-RUN !XT
-: EACH-OF ( args --- )   \ each {|x| ... }: the block, run with each value of the function's input - its block
-  DUP #ARGS 1 <> IF S" cm: each takes one block" R-FAIL THEN  0 ARGN  INPUT     \ and input held on the stack
-  1 HELD +!  XT-EACH-RUN @XT CATCH  -1 HELD +!  THROW ;                        \ meanwhile: HELD says so (918)
+: LINE-IN ( --- item -1 | 0 )   \ a line of stdin, any length, a byte at a time - what follows left for the
+  PAD 0 1 WRITE DROP  TXT( 0                         \ next reader, as read's; none at the end (977)
+  BEGIN  PAD 1 0 READ 1 = WHILE  PAD C@ DUP 10 = IF 2DROP )TXT -1 EXIT THEN  TXT-C 1+  REPEAT
+  )TXT SWAP IF -1 ELSE DROP 0 THEN ;
+\ each name { body } (977): a loop, as for's - the stage's values, or stdin's lines where there is no stage's
+\ input: a pipeline's first stage, a function not in a pipeline, the script. Its body had been a block called
+\ with each value - break an error in it, return its continue - and with no stage's input it read nothing
+: C-EACH-IN ( elem id xt --- )   \ stdin's lines; break, continue and return as for's
+  >R  ACT-PUSH D-NUM SWAP LS!                                       ( elem )  ( R: xt )
+  BEGIN  LINE-IN  WHILE
+    OVER LS!  R@ CATCH  ?DUP IF
+      DUP T-BREAK MINE? IF 2DROP R> DROP ACT-POP EXIT THEN
+      DUP T-CONTINUE MINE? 0= IF NIP R> DROP ACT-POP THROW THEN  DROP
+    THEN
+  REPEAT  DROP R> DROP ACT-POP ;
+: C-EACH-IN-PLAIN ( elem xt --- )   >R BEGIN LINE-IN WHILE OVER LS! R@ EXECUTE REPEAT DROP R> DROP ;
+: C-EACH ( src elem id xt --- )   INPUT ?DUP IF 4 PICK LS! C-FOR EXIT THEN  2SWAP NIP ROT ROT C-EACH-IN ;
+: C-EACH-PLAIN ( src elem xt --- )   INPUT ?DUP IF 3 PICK LS! C-FOR-PLAIN EXIT THEN  ROT DROP C-EACH-IN-PLAIN ;
 VARIABLE TMP#
 : TMP-PATH ( --- text )   1 TMP# +!  S" /tmp/cm" TXT GETPID D-NUM JOIN S" ." TXT JOIN TMP# @ D-NUM JOIN ;
 : PATH$ ( text --- c-addr u )   CELL+ @ R-T@ ;
@@ -32,8 +45,8 @@ CREATE LF1 10 C,
   TMP-PATH >R  R@ PATH$ W/O CREATE-FILE IF S" cm: cannot make a temporary file" R-FAIL THEN    ( list fid )
   OVER #ARGS 0 ?DO  OVER I ARGN D-STR CELL+ @ R-T@ 2 PICK WRITE-FILE DROP  LF1 1 2 PICK WRITE-FILE DROP  LOOP
   CLOSE-FILE DROP DROP R> ;
-: STAGE-IN ( list|0 --- list' saved path | list' 0 0 )   \ the stage's stdin from its input, the old one kept
-  ?DUP 0= IF ARGL 0 0 EXIT THEN
+: STAGE-IN ( list|0 --- list' saved path | 0 0 0 )   \ the stage's stdin from its input, the old one kept;
+  ?DUP 0= IF 0 0 0 EXIT THEN                           \ none, the first stage's: 0 - stdin as it was, each's (977)
   DUP IN-FILE  DUP PATH$ R/O OPEN-FILE IF S" cm: cannot read a temporary file" R-FAIL THEN   ( list path fid )
   PAD 0 1 WRITE DROP  0 10 DUP-FROM  OVER 0 DUP2 DROP  SWAP CLOSE-FILE DROP  SWAP ;        ( list saved path )
 : STAGE-OUT ( saved path --- )   ?DUP IF  OVER 0 DUP2 DROP  SWAP CLOSE-FILE DROP  DEL-PATH  ELSE DROP THEN ;

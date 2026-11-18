@@ -290,7 +290,9 @@ the account of what each gained and cost.
    element changes by its value's operation, `$m set k v`, `$l append x`, `$m del k` - `set` gives a
    variable another value, and `set m[k]`, `append` and `del` say where they went - and `echo {a,b}`
    is an error (QUESTIONS.md A52: `=`, `$name set`, no `var`, one of `var` and `set`, `$[ ]` and `${ }`
-   weighed and not taken). Recursion's depth done at 961 - the 1 MB stack, 16 times as deep - and found by it: the collector
+   weighed and not taken); at 977, after a review of every construct against `command subcommand ...`
+   (A53), `each x { body }` a loop as `for` is - over a stage's input, or stdin's lines where there is
+   none, where it had read nothing - and `true` and `false` no builtins: booleans, as rule 4 has them. Recursion's depth done at 961 - the 1 MB stack, 16 times as deep - and found by it: the collector
    recursed a call a level of a value's nesting (a list 42,000 deep left the heap half moved), `==` on
    lists faulted, and after an error in a redirected function stdout stayed the file. The front end smaller - begun at 959: cm/cmc.4 is 21,282 of the image's 79,045
    bytes, 27 %; its repeated runs merged (336 bytes, the code made of every test script the same,

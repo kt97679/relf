@@ -12,7 +12,7 @@ var branch { if true { put 8 } }
 var returns { put 5; return 0 }
 var twice { var x $(( $(five) * 2 )); put $x }
 var fib {|n| if $(( $n < 2 )) { put $n } else { put $(( $(fib $(( $n - 1 ))) + $(fib $(( $n - 2 ))) )) } }
-var sum { var t 0; each {|x| set t $(( $t + $x )) }; put $t }
+var sum { var t 0; each x { set t $(( $t + $x )) }; put $t }
 echo $(( $(five) + 1 )) $(( $(neg) * 2 )) $(( $(echo5) + 1 )) $(( $(text5) + 1 )) $(( $(big) - 1 ))
 echo $(( $(redirected) + 1 )) $(cat /tmp/cm-capnum.txt) $(( $(inner) + 1 )) $(( $(branch) + 1 )) $(( $(returns) + 1 ))
 echo $(( $(twice) + 1 )) $(( $(fib 15) + 0 )) $(( $([a b c] count) * 10 )) $(( $(printf '1\n2\n3\n' | sum) + 0 ))

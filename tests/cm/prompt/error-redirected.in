@@ -4,11 +4,11 @@ f > /tmp/cm-err-redir1.txt
 echo after f into a file
 f &> /tmp/cm-err-redir2.txt
 echo after f and its errors into a file
-f | each {|v| echo $v }
+f | each v { echo $v }
 echo after f into each
 f | cat
 echo after f into a program
-var c {|n| echo $n | each {|v| c $(( $v + 1 )) } }
+var c {|n| echo $n | each v { c $(( $v + 1 )) } }
 c 0
 echo after recursion through each
 echo in the files:

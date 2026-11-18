@@ -113,10 +113,13 @@ A function is a value: `$sq` is the block itself, to pass on. Blocks keep the va
 
 Programs and functions mix in one pipeline: between programs flow bytes, between functions values.
 
-    var evens { each {|x| if $(( $x % 2 == 0 )) { put $x } } }
+    var evens { each x { if $(( $x % 2 == 0 )) { put $x } } }
     printf '1\n2\n3\n4\n' | evens | sort -r
     # 4
     # 2
+
+`each x { ... }` is a loop, as `for` is, over what comes in: the values before it in the pipeline, or,
+with nothing before it, stdin's lines - `each line { echo $line } < notes.txt` reads a file a line at a time.
 
 `$(cmd)` is the text a command printed; `@(cmd)` its values, one by one. A program whose name a value
 holds runs with `run`: `run $EDITOR notes.txt`.

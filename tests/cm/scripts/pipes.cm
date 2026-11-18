@@ -1,6 +1,6 @@
 # pipelines with functions in them, buffered: programs side by side still an OS pipeline
-var double { each {|x| put $(( $x * 2 )) } }
-var show { each {|x| echo got $x } }
+var double { each x { put $(( $x * 2 )) } }
+var show { each x { echo got $x } }
 range 3 | double | show
 echo hello | tr a-z A-Z
 var three { put one; put two; put three }
@@ -12,6 +12,6 @@ echo sorted: $sorted
 var n $(three | wc -l)
 echo three lines: $n
 var seen 0
-var counting { each {|x| set seen $(( $seen + 1 )) } }
+var counting { each x { set seen $(( $seen + 1 )) } }
 three | $counting
 echo the stage ran in the shell, its side effects kept: $seen

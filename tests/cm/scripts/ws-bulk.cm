@@ -1,6 +1,6 @@
 # a whole script (916), as one would write it
 # ten thousand lines: totals per key, through a program, a def and a program
-var keyed { each {|line| var f [@($line split ' ')]; put "$f[0] $f[1]" } }
+var keyed { each line { var f [@($line split ' ')]; put "$f[0] $f[1]" } }
 var totals [:]
 for line @(seq 1 10000 | awk '{ print "k" ($1 % 7), $1 }') {
     var f [@($line split ' ')]

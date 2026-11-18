@@ -1,7 +1,7 @@
 # a function's stage after another (882): its input is its stdin too - a program in it reads the lines - and
 # a function before another passes on what it prints, after its values; echo writes \n, no \r
 var shout { tr a-z A-Z }
-var show { each {|l| echo got $l } }
+var show { each l { echo got $l } }
 echo hello | shout
 printf "a\nb\n" | shout | show
 var both { put v1; echo t1 }

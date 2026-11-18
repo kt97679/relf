@@ -48,6 +48,8 @@ got two
 status 2
 saved
 more
+read saved
+read more
 hello file
 waited, status 0
 var status 2

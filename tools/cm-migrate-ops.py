@@ -14,9 +14,13 @@ m[a][b] v` is `$m[a] set b v`, `append l x y` is `$l append x y`, `del m[k]` is 
 and `del env[N]` so, `$env set N v`, `$env del N`. `set name v` stays: it changes a variable. `read
 name[k]` has no one-line form - `read line`, then `$name set k $line` - so it is named, not rewritten.
 
+Iteration 977 made `each` a loop, as `for` is: `each {|x| body }` is `each x { body }` - its values the stage's
+input, or stdin's lines. The body had been a block called with each value, where `return` went on to the next
+one; in the loop it returns from the function round it, so a body with a `return` in it is named, not rewritten.
+
     python3 tools/cm-migrate-ops.py file...           each file rewritten in place, the ones changed named
     python3 tools/cm-migrate-ops.py --check file...   the files it would change, nothing written: status 1 if any
-    python3 tools/cm-migrate-ops.py --976 file...     976's rewrites only - for a script 967's left as it is
+    python3 tools/cm-migrate-ops.py --976 file...     976's and 977's rewrites only - for a script 967's left
 """
 import re
 import sys
@@ -258,6 +262,20 @@ def split_target(w):
     return name, keys
 
 
+def transform977(words, line):
+    """each {|x| body }: each x { body }, or None."""
+    if len(words) != 2:
+        return None
+    m = re.match(r'\{\|\s*([A-Za-z_][A-Za-z0-9_-]*)\s*\|', words[1])
+    if not m:
+        if words[1].startswith('{|'):
+            problems.append('%d: each with more than one parameter' % line)
+        return None
+    if re.search(r'(^|[\s;{])return\b', words[1]):
+        problems.append('%d: each with a return in its block - continue, in the loop' % line); return None
+    return ['each', m.group(1), '{' + words[1][m.end():]]
+
+
 def transform976(words, line):
     """set name[k].. v, append name values, del name[k]..: their words as operations now, or None."""
     name, args = words[0], words[1:]
@@ -321,6 +339,11 @@ def rewrite_cmd(s, cmd, arms):
             starts.append(past_bangs(k + 1))
     texts = [t[1] for t in cmd]
     for st in sorted(set(starts), reverse=True):
+        if ws[st] == 'each' and st == starts[0]:
+            new = transform977(ws[st:], s.count('\n', 0, cmd[wi[st]][2]) + 1)
+            if new is not None:
+                texts[wi[st]:wi[-1] + 1] = [' '.join(new)] + [''] * (wi[-1] - wi[st])
+            continue
         if ws[st] in ELEMENT and st == starts[0]:
             new = transform976(ws[st:], s.count('\n', 0, cmd[wi[st]][2]) + 1)
             if new is not None:

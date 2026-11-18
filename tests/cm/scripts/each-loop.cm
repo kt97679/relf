@@ -1,0 +1,34 @@
+# each name { body } (977): a loop, as for's - its values a pipeline stage's input, or stdin's lines where
+# there is none; break, continue and return as for's. Before, its body was a block called with each value:
+# break an error in it, return its continue - and with no stage's input it read nothing, not stdin
+var f /tmp/cm-977-each.txt
+printf 'one\ntwo\nthree\n' > $f
+# a function's values, a program's lines
+var nums { put 1 2 3 4 }
+nums | each n { if $(( $n == 2 )) { continue }; if $(( $n == 4 )) { break }; echo n $n }
+printf 'a b\n c\n' | each line { echo "[$line]" }
+# stdin's lines: a file redirected to each, to a function using it, to a pipeline's first stage
+each line { echo got $line } < $f
+var upper-all { each line { echo $($line upper) } }
+upper-all < $f
+upper-all < $f | sort
+# return returns from the function round the loop, with its status
+var find {|want| each line { if $(( $line == $want )) { return 0 } }; return 1 }
+find two < $f && echo found two
+find nine < $f || echo no nine
+# a loop's variable is a new one each time round: blocks made in it keep that round's value
+var later []
+nums | each n { $later append { echo kept $n } }
+for b @later { $b }
+# nothing in: no round; a line longer than read's 4096 bytes; a last line with no newline
+var none { put }
+none | each x { echo never }
+var long "$f.long"
+printf 'x%.0s' @(range 5000) > $long
+each l { echo a line of $($l count) } < $long
+rm $long
+printf 'last' | each l { echo last line: $l }
+# each in a for, a for in each
+for p x y { nums | each n { if $(( $n > 1 )) { break }; echo $p $n } }
+printf 'k\n' | each k { for i @(range 2) { echo $k $i } }
+rm $f

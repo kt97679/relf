@@ -765,6 +765,34 @@ owner asked, one at a time, whether these would be more consistent; each answer 
   consistency. Found on the way: `echo {a,b}`, bash's braces, printed `<block>` - an error since 976.
 
 
+**A53. rill3 streamlined: every construct against `command subcommand ...` (977).** The owner asked for a
+deep dive: could rill3 be simpler, consistent and expressive, in the form `command subcommand ...`. Every
+rule, builtin, operation and word form was checked - does it fit the form, is there a second way to do
+it, how often is it used - against 81 realistic scripts (lib/ and the ws-* whole scripts, about 2,500
+commands: builtins 69 %, nearly all var, echo, if, set, for, put; value-first operations 19 %; programs
+and functions the rest). Found: little to take out. Offered, and the owner's answer, "do 1-3":
+1. `each` - a defect and an inconsistency: it read only a stage's input, so `each {|x| } < file`, or a
+   script given stdin, read nothing, silently; its body was a block called with each value - `break` an
+   error in it, `return` its `continue`. Done: `each x { body }`, a loop as `for` is, over a stage's
+   values or, with none, stdin's lines - `each line { } < f` for sh's `while read`, where 5 of the 9
+   realistic read loops began `var line ''`.
+2. `true` and `false` off the builtins: a plain `true` is a boolean as it is read (rule 2), so their
+   branches had never run - a boolean first is its status (rule 4). Done; and they are never names now -
+   `{|true| }` had made one.
+3. The docs: the test this review used, said in rule 10 - what is about a value is its operation, what
+   is the shell's is a builtin; a condition is a command, rule 4 making a value one; `var x @(f)` is
+   var's one value, not a rule of its own. Done.
+4. Not taken: `set n + 1` for `set n $(( $n + 1 ))` - 49 to 67 of 120 realistic sets are so - a second
+   way to do one thing.
+Kept, each for its reason: `$(( ))`, the one infix place (in 120 of 245 conditions; `<` and `>` are
+redirections, a bare `3` first is a program, precedence wants a language); `run` `glob` `cd` `wait`
+`source` `trap` `exit` (the shell's verbs - `$EDITOR run f` reads worse); `kind` (any kind - a block
+first runs, a boolean is a status); `range` (a bare `10` first is a program); `case`, `elif`, `@[...]`,
+an index after any value, `"${name}"`, `echo` and `put`, `$( )` and `@( )`, functions called by name;
+`has` and `match` statuses, not booleans (`@(... && put true || put false)`). The image's dead-word and
+reach checks find nothing; the old forms' messages are 129 bytes.
+
+
 **Closed at 972: Rill's and Rill 2's questions (Q8, Q39-Q46).** Kept in Open until 972, though
 their object had gone: Rill (729-833) and Rill 2 (834-862) were retired at 871, their sources out,
 when the command model - rill3, chosen at 867 by the owner's criteria (GOALS.md 15) - took their

@@ -243,12 +243,15 @@ VARIABLE QK#                                       \ the quoted keys read (975):
   BEGIN -1 SKIP-WS CUR [CHAR] ] <> WHILE CUR 0= IF S" ] missing" P-ERR THEN
     NDP @ [CHAR] ] WORD-P  DUP BS-WORD? IF BS-AT-END NDP ! ELSE DROP THEN REPEAT   \ a \ at a line's end: as a command's (906)
   GET DROP N)  R> QK# @ <> MAP? ;
+: BOOL$? ( c-addr u --- f )   2DUP S" true" COMPARE 0= >R S" false" COMPARE 0= R> OR ;
+: BOOLS$ ( --- c-addr u )   S" true and false are booleans, not names" ;   \ (977)
 : BLOCK-P ( --- )   \ { |a b| ... }: a N-BK - its parameters' names as leaves, then its commands
   NDP @ 0 0 N-BK N,  0 SKIP-WS
   CUR [CHAR] | = IF GET DROP
     BEGIN 0 SKIP-WS CUR [CHAR] | <> WHILE
       CUR NAME0? 0= IF S" a block's parameters are names between | |" P-ERR THEN
-      NAME-P N-TX N,  1 OVER CELL+ +!  REPEAT  GET DROP THEN
+      NAME-P 2DUP BOOL$? IF BOOLS$ P-ERR THEN   \ (977: {|true| } had made one)
+      N-TX N,  1 OVER CELL+ +!  REPEAT  GET DROP THEN
   DROP [CHAR] } DUP CMDS N) ;      \ } ends a word too, as ) and ] do (920): { echo $y} and }} had been refused
 : WORD-ENDS ( closer --- )   \ after a word's form - ] } " ' a $name or $( ): its end, nothing glued (899)
   CUR SWAP WORD-END? 0= IF S" nothing right after a ] } quote or $value - a blank first; a double-quoted text joins texts" P-ERR THEN ;
@@ -497,8 +500,10 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   \ the prompt's session 
   2DUP [CHAR] = SCAN NIP IF  2DUP 2DUP [CHAR] = SCAN NIP - HABIT-NAME? IF S" var x 5 makes a variable, set x 5 changes one, $env set X 5 the environment" SH-SAYS THEN THEN
   2DROP ;
 : FIND-FN ( c-addr u --- f )   FIND-VAR DUP IF 7 CELLS + @ 0<> THEN ;   \ a variable a block was written to: a function (929)
+\ true and false were on the builtins' list, and SINGLE had their branch, but a plain true is a boolean as the word is
+\ read (rule 2), so it never reached them: a boolean first is its status (rule 4) - gone at 977
 : BUILTIN? ( c-addr u --- f )   \ a builtin's name: a first word so is that builtin, before any function's
-  S" var set put echo append if for while break continue return range true false each cd exit wait read kind source glob del case trap forth run" IN-LIST? ;
+  S" var set put echo append if for while break continue return range each cd exit wait read kind source glob del case trap forth run" IN-LIST? ;
   \ append and del are gone (976) but kept here, so the first word says where they went
 : PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program - unless it is sh's (916)
   DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
@@ -715,8 +720,9 @@ VARIABLE ARM-1ST
   DUP IF 2DUP CAPTURED? DECLARE V-SLOT ELSE 2DROP 0 THEN >R
   S" L" FRESH  R@ SC @ CELL+ @ 5 CELLS + @ AND IF R@ T# T" LS@ UPV-NEW" ++ R@ T#++ T" LS!" ++ ELSE 0 0 THEN
   4 PICK N+ N+ BODY-CODE T" R-TURN" 2SWAP ++ ++  2OVER 2SWAP DEF-WORD  ROT LOOP-PLAIN?  R> R> SWAP  ROT IF NIP 0 SWAP THEN  )SCOPE ;   \ id 0: plain
+: NO-BOOL ( w --- w )   DUP N+ @ N-BO = IF BOOLS$ G-ERR THEN ;   \ (977)
 : FOR-CMD ( from to --- c-addr u )   \ for name words... { body }
-  OVER BARE? 0= 2 PICK NSKIP 2 PICK = OR IF S" for name words... { body }" G-ERR THEN
+  OVER NO-BOOL BARE? 0= 2 PICK NSKIP 2 PICK = OR IF S" for name words... { body }" G-ERR THEN
   OVER NSKIP S" in" BARE= IF S" for name values... { } - no in, as sh has" G-ERR THEN      \ it had gone round in too (916)
   FR @ F-SLOT >R  OVER SWAP LAST-W
   OVER NSKIP OVER ARGS-CODE
@@ -725,13 +731,22 @@ VARIABLE ARM-1ST
   2SWAP SWAP BARE$ LOOP-BODY
   OVER 0= IF NIP 4 ROLL 4 ROLL ROT T#++ 2SWAP T-TICK$ ++ T" C-FOR-PLAIN" ++ OK$ R> DROP EXIT THEN
   5 ROLL 5 ROLL ROT T#++ ROT T#++ 2SWAP T-TICK$ ++ T" C-FOR" ++ OK$  R> DROP ;
+: EACH-ERR ( --- )   S" each name { body } - the stage's values, or stdin's lines" G-ERR ;
+: EACH-CMD ( from to --- c-addr u )   \ each name { body } (977): a loop, as for's - its values the stage's input,
+  2DUP = IF EACH-ERR THEN                                   \ or stdin's lines; each {|x| } had been a block called
+  OVER N+ @ N-BK = IF S" each {|x| ... } is gone (977) - each x { body }: a loop, as for's" G-ERR THEN
+  OVER NO-BOOL BARE? 0= IF EACH-ERR THEN  OVER NSKIP DUP 2 PICK = IF EACH-ERR THEN  DUP NSKIP 2 PICK <> IF EACH-ERR THEN
+  N+ DUP @ N-BK = SWAP @A 0= AND 0= IF EACH-ERR THEN  DROP
+  FR @ F-SLOT >R  R@ T#  ROT DUP NSKIP SWAP BARE$ LOOP-BODY                     ( c u bc bu id v )
+  OVER 0= IF NIP 4 ROLL 4 ROLL ROT T#++ 2SWAP T-TICK$ ++ T" C-EACH-PLAIN" ++ OK$ R> DROP EXIT THEN
+  5 ROLL 5 ROLL ROT T#++ ROT T#++ 2SWAP T-TICK$ ++ T" C-EACH" ++ OK$  R> DROP ;
 : WHILE-CMD ( from to --- c-addr u )   \ while condition { body }
   S" W" FRESH 2SWAP OVER SWAP LAST-W  TUCK FLAG ROT >R  2OVER 2SWAP DEF-WORD  R>
   0 0 LOOP-BODY DROP
   ?DUP 0= IF  >R >R T" BEGIN" 2SWAP ++ T" WHILE" ++ R> R> ++ T" REPEAT" ++ OK$ EXIT THEN   \ plain: compiled in place
   T#  5 ROLL 5 ROLL T-TICK$ ++  2SWAP T-TICK$ ++ T" C-WHILE" ++ OK$ ;
 : NAME? ( c-addr u --- f )   \ a name: a letter or _ first; letters, digits, _, and - inside, not last (930: -, kebab-case)
-  DUP 0= IF 2DROP 0 EXIT THEN  OVER C@ NAME0? 0= IF 2DROP 0 EXIT THEN  2DUP + 1- C@ [CHAR] - = IF 2DROP 0 EXIT THEN
+  DUP 0= IF 2DROP 0 EXIT THEN  2DUP BOOL$? IF 2DROP 0 EXIT THEN   \ true and false are booleans, never names (977)  OVER C@ NAME0? 0= IF 2DROP 0 EXIT THEN  2DUP + 1- C@ [CHAR] - = IF 2DROP 0 EXIT THEN
   -1 ROT ROT 0 ?DO  DUP I + C@ DUP NAMEC? SWAP [CHAR] - = OR  ROT AND SWAP  LOOP DROP ;
 : BIND ( from to --- name value )   \ var name value, set name value: their two words
   2DUP TWO? 0= IF S" var name value, set name value" G-ERR THEN  DROP DUP NSKIP ;
@@ -751,7 +766,7 @@ VARIABLE FN-NEXT   \ the var being made has a block written as its value: a func
     DUP >R T" 0 UPV-NEW" ROT T#++ T" LS!" ++  ROT VALUE-CODE ++  R> T#++ T" LS@ UPV!" ++ EXIT THEN
   >R VALUE-CODE R> T#++ T" LS!" ++ ;
 : VAR-CMD ( from to --- c-addr u )   \ var name value
-  BIND OVER BARE? 0= IF S" var: a name first" G-ERR THEN
+  BIND OVER NO-BOOL BARE? 0= IF S" var: a name first" G-ERR THEN
   DUP N+ @ N-BK = IF OVER BARE$ 2DUP BUILTIN? IF   \ var run { }: run the builtin, the function never called by name (967)
     S| S" is a builtin's name - a function so named is never called by it; name it otherwise" ++ G-ERR THEN 2DROP THEN
   DUP N+ @ N-BK = IF OVER BARE$ HOISTED 0= IF VAR-FN EXIT THEN THEN
@@ -814,9 +829,7 @@ VARIABLE FN-NEXT   \ the var being made has a block written as its value: a func
       S" echo -n and -e are sh's - echo prints its words and a newline; printf '%s' text prints none" G-ERR THEN THEN
     ARGS-CODE T" ECHO" ++ OK$ EXIT THEN
   2DUP S" cd exit wait trap forth" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER S" -OF" CAT T-NAMED ++ EXIT THEN      \ they set the status themselves (873)
-  2DUP S" range each kind glob" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER S" -OF" CAT T-NAMED ++ OK$ EXIT THEN
-  S" true" NAMED? IF 2DROP 2DROP T" 0 STATUS !" EXIT THEN
-  S" false" NAMED? IF 2DROP 2DROP T" 1 STATUS !" EXIT THEN
+  2DUP S" range kind glob" IN-LIST? IF >R >R ARGS-CODE R> R> UPPER S" -OF" CAT T-NAMED ++ OK$ EXIT THEN
   2DUP S" break continue" IN-LIST? IF 2SWAP 2DROP  S" %loop" FIND-VAR ?DUP 0= IF S" outside a loop" ++ G-ERR THEN
     REF 2SWAP UPPER T-NAMED ++ EXIT THEN
   S" return" NAMED? IF 2DROP 2DUP = IF 2DROP T" STATUS @" ELSE  OVER NSKIP <> IF S" return takes one status" G-ERR THEN
@@ -825,6 +838,7 @@ VARIABLE FN-NEXT   \ the var being made has a block written as its value: a func
     S" %def" FIND-VAR ?DUP 0= IF S" return outside a function - exit ends the script" G-ERR THEN   \ (968: it had
     REF ++ T" RETURN" ++ EXIT THEN                \ ended it at the top level - a sourced file's too - as exit)
   S" if" NAMED? IF 2DROP IF-CMD EXIT THEN
+  S" each" NAMED? IF 2DROP EACH-CMD EXIT THEN
   S" case" NAMED? IF 2DROP CASE-CMD EXIT THEN                   \ its arm's status, or 0 (910)
   2DUP S" for while" IN-LIST? IF
     2OVER 2DUP = IF 2DROP 0 ELSE LAST-W N+ DUP @ N-BK = SWAP @A 0= AND THEN

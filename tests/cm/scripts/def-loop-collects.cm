@@ -8,5 +8,5 @@ echo three $(grow 400)
 var b {|n| var s ''; var i 0; while $(( $i < $n )) { set s "$s$(printf '%2000s' y)"; set i $(( $i + 1 )) }; put $($s count) }
 echo block $($b 50)
 echo block2 $($b 300)
-var each-loop { put 1 2 | each {|k| var t ''; for i @(range 200) { set t "$t$(printf '%1000s' z)" }; echo each $k $($t count) } }
+var each-loop { put 1 2 | each k { var t ''; for i @(range 200) { set t "$t$(printf '%1000s' z)" }; echo each $k $($t count) } }
 each-loop

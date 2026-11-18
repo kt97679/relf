@@ -55,7 +55,7 @@ for key @([b: 2  a: 1] keys) { echo key $key }
 echo $([a: 1  b: 2] merge [b: 3])
 if [a: 1] has a { echo has a }
 if 'file.txt' match '*.txt' { echo matches }
-put x y | each {|v| echo each $v }
+put x y | each v { echo each $v }
 echo $(range 3) @(range 3)
 # -- a value's operations (967)
 echo $($m count) $($name upper) [@($l slice 1 3)] $($l join -) @('a,b' split ,) @([b: 1  a: 2] keys)
@@ -67,9 +67,10 @@ var langs [forth rill3]; $langs set 1 sh; $langs append awk; $langs del 0; echo 
 printf 'b\na\n' | sort
 echo $(printf 'x\ny\n' | wc -l) @(printf 'p\nq\n')
 pair | tr a-z A-Z
-printf 'one\ntwo\n' | each {|line| echo got $line }
+printf 'one\ntwo\n' | each line { echo got $line }
 grep x /no/such 2> /dev/null || echo status $status
 echo saved > /tmp/cm-ref.txt; echo more >> /tmp/cm-ref.txt; cat < /tmp/cm-ref.txt
+each line { echo read $line } < /tmp/cm-ref.txt               # read saved, read more
 greet file > /tmp/cm-ref.txt
 cat /tmp/cm-ref.txt
 sleep 0 & 

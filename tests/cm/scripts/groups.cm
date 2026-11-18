@@ -14,7 +14,7 @@ var h {|| true && { echo in; false } || { echo "after: $status" } }
 h
 # a block with words after it, or in a pipeline, is still a value that runs
 { |w| echo block got $w } word
-{ put x y } | each {|v| echo stage $v }
+{ put x y } | each v { echo stage $v }
 # 960: @( ) of a command whose last pipeline, after && or ||, ends in a program takes that program's lines
 var d /tmp/cm-groups-dir
 rm -rf $d; mkdir -p $d; touch "$d/b" "$d/a"

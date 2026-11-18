@@ -26,5 +26,5 @@ echo [a { }]
 var f { }
 echo $f
 # a block after | && || is another command's, not echo's
-echo 1 | each {|v| echo got $v }
+echo 1 | each v { echo got $v }
 echo a && { echo b }

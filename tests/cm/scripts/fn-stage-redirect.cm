@@ -1,5 +1,5 @@
 # a function's stage in a pipeline, redirected (903): its redirections had been counted as its arguments
-var f { each {|v| echo got $v } }
+var f { each v { echo got $v } }
 printf "a\n" | f > /tmp/cm-fr.txt
 cat /tmp/cm-fr.txt
 printf "b\n" | f 2>&1

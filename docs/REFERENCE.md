@@ -39,10 +39,11 @@ an eleventh.
    fails and is not tested ends it, with its status.
 9. `|` carries bytes between programs and values between functions; `>` `>>` `<` `2>` `&>` `2>&1`
    redirect as sh's, and `<< END` makes the lines after its line, up to `END`, the command's stdin.
-10. The rest are builtins (the table below): control (`if` `for` `while` `case` `return`
-   `break` `continue`), values (`put` `range` `glob` `kind` ...), programs (`run`), the script
-   (`source` `trap` `exit` `forth`) - and values' operations (`count` `has` `slice` `split` `set`
-   `append` `del` ...).
+10. The rest are builtins (the table below), the shell's own verbs: control (`if` `for` `while`
+   `each` `case` `return` `break` `continue`), values (`put` `range` `glob` `kind` ...), programs
+   (`run`), the script (`source` `trap` `exit` `forth`). What is about a value is its operation
+   instead - `count` `has` `slice` `split` `set` `append` `del` ...: `$l count`, not `count $l`; what is
+   the shell's - a program run, a directory changed, a loop - is a builtin: `run $EDITOR f`, `cd dir`.
 
 ## Words
 
@@ -155,8 +156,8 @@ or a map is a variable's - `$l`, not `[a b]`.
 
 ## Control
 
-`if`, `while` and `for` are commands that take blocks. A condition is a command: its status
-says - or a value: a boolean, as `$(( ))` gives, or a block, run, its status saying.
+`if`, `while`, `for` and `each` are commands that take blocks. A condition is a command, its status
+saying - by rule 4 a value is one too: a boolean, as `$(( ))` gives, is its status, and a block runs.
 
     for i @(range 4) { if $(( $i == 1 )) { continue } elif $(( $i == 3 )) { break } else { echo i $i } }
     # i 0
@@ -270,7 +271,8 @@ rewrites those (`--976` for those alone), and each says where it went: `cm: del 
 - `@(cmd)` is **values**: a function's, one by one, or a program's lines - spread where they stand -
   when cmd is a pipeline ending in a program, or its last pipeline after `&&` or `||` is:
   `[@(cd $dir && ls)]`. `[@(cmd)]` makes them a list.
-- `var x @(f)` and `set x @(f)` take the one value; none or several is an error.
+- `var` and `set` take one value, so `var x @(f)` wants f to put one; none or several is an error,
+  as `var x a b` is.
 - `var` and `set` give the status of the last capture in their value, as sh's `x=$(cmd)`; 0 with none.
 - A capture whose command fails, its status untested, stops the script as the command would - in any
   command's words: `echo $(false)` stops; `var x $(cmd) || echo failed` tests it.
@@ -290,13 +292,19 @@ number a number.
 A word that names no builtin and no function runs a program, found on PATH. Between functions a pipe carries
 values; from a program to a function, lines; from a function to a program, its values' printed forms, a
 line each. Programs side by side run together, as sh's; a function's stage runs in the shell's own
-process, to its end, before the stage after it starts - so `yes | f` never ends - and reads its input
-with `each`.
+process, to its end, before the stage after it starts - so `yes | f` never ends.
 
-    printf 'one\ntwo\n' | each {|line| echo got $line }      # got one, got two
+`each name { body }` is a loop, as `for` is, over the input where it stands: a stage's values - a
+function's, or a program's lines - or, with no stage's input (a function not in a pipeline, a
+pipeline's first stage, the script), stdin's lines, one at a time, as they come. `break`, `continue` and
+`return` in its body are as in `for`'s (977: its body had been a block called with each value, and with
+no stage's input it read nothing).
+
+    printf 'one\ntwo\n' | each line { echo got $line }      # got one, got two
     pair | tr a-z A-Z                                         # A, B
     grep x /no/such 2> /dev/null || echo status $status           # status 2
     echo saved > /tmp/cm-ref.txt; echo more >> /tmp/cm-ref.txt; cat < /tmp/cm-ref.txt
+    each line { echo read $line } < /tmp/cm-ref.txt               # read saved, read more
     greet file > /tmp/cm-ref.txt                              # functions and builtins redirect too,
                                                               # alone or as a pipeline's stage
     sleep 0 &
@@ -334,18 +342,17 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 | `case value { patterns... {..} }` | the first arm with a pattern the value's text matches; none, status 0 |
 | `var name {|params| ..}`, `return [n]`, `break`, `continue` | functions and loops |
 | `range n` | 0 to n-1, put one by one; none when n is 0 or less |
-| `each {|x| ..}` | the block, run with each value of the function's input |
+| `each name {..}` | a loop over the input: a stage's values, or stdin's lines - `each line { .. } < file` |
 | `kind v` | text, number, bool, list, map or block |
 | `glob patterns...` | each pattern's paths, sorted, put, the patterns in their order - none, none put |
 | `run program words...` | the program a text names, given the words: `run $EDITOR file`, `run @cmd` |
-| `read name` | a line of stdin into name, as it is - its blanks kept, nothing split; status 1 at the end |
+| `read name` | a line of stdin into name, as it is - its blanks kept, nothing split; status 1 at the end - `each line {..}` for every line |
 | `source file` | another script read in where the line stands, once - a second source of it does nothing; its path from this file's directory; a name with no `/` not there, from the directories of `$env[RILL3_PATH]`; at the prompt, a later line's source reloads |
 | `forth words values...` | Forth run in rill3's own image: the values onto its stack (a number a cell, `true` and `false` -1 and 0, a text its address and length), the words run, what they leave put as numbers |
 | `source json.cm`, `source args.cm` | rill3's own library, written in rill3, in `lib/` - `bin/cm` puts it last on `$env[RILL3_PATH]`: `to-json value`, `from-json text`; `parse-args spec argv` (a map of option defaults: a boolean a flag, else a value; `--help` lists them), `usage spec` |
 | `wait`, `wait $job` | wait for every job `&` started, the status the last ended with - or for that one job, its status; with none, 0 |
 | `cd [dir]`, `exit [n]` | as sh's: `cd` with none to `$env[HOME]`; `exit` with none the last status, n taken modulo 256 |
 | `trap { block } [EXIT INT TERM HUP]` | the block run when the script ends - at its end, by `exit`, by an error, or by a signal named, which then ends it with status 128 + the signal; `$status` in it the status the script ends with; a later trap replaces it |
-| `true`, `false` | booleans: as a command, status 0 or 1 |
 
 ## The prompt
 
@@ -388,6 +395,8 @@ as deep as memory allows, though printing or comparing one nested past about 20,
 - `[` is a list, not `test`: `test -f x`, or `$(( ))` for numbers.
 - `if $m has $k`, `if $t match '*.txt'`: statuses, as `test` gives.
 - `$EDITOR file` is `run $EDITOR file`: a text first in a command is a value, the next word its operation.
+- `while read line; do ...; done < f` is `each line { ... } < f`; `read name` reads one line.
+- `true` and `false` are booleans, not programs: first in a command, a boolean is its status.
 - `$(cmd)` is text - the same as sh's; `@(cmd)` takes a function's values.
 - `{ ... }` alone is a group, as sh's `{ ...; }`: `cmd || { echo failed; return 1 }` returns from the function.
   A `{...}` word is a block, not bash's braces: `echo {a,b}` is an error, and a program is not given

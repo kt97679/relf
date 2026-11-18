@@ -1,0 +1,12 @@
+cm: each {|x| ... } is gone (977) - each x { body }: a loop, as for's (line 1)
+cm: each name { body } - the stage's values, or stdin's lines (line 1)
+cm: each name { body } - the stage's values, or stdin's lines (line 1)
+cm: each name { body } - the stage's values, or stdin's lines (line 1)
+cm: each name { body } - the stage's values, or stdin's lines (line 1)
+cm: true and false are booleans, not names (line 1)
+cm: true and false are booleans, not names (line 1)
+cm: a bool has no x - a bool has no operations; alone, as a command, it is its status (line 1)
+cm: true and false are booleans, not names (line 1)
+a true is status 0
+a false is status 1
+status 0

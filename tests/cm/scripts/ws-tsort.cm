@@ -24,7 +24,7 @@ var order {|text|
     }
     var out []
     while $(( $($need count) > 0 )) {
-        var ready [@($need keys | each {|v| if $(( $need[$v] == 0 )) { put $v } })]
+        var ready [@($need keys | each v { if $(( $need[$v] == 0 )) { put $v } })]
         if $(( $($ready count) == 0 )) {
             echo "a loop among: $([@($need keys | sort)] join ' ')" >&2
             return 1

@@ -1,0 +1,13 @@
+# each's form (977): each name { body } - the old block form says where it went
+each {|x| echo $x }
+each x
+each x y { echo }
+each x {|y| echo }
+each $x { echo }
+# true and false are booleans: never names, and a boolean first takes no words
+var f {|true| echo }
+var false 1
+true x
+for true x { }
+true && echo a true is status 0
+false || echo a false is status 1

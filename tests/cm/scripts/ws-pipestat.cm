@@ -1,8 +1,8 @@
 # pipelines' statuses (971): a log filtered by functions and programs, any stage able to fail - the
 # pipeline's status its rightmost failing stage's, as bash's with pipefail, a function's stage counted
 var log ["INFO start" "WARN disk 91%" "ERROR db down" "INFO retry" "ERROR db down again" "INFO done"]
-var only {|level| each {|l| if $l match "$level *" { put $l } } }
-var lines { var n 0; each {|l| set n $(( $n + 1 )) }; put $n; $(( $n > 0 )) }
+var only {|level| each l { if $l match "$level *" { put $l } } }
+var lines { var n 0; each l { set n $(( $n + 1 )) }; put $n; $(( $n > 0 )) }
 var report {|what| echo "$what: status $status" }
 put @log | only ERROR | lines; report "two errors counted"
 put @log | only FATAL | lines || report "none counted, lines failing"

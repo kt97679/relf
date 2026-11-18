@@ -10,4 +10,4 @@ trap { rm -f $scratch } EXIT
 var all [@(glob "$dir/backup-*.tar")]
 var n $($all count)
 for old @($all slice 0 -3) { rm $old; echo "removed $($old slice -21)" }
-echo kept: @(glob "$dir/backup-*.tar" | each {|p| put $($p slice -21) })
+echo kept: @(glob "$dir/backup-*.tar" | each p { put $($p slice -21) })

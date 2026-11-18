@@ -46,7 +46,7 @@ var counter {|| var c 0; put { set c $(( $c + 1 )); put $c } }
 var next @(counter)
 echo $($next) $($next)
 # 1 2
-var evens { each {|x| if $(( $x % 2 == 0 )) { put $x } } }
+var evens { each x { if $(( $x % 2 == 0 )) { put $x } } }
 printf '1\n2\n3\n4\n' | evens | sort -r
 # 4
 # 2
