@@ -122,7 +122,8 @@ Programs and functions mix in one pipeline: between programs flow bytes, between
 with nothing before it, stdin's lines - `each line { echo $line } < notes.txt` reads a file a line at a time.
 
 `$(cmd)` is the text a command printed; `@(cmd)` its values, one by one. A program whose name a value
-holds runs with `run`: `run $EDITOR notes.txt`.
+holds runs with `run`: `run $EDITOR notes.txt` - or by itself, when the value is a path, a `/` in it:
+`var ed /usr/bin/vi`, then `$ed notes.txt`.
 
     var today $(date +%Y)
     var lines [@(printf 'a\nb\n')]

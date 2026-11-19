@@ -1,0 +1,8 @@
+# 978: a text first runs a program only when it holds a / - a name alone is a text's, run $t for it
+var cmd date
+$cmd +%Y
+var sleeper /bin/sleep
+$sleeper 0 &
+run $sleeper 0 &
+wait
+echo done

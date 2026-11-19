@@ -508,7 +508,8 @@ VARIABLE SESSION   VARIABLE MAIN-FR   VARIABLE MAIN-SC   \ the prompt's session 
 : PROGRAM? ( w --- f )   \ a first word that names no builtin and no def: a program - unless it is sh's (916)
   DUP BARE? 0= IF DROP 0 EXIT THEN  BARE$
   2DUP S" run" COMPARE 0= IF 2DROP -1 EXIT THEN       \ run prog words: a program's stage, the program a value (967)
-  2DUP BUILTIN? IF 2DROP 0 EXIT THEN  2DUP FIND-FN IF 2DROP 0 EXIT THEN  SH-HABIT -1 ;
+  2DUP BUILTIN? IF 2DROP 0 EXIT THEN  2DUP FIND-FN IF 2DROP 0 EXIT THEN    \ no builtin's or function's name holds
+  2DUP [CHAR] / SCAN NIP IF 2DROP -1 EXIT THEN  SH-HABIT -1 ;              \ a /: a path, a program's always (978)
 : ANDOR? ( w --- w f )   DUP S" &&" BARE= OVER S" ||" BARE= OR ;   \ && or || between commands
 : CHAIN-ANDOR ( from to --- w )   \ in if's or while's command: && and || in a condition are the condition's (914)
   SWAP -1 >R
@@ -558,10 +559,14 @@ DEFER IX-CODE ( c-addr u ix --- c-addr2 u2 )   \ a value's keys, each CM-AT (913
   DUP S" break" BARE-IN? OVER S" continue" BARE-IN? OR SWAP S" return" BARE-IN? OR 0= ;
 : TEXT-CAP ( cp --- c-addr u )   \ what the commands print, one text
   DUP NO-TRANSFER? >R CAPTURE-WORD T-TICK$  R> IF T" CAPTURE-TEXT-P" ELSE T" CAPTURE-TEXT" THEN ++ ;
+VARIABLE VCAP-W   \ @( )'s one command's first word: a value there may hold a program's path - its lines then (978)
+: VCAP-AT ( cp --- w|0 )   \ that word, a value's - a name's looked at no further: it is no path held
+  DUP N+ DUP @ N-CMD = IF N+ BARE? 0= IF CAP-CMD IF DROP EXIT THEN 0 EXIT THEN ELSE DROP THEN DROP 0 ;
 : SPREAD-CODE ( p --- c-addr u )   \ what @ spreads: a list
   DUP @ N-CP = IF DUP PROG-CAP? IF T" PIPE-LINES" PIPE-CAP EXIT THEN
     DUP PROG-LIST? IF TEXT-CAP T" TEXT-LINES" ++ EXIT THEN   \ @(cd d && find .): the lines too, not to the terminal
-    CAPTURE-WORD T-TICK$ T" CAPTURE" ++ EXIT THEN  PIECE ;
+    VCAP-W @ >R  DUP VCAP-AT VCAP-W !
+    CAPTURE-WORD T-TICK$ T" CAPTURE" ++  R> VCAP-W ! EXIT THEN  PIECE ;
 : ARG-CODE ( w --- c-addr u )   DUP N+ @ N-SP = IF N+ N+ DUP NSKIP DUP @ N-IX = IF   \ @(cmd)[k]: its values' k-th,
     >R SPREAD-CODE R> IX-CODE T" ARG@1" ++ EXIT THEN  DROP SPREAD-CODE T" ARG@" ++ EXIT THEN   \ spread if a list (913)
   DUP @A IF GLOB-CODE T" GLOB ARG@" ++ EXIT THEN  WORD-CODE T" ARG" ++ ;   \ a word with * or ?: its paths (872)
@@ -818,7 +823,8 @@ VARIABLE FN-NEXT   \ the var being made has a block written as its value: a func
 : SINGLE ( from to --- c-addr u )   \ one command, not a program's
   OVER N+ DUP @ N-BK = SWAP @B AND IF DROP INLINE EXIT THEN   \ a group, marked so (960)
   OVER BARE? 0= IF  2DUP METHOD? DUP 0< 0= IF ITEM-OP? IF ITEM-CODE ELSE METHOD-CODE THEN EXIT THEN DROP         \ rule 11: a value as the first word -
-    OVER NSKIP OVER ARGS-CODE  ROT DROP ROT WORD-CODE ++ T" CALL-VALUE" ++ EXIT THEN   \ its operation, or it called
+    OVER VCAP-W @ = >R  OVER NSKIP OVER ARGS-CODE  ROT DROP ROT WORD-CODE ++   \ its operation, or it called;
+    R> IF T" CALL-VALUE-CAP" ELSE T" CALL-VALUE" THEN ++ EXIT THEN             \ @($cmd): a path's lines (978)
   OVER BARE$ 2SWAP SWAP NSKIP SWAP 2SWAP
   S" var" NAMED? IF 2DROP 2DUP CAP-IN? >R VAR-CMD R> 0= IF OK$ THEN EXIT THEN   \ status: its value's capture's (897)
   S" set" NAMED? IF 2DROP 2DUP CAP-IN? >R SET-CMD R> 0= IF OK$ THEN EXIT THEN
@@ -931,7 +937,7 @@ VARIABLE RDA   VARIABLE RDU                       \ the redirections' Forth bein
   REPEAT 2DROP  RDA @ RDU @  R> RDU ! R> RDA ! ;
 : SEGMENT ( from to --- c-addr u )   \ a | b | c, or a program: a pipeline; else one command - ending in &: in the background
   OVER S" else" BARE= 2 PICK S" elif" BARE= OR IF S" else and elif follow an if's } - there is no if before this" G-ERR THEN   \ (877)
-  BG? IF  2DUP = IF S" & after nothing" G-ERR THEN  2DUP ALL-PROGRAMS? 0= IF S" & runs programs - a function runs here" G-ERR THEN
+  BG? IF  2DUP = IF S" & after nothing" G-ERR THEN  2DUP ALL-PROGRAMS? 0= IF S" & runs programs - a function or a value runs here; run $cmd & for a program a value names" G-ERR THEN
     S" &" PIPELINE T" 0 STATUS !" ++ EXIT THEN                                        \ (874)
   2DUP TO-PIPE OVER <> 2 PICK PROGRAM? OR IF 0 0 PIPELINE EXIT THEN
   RD-SINGLE ;

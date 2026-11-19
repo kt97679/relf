@@ -1,0 +1,41 @@
+# a program's path (978): a first word with a / in it is a program's path, never a builtin's, a function's
+# or an operation's name; a text with a / in it, first in a command, runs the program there - as the same
+# text written first does - when the word after it names none of a text's operations
+var dir /tmp/cm-978
+rm -rf $dir
+mkdir -p $dir
+var path "$dir/tool"
+printf '#!/bin/sh\necho "the program: $*"\n' > $path
+chmod +x $path
+# a function named as the program: the name calls it, the path runs the program
+var tool {|x| echo the function, given $x }
+tool a
+"$dir/tool" a                     # a text with a /: the program
+/tmp/cm-978/tool b
+# the path in a variable
+var cmd $path
+$cmd c d
+$cmd
+echo [$($cmd captured)]
+echo [@($cmd one) @($cmd two)]
+var lines [@(/bin/sh -c 'echo x; echo y')]
+var sh /bin/sh
+var same [@($sh -c 'echo x; echo y')]
+echo $lines $same $(( $lines == $same ))
+$cmd piped | tr a-z A-Z
+$cmd to-file > "$dir/out"; cat "$dir/out"
+# a relative path, written or held
+cd $dir
+./tool e
+var rel ./tool
+$rel f
+# a text's operation still comes first: $cmd count counts, run $cmd count runs it
+echo $($cmd count) [@($cmd split /)]
+run $cmd count
+# its status, as any program's
+var fail /bin/sh
+$fail -c 'exit 3' || echo status $status
+var nope "$dir/no-such"
+$nope 2> /dev/null || echo status $status
+cd /
+rm -rf $dir

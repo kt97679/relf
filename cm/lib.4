@@ -199,7 +199,7 @@ CREATE OP-MASKS   \ the kinds each is for, a bit each
 : NOT-CMD ( args item --- )   \ a value as a command, no operation of its named: what it is, what it has
   D-KIND DUP K-TEXT <> IF  OVER #ARGS IF  OVER 0 ARGN DUP D-KIND K-TEXT = IF  D-TEXT R-T@ NO-OP  THEN DROP  THEN  THEN
   NIP  R-ERR> ." cm: " DUP A-KIND. ."  is a value, not a command"
-  DUP K-TEXT = IF ." ; run $t runs the program it names" THEN  DUP OPS-SAY
+  DUP K-TEXT = IF ." ; run $t runs the program it names, as $t does when it holds a /" THEN  DUP OPS-SAY
   K-LIST = IF ." ; [ -f x ] is test -f x; @(cmd) takes a command's values, a list needs no @( )" THEN  R-ERR-NL -4004 THROW ;
 : ARG0! ( item args --- )   CELL+ @ R-ITEMS ! ;
 DEFER OP-RUN ( args i --- )   \ the operation's word: below, once they all are
@@ -210,24 +210,6 @@ DEFER OP-RUN ( args i --- )   \ the operation's word: below, once they all are
   0 STATUS !  OP-RUN ;
 : OP-HINT ( c-addr u --- )   \ count, has... as a program: a value's operations - said so (967)
   2DUP OP# 0< IF 2DROP EXIT THEN  ."  - " 2DUP TYPE ."  is a value's operation: $v " TYPE ;
-: CALL-ITEM ( args item --- )   \ rule 11: a value as a command's first word - a block run, given the words after it;
-  \ a bool its status; a list's, a map's or a text's operation, the word after it its name (967)
-  DUP ENV-BOX = IF DROP ENV>MAP THEN   \ $env alone: a map's error (969)
-  DUP D-KIND K-BLOCK = IF BLK-CALL EXIT THEN
-  OVER #ARGS IF  OVER 0 ARGN DUP D-KIND K-TEXT = IF
-      D-TEXT R-T@ OP# DUP 0< 0= IF  >R OVER ARG0! R> OP-DO EXIT THEN  THEN DROP  NOT-CMD  THEN
-  DUP D-KIND K-BOOL = IF NIP D-TRUE? 0= 1 AND STATUS ! EXIT THEN   \ false: status 1, not -1 (869)
-  NOT-CMD ;
-: CALL-VALUE ( args item --- )   S" the block" CALLING 2!  CALL-ITEM ;   \ $b x: BIND-K says "the block" (967: it said
-\ the last function called by name, or faulted with none called yet)
-: CALL-NAMED ( args item c-addr u --- )   \ a function called by its name (929): its arity said with the name
-  CALLING 2!  DUP 0= IF  R-ERR> ." cm: " CALLING 2@ TYPE ."  is called before it is set" R-ERR-NL -4004 THROW  THEN
-  CALL-ITEM ;
-: PACK-ARGS ( a1 .. ak k --- list )   ARGL SWAP DUP 0 ?DO  DUP 1+ ROLL  ROT SWAP ARG SWAP  LOOP DROP ;
-: CALL-NAMED-S ( a1 .. ak k item c-addr u --- )   \ the same, its arguments on the stack - none a spread (930)
-  CALLING 2!  DUP 0= IF  R-ERR> ." cm: " CALLING 2@ TYPE ."  is called before it is set" R-ERR-NL -4004 THROW  THEN
-  DUP D-KIND K-BLOCK = IF BLK-RUN EXIT THEN  >R PACK-ARGS R> CALL-ITEM ;
-
 \ ---- programs (859): a command whose first word names no builtin, def or value - its words as texts
 : ARG-TEXTS ( args --- l )   \ each as a text - a number its digits, true or false; a list, map or block an error (rule 12)
   ARGL SWAP  DUP #ARGS 0 ?DO  DUP I ARGN  DUP D-KIND  DUP K-LIST = OVER K-REC = OR SWAP K-BLOCK = OR
@@ -237,6 +219,10 @@ DEFER OP-RUN ( args i --- )   \ the operation's word: below, once they all are
 : RD-FILE ( item mode fd --- )   ROT D-STR CELL+ @ ROT ROT R-RD-FILE ;
 : PSTAGE ( args last? --- )   >R ARG-TEXTS R> PL-STAGE-L ;
 : PIPE-END ( --- )   PL-CAPR @ -1 <> >R  PL-END STATUS !  R> IF R-T@ CT+ THEN ;   \ read for a $( ) (896)
+: PATH? ( item --- f )   DUP D-KIND K-TEXT = IF D-TEXT R-T@ [CHAR] / SCAN NIP 0<> ELSE DROP 0 THEN ;
+: RUN-PATH ( args item --- )   \ $cmd words, its text a path (978): the program there, the words its arguments - as
+  2 PL-BEGIN  ARGL SWAP ARG  SWAP DUP #ARGS 0 ?DO  DUP I ARGN ROT SWAP ARG SWAP  LOOP DROP   \ run $cmd words is
+  -1 PSTAGE PIPE-END ;
 : TRIM-NLS ( t --- t )   \ every trailing newline off (rule 4 of C.1)
   BEGIN  DUP @ DUP IF OVER CELL+ + 1- C@ 10 = THEN  WHILE  -1 OVER +!  REPEAT ;   \ an empty text: its 0 the flag (881:
 \ it was left under one, so a capture of nothing - $(printf "") - made a broken value and the next use crashed)
@@ -250,6 +236,32 @@ DEFER OP-RUN ( args i --- )   \ the operation's word: below, once they all are
   REPEAT 2DROP ;
 : TEXT-LINES ( item --- list )   CELL+ @ R-T@  ARGL ROT ROT LINES+ ;   \ a text's lines, each a text
 : PIPE-LINES ( --- list )   PIPE-TEXT TEXT-LINES ;   \ @( ): a program's lines
+: RUN-PATH-LINES ( args item --- )   \ @($cmd words), its text a path: the program's lines, put - @(run $cmd) is so
+  1 PL-BEGIN  ARGL SWAP ARG  SWAP DUP #ARGS 0 ?DO  DUP I ARGN ROT SWAP ARG SWAP  LOOP DROP
+  -1 PSTAGE PIPE-LINES  DUP #ARGS 0 ?DO  DUP I ARGN PUT  LOOP DROP ;
+: OP-ARG? ( args --- f )   DUP #ARGS IF 0 ARGN DUP D-KIND K-TEXT = IF D-TEXT R-T@ OP# 0< 0= EXIT THEN THEN DROP 0 ;
+: NOT-PATH ( args item --- )   DUP PATH? IF RUN-PATH EXIT THEN  NOT-CMD ;   \ a text with a /: a program's path
+: CALL-ITEM ( args item --- )   \ rule 11: a value as a command's first word - a block run, given the words after it;
+  \ a bool its status; a list's, a map's or a text's operation, the word after it its name (967); else a text with a
+  \ / in it the program at that path, as the same text written first would be (978)
+  DUP ENV-BOX = IF DROP ENV>MAP THEN   \ $env alone: a map's error (969)
+  DUP D-KIND K-BLOCK = IF BLK-CALL EXIT THEN
+  OVER #ARGS IF  OVER 0 ARGN DUP D-KIND K-TEXT = IF
+      D-TEXT R-T@ OP# DUP 0< 0= IF  >R OVER ARG0! R> OP-DO EXIT THEN  THEN DROP  NOT-PATH EXIT  THEN
+  DUP D-KIND K-BOOL = IF NIP D-TRUE? 0= 1 AND STATUS ! EXIT THEN   \ false: status 1, not -1 (869)
+  NOT-PATH ;
+: CALL-VALUE ( args item --- )   S" the block" CALLING 2!  CALL-ITEM ;
+: CALL-VALUE-CAP ( args item --- )   \ @( )'s one command a value: a path's program its lines, as run's (978)
+  OVER OP-ARG? 0= OVER PATH? AND IF RUN-PATH-LINES EXIT THEN  CALL-VALUE ;   \ $b x: BIND-K says "the block" (967: it said
+\ the last function called by name, or faulted with none called yet)
+: CALL-NAMED ( args item c-addr u --- )   \ a function called by its name (929): its arity said with the name
+  CALLING 2!  DUP 0= IF  R-ERR> ." cm: " CALLING 2@ TYPE ."  is called before it is set" R-ERR-NL -4004 THROW  THEN
+  CALL-ITEM ;
+: PACK-ARGS ( a1 .. ak k --- list )   ARGL SWAP DUP 0 ?DO  DUP 1+ ROLL  ROT SWAP ARG SWAP  LOOP DROP ;
+: CALL-NAMED-S ( a1 .. ak k item c-addr u --- )   \ the same, its arguments on the stack - none a spread (930)
+  CALLING 2!  DUP 0= IF  R-ERR> ." cm: " CALLING 2@ TYPE ."  is called before it is set" R-ERR-NL -4004 THROW  THEN
+  DUP D-KIND K-BLOCK = IF BLK-RUN EXIT THEN  >R PACK-ARGS R> CALL-ITEM ;
+
 
 \ ---- trap { block } [EXIT INT TERM HUP] (910): the block run when the script ends - normally, by exit, by an
 \ error, or by a signal it names, which then ends it, status 128 + the signal - as sh's trap is mostly used, to

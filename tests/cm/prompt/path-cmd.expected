@@ -1,0 +1,4 @@
+cm: a text is a value, not a command; run $t runs the program it names, as $t does when it holds a / - its operations: count has slice split upper lower match (line 1)
+cm: & runs programs - a function or a value runs here; run $cmd & for a program a value names (line 1)
+done
+status 0

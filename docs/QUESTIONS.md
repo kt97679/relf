@@ -793,6 +793,18 @@ an index after any value, `"${name}"`, `echo` and `put`, `$( )` and `@( )`, func
 reach checks find nothing; the old forms' messages are 129 bytes.
 
 
+**A54. rill3: a program's path (978).** The owner: "if command starts with / we always try to find it on
+the filesystem, this will help to avoid name conflicts. Also `var cmd /usr/bin/date; $cmd` should run
+date". The first was so already - no builtin's or function's name holds a `/` - and is said now in rule 4
+and in the compiler (PROGRAM?). For the second, three choices made, said here for the owner to undo:
+(1) a `/` anywhere, not only first - `./build.sh` written first runs as a path, so a text holding it does
+too, as the same text written there would; (2) a text's operation comes first - `$cmd count` counts, as
+`$path split /` must still split a path - and the program runs when the word after names none; (3) it is
+a value's command still, known only as the script runs, so in a pipeline it is a function's stage, run
+to its end before the next, and `&` does not take it: `run $cmd` for those. `@($cmd)` is its lines, as
+`@(run $cmd)`'s - the capture's one command marked so when the script is read (CALL-VALUE-CAP).
+
+
 **Closed at 972: Rill's and Rill 2's questions (Q8, Q39-Q46).** Kept in Open until 972, though
 their object had gone: Rill (729-833) and Rill 2 (834-862) were retired at 871, their sources out,
 when the command model - rill3, chosen at 867 by the owner's criteria (GOALS.md 15) - took their

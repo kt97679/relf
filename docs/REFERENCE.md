@@ -28,6 +28,8 @@ an eleventh.
 4. A command's first word says what runs: a builtin, a function, a value, or else the program of that
    name. A block runs, a boolean is a status; a list, a map or a text does the operation the next word
    names - the value is the command, the operation its subcommand: `$l count`, `$m has k`, `$l set 0 x`.
+   A word with a `/` in it is a program's path, never a builtin's or a function's name; a text holding a
+   `/` is one too, when the next word names none of a text's operations: `var cmd /bin/date; $cmd`.
 5. Values are texts, whole 64-bit numbers, booleans, lists, maps and blocks; a value is one word,
    never split or globbed - `@` spreads a list into words.
 6. `$(cmd)` is the text cmd printed, `@(cmd)` its values one by one, `$(( ))` arithmetic and
@@ -289,10 +291,19 @@ number a number.
 
 ## Pipes, programs and redirections
 
-A word that names no builtin and no function runs a program, found on PATH. Between functions a pipe carries
-values; from a program to a function, lines; from a function to a program, its values' printed forms, a
-line each. Programs side by side run together, as sh's; a function's stage runs in the shell's own
-process, to its end, before the stage after it starts - so `yes | f` never ends.
+A word that names no builtin and no function runs a program, found on PATH; a word with a `/` in it -
+`/bin/date`, `./build.sh` - runs the program at that path, whatever a builtin or a function is named
+(978). Between functions a pipe carries values; from a program to a function, lines; from a function to
+a program, its values' printed forms, a line each. Programs side by side run together, as sh's; a
+function's stage runs in the shell's own process, to its end, before the stage after it starts - so
+`yes | f` never ends.
+
+A text first in a command that holds a `/` runs the program at that path, as the same text written there
+would, the words after it its arguments - unless the first of them names one of a text's operations, which
+it does then (`$cmd count` counts): `var cmd /usr/bin/date; $cmd +%Y`; `$($cmd)` is what it prints and
+`@($cmd)` its lines, as `run`'s. It is a value's command still, known only as the script runs: in a
+pipeline a function's stage, run to its end before the next starts, and not one `&` starts - `run $cmd`
+for those, and for a program a text names with no `/` in it, found on PATH (978).
 
 `each name { body }` is a loop, as `for` is, over the input where it stands: a stage's values - a
 function's, or a program's lines - or, with no stage's input (a function not in a pipeline, a
@@ -345,7 +356,7 @@ and sets `$job`; `wait` waits for every one, `wait $job` for that one; at the sc
 | `each name {..}` | a loop over the input: a stage's values, or stdin's lines - `each line { .. } < file` |
 | `kind v` | text, number, bool, list, map or block |
 | `glob patterns...` | each pattern's paths, sorted, put, the patterns in their order - none, none put |
-| `run program words...` | the program a text names, given the words: `run $EDITOR file`, `run @cmd` |
+| `run program words...` | the program a text names, given the words: `run $EDITOR file`, `run @cmd` - a program's stage, `&` too; `$cmd words` when the text holds a `/` |
 | `read name` | a line of stdin into name, as it is - its blanks kept, nothing split; status 1 at the end - `each line {..}` for every line |
 | `source file` | another script read in where the line stands, once - a second source of it does nothing; its path from this file's directory; a name with no `/` not there, from the directories of `$env[RILL3_PATH]`; at the prompt, a later line's source reloads |
 | `forth words values...` | Forth run in rill3's own image: the values onto its stack (a number a cell, `true` and `false` -1 and 0, a text its address and length), the words run, what they leave put as numbers |
@@ -394,7 +405,8 @@ as deep as memory allows, though printing or comparing one nested past about 20,
 - Operators need blanks round them: `2> /dev/null`, `a | b`; so does a line's closing `\`.
 - `[` is a list, not `test`: `test -f x`, or `$(( ))` for numbers.
 - `if $m has $k`, `if $t match '*.txt'`: statuses, as `test` gives.
-- `$EDITOR file` is `run $EDITOR file`: a text first in a command is a value, the next word its operation.
+- `$EDITOR file` is `run $EDITOR file`: a text first in a command is a value, the next word its operation - but
+  a text holding a `/` runs the program at that path: `$cmd file` when `cmd` is `/usr/bin/vi`.
 - `while read line; do ...; done < f` is `each line { ... } < f`; `read name` reads one line.
 - `true` and `false` are booleans, not programs: first in a command, a boolean is its status.
 - `$(cmd)` is text - the same as sh's; `@(cmd)` takes a function's values.

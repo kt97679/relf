@@ -1,2 +1,2 @@
-cm: & runs programs - a function runs here (line 3)
+cm: & runs programs - a function or a value runs here; run $cmd & for a program a value names (line 3)
 status 2

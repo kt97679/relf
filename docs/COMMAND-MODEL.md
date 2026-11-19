@@ -8,7 +8,8 @@ runs with `run`; 968-973 changed a pipeline's status, `!` `&&` `||` in `$(( ))`,
 function, a here-document's escapes and `"..."`'s, `$env`, and `==` on maps; 975 quoted a map's keys
 and made the printed form read back; at 976 an element changes by its value's operation - `$m set k v`,
 `$l append x`, `$m del k` - where `set m[k] v`, `append` and `del` had been; at 977 `each` became a loop,
-`each x { body }`, as `for` is (docs/progress/0900-0999.md).
+`each x { body }`, as `for` is; at 978 a word or a text with a `/` in it runs the program at that path
+(docs/progress/0900-0999.md).
 What this file says of defs and of those builtins is their history.*
 
 **Status: the language (867).** Drafted at 850 as Q46's option C, a base for further development; at
